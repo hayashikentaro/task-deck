@@ -1,19 +1,32 @@
 import type { Task } from "../types";
 
 type TaskInfoPaneProps = {
+  actionError: string;
+  isRerunDisabled: boolean;
   task: Task | null;
   onInterrupt: () => void;
+  onRerun: () => void;
 };
 
-export function TaskInfoPane({ task, onInterrupt }: TaskInfoPaneProps) {
+export function TaskInfoPane({ actionError, isRerunDisabled, task, onInterrupt, onRerun }: TaskInfoPaneProps) {
+  const canShowRerun = task && task.status !== "running";
+
   return (
     <section className="info-pane" aria-label="Task information">
       <div className="pane-heading">
         <h2>Task State</h2>
-        <button disabled={task?.status !== "running"} onClick={onInterrupt} type="button">
-          Interrupt
-        </button>
+        <div className="pane-actions">
+          {canShowRerun ? (
+            <button disabled={isRerunDisabled} onClick={onRerun} type="button">
+              Rerun
+            </button>
+          ) : null}
+          <button disabled={task?.status !== "running"} onClick={onInterrupt} type="button">
+            Interrupt
+          </button>
+        </div>
       </div>
+      {actionError ? <p className="task-action-error">{actionError}</p> : null}
       {!task ? (
         <p className="empty-state">Select or start a task.</p>
       ) : (
@@ -47,4 +60,3 @@ function formatDate(value: string | null) {
   }
   return new Date(value).toLocaleTimeString();
 }
-

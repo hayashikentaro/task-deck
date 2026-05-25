@@ -358,6 +358,14 @@ dd {
   padding: 14px;
 }
 
+.task-action-error {
+  margin: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--danger);
+  font-size: 13px;
+}
+
 .diff-pane {
   min-height: 0;
   display: grid;

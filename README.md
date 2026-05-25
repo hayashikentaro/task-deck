@@ -48,4 +48,6 @@ The server persists tasks and logs under `.taskdeck/`, which is intentionally ig
 
 Multiple tasks can exist in the task list, while this iteration still allows one running PTY at a time. Clearing tasks removes non-running tasks and their logs while preserving any active task.
 
+Completed and other non-running tasks can be rerun from the selected task state pane. Rerun starts a new task with the same title, command, and cwd, leaving the original task record and log intact. Rerun is disabled while another task is running.
+
 TaskDeck also stores the 10 most recent task presets by `command` and `cwd` so common task shapes can be restarted quickly.

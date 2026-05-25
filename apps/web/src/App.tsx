@@ -22,6 +22,7 @@ export function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [lastOutput, setLastOutput] = useState<OutputEvent | null>(null);
   const [presets, setPresets] = useState<TaskPreset[]>([]);
+  const [taskActionError, setTaskActionError] = useState("");
   const socketRef = useRef<WebSocket | null>(null);
   const outputSeqRef = useRef(0);
   const selectedTaskIdRef = useRef<string | null>(null);
@@ -80,6 +81,7 @@ export function App() {
         }
 
         if (message.type === "error") {
+          setTaskActionError(message.message);
           outputSeqRef.current += 1;
           setLastOutput({
             seq: outputSeqRef.current,
@@ -112,6 +114,10 @@ export function App() {
     [selectedTaskId, tasks],
   );
 
+  useEffect(() => {
+    setTaskActionError("");
+  }, [selectedTaskId, runningTaskId]);
+
   const send = useCallback((payload: unknown) => {
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -122,7 +128,11 @@ export function App() {
   }, []);
 
   const createTask = (input: CreateTaskInput) => {
-    send({ type: "start", ...input });
+    const didSend = send({ type: "start", ...input });
+    if (!didSend) {
+      setTaskActionError("TaskDeck is not connected.");
+    }
+    return didSend;
   };
 
   const clearPresets = async () => {
@@ -134,6 +144,24 @@ export function App() {
   const interruptTask = () => {
     if (selectedTask) {
       send({ type: "interrupt", taskId: selectedTask.id });
+    }
+  };
+
+  const rerunTask = () => {
+    if (!selectedTask) {
+      return;
+    }
+    if (runningTaskId) {
+      setTaskActionError("Wait for the running task to finish before rerunning.");
+      return;
+    }
+    const didStart = createTask({
+      title: selectedTask.title,
+      command: selectedTask.command,
+      cwd: selectedTask.cwd,
+    });
+    if (didStart) {
+      setTaskActionError("");
     }
   };
 
@@ -198,7 +226,13 @@ export function App() {
         />
         <TerminalPane task={selectedTask} lastOutput={lastOutput} send={send} />
         <aside className="right-rail">
-          <TaskInfoPane task={selectedTask} onInterrupt={interruptTask} />
+          <TaskInfoPane
+            actionError={taskActionError}
+            isRerunDisabled={Boolean(runningTaskId)}
+            task={selectedTask}
+            onInterrupt={interruptTask}
+            onRerun={rerunTask}
+          />
           <DiffPane task={selectedTask} />
         </aside>
       </section>
