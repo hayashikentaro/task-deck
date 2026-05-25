@@ -1,0 +1,16 @@
+{
+  "name": "task-deck",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/server",
+    "apps/web",
+    "packages/core"
+  ],
+  "scripts": {
+    "dev": "npm --workspace @taskdeck/server run dev",
+    "start": "npm --workspace @taskdeck/server run start"
+  }
+}
+
