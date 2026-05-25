@@ -240,7 +240,12 @@ export function App() {
           onClearTasks={clearTasks}
           onSelectTask={setSelectedTaskId}
         />
-        <TerminalPane task={selectedTask} lastOutput={lastOutput} send={send} />
+        <TerminalPane
+          isConnected={connectionState === "connected"}
+          task={selectedTask}
+          lastOutput={lastOutput}
+          send={send}
+        />
         <aside className="right-rail">
           <TaskInfoPane
             actionError={taskActionError}

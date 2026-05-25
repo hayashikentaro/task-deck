@@ -535,6 +535,41 @@ dd {
   grid-template-rows: auto auto auto minmax(0, 1fr);
 }
 
+.terminal-heading-state {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 8px;
+  align-items: center;
+}
+
+.terminal-heading-state strong {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.terminal-heading-state strong[data-mode="interactive"] {
+  border-color: #2dd4bf;
+  color: #2dd4bf;
+}
+
+.terminal-heading-state strong[data-mode="readonly"] {
+  color: var(--muted);
+}
+
+.terminal-heading-state strong[data-mode="disconnected"] {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.terminal-heading-state strong[data-mode="none"] {
+  color: var(--muted);
+}
+
 .terminal-controls {
   display: grid;
   grid-template-columns: repeat(4, auto) minmax(160px, 1fr) auto;

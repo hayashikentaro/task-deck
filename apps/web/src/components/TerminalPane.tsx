@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { OutputEvent, Task } from "../types";
 
 type TerminalPaneProps = {
+  isConnected: boolean;
   task: Task | null;
   lastOutput: OutputEvent | null;
   send: (payload: unknown) => boolean;
@@ -11,18 +12,28 @@ type TerminalPaneProps = {
 
 const logTailLength = 200_000;
 
-export function TerminalPane({ task, lastOutput, send }: TerminalPaneProps) {
+export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const selectedTaskIdRef = useRef<string | null>(null);
+  const canAcceptInputRef = useRef(false);
   const followOutputRef = useRef(true);
   const [followOutput, setFollowOutput] = useState(true);
   const [logBuffer, setLogBuffer] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [terminalMessage, setTerminalMessage] = useState("");
 
+  const terminalMode = getTerminalMode(task, isConnected);
+  const canAcceptInput = terminalMode === "Interactive PTY";
   const searchMatchCount = useMemo(() => countMatches(logBuffer, searchTerm), [logBuffer, searchTerm]);
+
+  useEffect(() => {
+    canAcceptInputRef.current = canAcceptInput;
+    if (terminalRef.current) {
+      terminalRef.current.options.disableStdin = !canAcceptInput;
+    }
+  }, [canAcceptInput]);
 
   useEffect(() => {
     followOutputRef.current = followOutput;
@@ -53,7 +64,7 @@ export function TerminalPane({ task, lastOutput, send }: TerminalPaneProps) {
 
     terminal.onData((data) => {
       const taskId = selectedTaskIdRef.current;
-      if (taskId) {
+      if (taskId && canAcceptInputRef.current) {
         send({ type: "input", taskId, data });
       }
     });
@@ -175,7 +186,10 @@ export function TerminalPane({ task, lastOutput, send }: TerminalPaneProps) {
     <section className="terminal-pane" aria-label="Terminal">
       <div className="pane-heading">
         <h2>Terminal</h2>
-        <span>{task ? task.status : "idle"}</span>
+        <div className="terminal-heading-state">
+          <span>{task ? task.status : "idle"}</span>
+          <strong data-mode={modeTone(terminalMode)}>{terminalMode}</strong>
+        </div>
       </div>
       <div className="terminal-controls">
         <button
@@ -235,4 +249,30 @@ function countMatches(value: string, searchTerm: string) {
   }
 
   return count;
+}
+
+function getTerminalMode(task: Task | null, isConnected: boolean) {
+  if (!task) {
+    return "No task selected";
+  }
+  if (!isConnected) {
+    return "Disconnected";
+  }
+  if (task.status === "running") {
+    return "Interactive PTY";
+  }
+  return "Read-only log";
+}
+
+function modeTone(mode: string) {
+  if (mode === "Interactive PTY") {
+    return "interactive";
+  }
+  if (mode === "Disconnected") {
+    return "disconnected";
+  }
+  if (mode === "Read-only log") {
+    return "readonly";
+  }
+  return "none";
 }
