@@ -24,6 +24,7 @@ const webRoot = path.join(repoRoot, "apps/web");
 const webDist = path.join(webRoot, "dist");
 const dataRoot = path.join(repoRoot, ".taskdeck");
 const taskStorePath = path.join(dataRoot, "tasks.json");
+const presetStorePath = path.join(dataRoot, "presets.json");
 const logRoot = path.join(dataRoot, "logs");
 
 const app = express();
@@ -37,9 +38,11 @@ const shell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe"
 const clients = new Set();
 const tasks = new Map();
 const logs = new Map();
+let presets = [];
 const maxLogLength = 250_000;
 let activePty = null;
 let persistTasksQueue = Promise.resolve();
+let persistPresetsQueue = Promise.resolve();
 
 app.use(express.json());
 
@@ -97,6 +100,17 @@ app.delete("/api/tasks/:taskId", async (request, response) => {
     tasks: listTasks(),
     runningTaskId: activePty?.taskId ?? null,
   });
+});
+
+app.get("/api/presets", (_request, response) => {
+  response.json({ presets });
+});
+
+app.delete("/api/presets", async (_request, response) => {
+  presets = [];
+  await persistPresets();
+  broadcastPresets();
+  response.json({ ok: true, presets });
 });
 
 app.get("/api/tasks/:taskId", (request, response) => {
@@ -181,6 +195,7 @@ wss.on("connection", (socket) => {
   send(socket, {
     type: "snapshot",
     tasks: listTasks(),
+    presets,
     runningTaskId: activePty?.taskId ?? null,
   });
 
@@ -271,6 +286,11 @@ async function startTask({ title, command, cwd }, socket) {
   tasks.set(task.id, task);
   logs.set(task.id, "");
   persistTasks();
+  savePreset({
+    title: task.title,
+    command: task.command,
+    cwd: task.cwd,
+  });
   writeTaskLog(task.id, "");
 
   try {
@@ -354,6 +374,13 @@ function broadcastTasks() {
   });
 }
 
+function broadcastPresets() {
+  broadcast({
+    type: "presets",
+    presets,
+  });
+}
+
 async function clearTask(taskId) {
   tasks.delete(taskId);
   logs.delete(taskId);
@@ -375,19 +402,14 @@ function broadcast(payload) {
 async function initializePersistence() {
   await fs.mkdir(logRoot, { recursive: true });
 
-  let storedTasks = [];
-  try {
-    const rawTasks = await fs.readFile(taskStorePath, "utf8");
-    storedTasks = JSON.parse(rawTasks);
-  } catch (error) {
-    if (error.code !== "ENOENT") {
-      console.warn(`TaskDeck could not read ${taskStorePath}: ${error.message}`);
-    }
-  }
+  const [storedTasks, storedPresets] = await Promise.all([
+    readJsonArray(taskStorePath, "tasks"),
+    readJsonArray(presetStorePath, "presets"),
+  ]);
 
-  if (!Array.isArray(storedTasks)) {
-    console.warn(`TaskDeck ignored ${taskStorePath} because it did not contain a task array.`);
-    storedTasks = [];
+  presets = sanitizePresets(storedPresets);
+  if (presets.length !== storedPresets.length) {
+    persistPresets();
   }
 
   let changed = false;
@@ -413,6 +435,23 @@ async function initializePersistence() {
   }
 }
 
+async function readJsonArray(filePath, label) {
+  try {
+    const rawContents = await fs.readFile(filePath, "utf8");
+    const parsed = JSON.parse(rawContents);
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+    console.warn(`TaskDeck ignored ${filePath} because it did not contain a ${label} array.`);
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      console.warn(`TaskDeck could not read ${filePath}: ${error.message}`);
+    }
+  }
+
+  return [];
+}
+
 function persistTasks() {
   const serializedTasks = Array.from(tasks.values()).map(serializeTask);
 
@@ -428,6 +467,67 @@ function persistTasks() {
     });
 
   return persistTasksQueue;
+}
+
+function savePreset(taskSpec) {
+  const preset = normalizePreset(taskSpec);
+  if (!preset) {
+    return;
+  }
+
+  presets = [preset, ...presets.filter((candidate) => !presetMatches(candidate, preset))].slice(0, 10);
+  persistPresets();
+  broadcastPresets();
+}
+
+function persistPresets() {
+  const serializedPresets = presets.map((preset) => ({ ...preset }));
+
+  persistPresetsQueue = persistPresetsQueue
+    .then(async () => {
+      await fs.mkdir(dataRoot, { recursive: true });
+      const tempPath = `${presetStorePath}.tmp`;
+      await fs.writeFile(tempPath, `${JSON.stringify(serializedPresets, null, 2)}\n`);
+      await fs.rename(tempPath, presetStorePath);
+    })
+    .catch((error) => {
+      console.error(`TaskDeck could not persist presets: ${error.message}`);
+    });
+
+  return persistPresetsQueue;
+}
+
+function sanitizePresets(storedPresets) {
+  const sanitizedPresets = [];
+  for (const storedPreset of storedPresets) {
+    const preset = normalizePreset(storedPreset);
+    if (!preset || sanitizedPresets.some((candidate) => presetMatches(candidate, preset))) {
+      continue;
+    }
+    sanitizedPresets.push(preset);
+    if (sanitizedPresets.length >= 10) {
+      break;
+    }
+  }
+  return sanitizedPresets;
+}
+
+function normalizePreset(taskSpec) {
+  const command = String(taskSpec?.command || "").trim();
+  const cwd = String(taskSpec?.cwd || "").trim();
+  if (!command) {
+    return null;
+  }
+
+  return {
+    title: String(taskSpec?.title || "").trim() || command,
+    command,
+    cwd,
+  };
+}
+
+function presetMatches(left, right) {
+  return left.command === right.command && left.cwd === right.cwd;
 }
 
 async function readTaskLog(taskId) {

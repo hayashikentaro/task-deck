@@ -134,6 +134,11 @@ dd {
   background: var(--panel);
 }
 
+.task-create-panel {
+  display: grid;
+  gap: 12px;
+}
+
 .task-create-form {
   display: grid;
   grid-template-columns: minmax(160px, 0.7fr) minmax(280px, 1.4fr) minmax(160px, 0.8fr) auto;
@@ -156,6 +161,63 @@ dd {
 .task-create-form button {
   height: 40px;
   padding: 0 16px;
+}
+
+.preset-strip {
+  display: grid;
+  gap: 8px;
+}
+
+.preset-strip-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.preset-strip-heading span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.preset-strip-heading button {
+  padding: 5px 9px;
+  font-size: 12px;
+}
+
+.preset-list {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.preset-list p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.preset-list button {
+  min-width: 180px;
+  max-width: 260px;
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.preset-list span,
+.preset-list small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-list small {
+  color: var(--muted);
 }
 
 .workspace-grid {

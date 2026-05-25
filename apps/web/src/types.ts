@@ -32,3 +32,4 @@ export type CreateTaskInput = {
   cwd: string;
 };
 
+export type TaskPreset = CreateTaskInput;
