@@ -92,14 +92,34 @@ app.get("/api/tasks/:taskId/diff", async (request, response) => {
   }
 
   try {
+    const isGitRepo = await cwdIsGitRepo(task.cwd);
+    if (!isGitRepo) {
+      response.json({
+        taskId: task.id,
+        cwd: task.cwd,
+        ok: true,
+        isGitRepo: false,
+        diff: "",
+      });
+      return;
+    }
+
     const { stdout } = await execFileAsync("git", ["-C", task.cwd, "diff", "--"], {
       maxBuffer: 2 * 1024 * 1024,
     });
-    response.json({ taskId: task.id, cwd: task.cwd, diff: stdout });
+    response.json({
+      taskId: task.id,
+      cwd: task.cwd,
+      ok: true,
+      isGitRepo: true,
+      diff: stdout,
+    });
   } catch (error) {
     response.status(500).json({
       taskId: task.id,
       cwd: task.cwd,
+      ok: false,
+      isGitRepo: false,
       diff: "",
       error: error.message,
     });
@@ -249,6 +269,15 @@ async function resolveCwd(cwd, socket) {
   } catch {
     send(socket, { type: "error", message: `cwd does not exist: ${candidate}` });
     return null;
+  }
+}
+
+async function cwdIsGitRepo(cwd) {
+  try {
+    const { stdout } = await execFileAsync("git", ["-C", cwd, "rev-parse", "--is-inside-work-tree"]);
+    return stdout.trim() === "true";
+  } catch {
+    return false;
   }
 }
 
