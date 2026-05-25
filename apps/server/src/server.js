@@ -13,6 +13,7 @@ import {
   markTaskExited,
   markTaskRunning,
   serializeTask,
+  TaskStatus,
 } from "@taskdeck/core";
 
 const execFileAsync = promisify(execFile);
@@ -21,6 +22,9 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../../..");
 const webRoot = path.join(repoRoot, "apps/web");
 const webDist = path.join(webRoot, "dist");
+const dataRoot = path.join(repoRoot, ".taskdeck");
+const taskStorePath = path.join(dataRoot, "tasks.json");
+const logRoot = path.join(dataRoot, "logs");
 
 const app = express();
 const server = http.createServer(app);
@@ -35,6 +39,7 @@ const tasks = new Map();
 const logs = new Map();
 const maxLogLength = 250_000;
 let activePty = null;
+let persistTasksQueue = Promise.resolve();
 
 app.use(express.json());
 
@@ -62,10 +67,20 @@ app.get("/api/tasks/:taskId/logs", (request, response) => {
     return;
   }
 
-  response.json({
-    taskId: request.params.taskId,
-    logs: logs.get(request.params.taskId) || "",
-  });
+  readTaskLog(request.params.taskId)
+    .then((taskLog) => {
+      response.json({
+        taskId: request.params.taskId,
+        logs: taskLog,
+      });
+    })
+    .catch((error) => {
+      response.status(500).json({
+        taskId: request.params.taskId,
+        logs: "",
+        error: error.message,
+      });
+    });
 });
 
 app.get("/api/tasks/:taskId/diff", async (request, response) => {
@@ -150,6 +165,7 @@ wss.on("connection", (socket) => {
   });
 });
 
+await initializePersistence();
 await configureWebApp();
 
 server.on("error", (error) => {
@@ -184,6 +200,8 @@ async function startTask({ title, command, cwd }, socket) {
   const task = markTaskRunning(createTask({ title, command, cwd: resolvedCwd }));
   tasks.set(task.id, task);
   logs.set(task.id, "");
+  persistTasks();
+  writeTaskLog(task.id, "");
 
   try {
     const terminalProcess = pty.spawn(shell, ["-lc", command], {
@@ -236,6 +254,7 @@ async function resolveCwd(cwd, socket) {
 
 function setTask(task) {
   tasks.set(task.id, task);
+  persistTasks();
 }
 
 function listTasks() {
@@ -245,6 +264,7 @@ function listTasks() {
 function appendLog(taskId, data) {
   const nextLog = `${logs.get(taskId) || ""}${data}`;
   logs.set(taskId, nextLog.slice(-maxLogLength));
+  appendTaskLog(taskId, data);
 }
 
 function broadcastTasks() {
@@ -265,6 +285,96 @@ function broadcast(payload) {
   for (const client of clients) {
     send(client, payload);
   }
+}
+
+async function initializePersistence() {
+  await fs.mkdir(logRoot, { recursive: true });
+
+  let storedTasks = [];
+  try {
+    const rawTasks = await fs.readFile(taskStorePath, "utf8");
+    storedTasks = JSON.parse(rawTasks);
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      console.warn(`TaskDeck could not read ${taskStorePath}: ${error.message}`);
+    }
+  }
+
+  if (!Array.isArray(storedTasks)) {
+    console.warn(`TaskDeck ignored ${taskStorePath} because it did not contain a task array.`);
+    storedTasks = [];
+  }
+
+  let changed = false;
+  for (const storedTask of storedTasks) {
+    if (!storedTask?.id) {
+      changed = true;
+      continue;
+    }
+
+    const task =
+      storedTask.status === TaskStatus.RUNNING
+        ? markTaskExited(storedTask, { exitCode: 1, signal: "server-restart" })
+        : storedTask;
+
+    if (task !== storedTask) {
+      changed = true;
+    }
+    tasks.set(task.id, task);
+  }
+
+  if (changed) {
+    persistTasks();
+  }
+}
+
+function persistTasks() {
+  const serializedTasks = Array.from(tasks.values()).map(serializeTask);
+
+  persistTasksQueue = persistTasksQueue
+    .then(async () => {
+      await fs.mkdir(dataRoot, { recursive: true });
+      const tempPath = `${taskStorePath}.tmp`;
+      await fs.writeFile(tempPath, `${JSON.stringify(serializedTasks, null, 2)}\n`);
+      await fs.rename(tempPath, taskStorePath);
+    })
+    .catch((error) => {
+      console.error(`TaskDeck could not persist tasks: ${error.message}`);
+    });
+}
+
+async function readTaskLog(taskId) {
+  const cachedLog = logs.get(taskId);
+  if (cachedLog !== undefined) {
+    return cachedLog;
+  }
+
+  try {
+    const taskLog = await fs.readFile(logPathForTask(taskId), "utf8");
+    logs.set(taskId, taskLog.slice(-maxLogLength));
+    return taskLog;
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return "";
+    }
+    throw error;
+  }
+}
+
+function writeTaskLog(taskId, data) {
+  fs.writeFile(logPathForTask(taskId), data).catch((error) => {
+    console.error(`TaskDeck could not write log for ${taskId}: ${error.message}`);
+  });
+}
+
+function appendTaskLog(taskId, data) {
+  fs.appendFile(logPathForTask(taskId), data).catch((error) => {
+    console.error(`TaskDeck could not append log for ${taskId}: ${error.message}`);
+  });
+}
+
+function logPathForTask(taskId) {
+  return path.join(logRoot, `${taskId}.log`);
 }
 
 async function configureWebApp() {

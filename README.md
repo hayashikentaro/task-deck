@@ -32,4 +32,13 @@ GET /api/tasks/:taskId/logs
 GET /api/tasks/:taskId/diff
 ```
 
-The server keeps tasks and logs in memory for now. Multiple tasks can exist in the task list, while this iteration still allows one running PTY at a time.
+The server persists tasks and logs under `.taskdeck/`, which is intentionally ignored by Git:
+
+```text
+.taskdeck/
+  tasks.json
+  logs/
+    <taskId>.log
+```
+
+Multiple tasks can exist in the task list, while this iteration still allows one running PTY at a time.
