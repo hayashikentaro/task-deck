@@ -33,3 +33,29 @@ export type CreateTaskInput = {
 };
 
 export type TaskPreset = CreateTaskInput;
+
+export type CwdSuggestion = {
+  label: string;
+  path: string;
+  value: string;
+};
+
+export type TaskDeckContext = {
+  repoRoot: string;
+  defaultCwd: string;
+  serverCwd: string;
+  shell: string;
+  pathSeparator: string;
+  isGitRepo: boolean;
+  cwdSuggestions: CwdSuggestion[];
+};
+
+export type CwdValidation = {
+  ok: boolean;
+  inputCwd: string;
+  resolvedCwd: string;
+  exists: boolean;
+  isDirectory: boolean;
+  isGitRepo: boolean;
+  message: string;
+};

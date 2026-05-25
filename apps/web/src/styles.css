@@ -213,6 +213,67 @@ dd {
   padding: 0 16px;
 }
 
+.cwd-helper {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #11161b;
+  padding: 10px 12px;
+}
+
+.cwd-helper[data-state="valid"] {
+  border-color: rgba(134, 239, 172, 0.45);
+}
+
+.cwd-helper[data-state="invalid"] {
+  border-color: rgba(251, 113, 133, 0.65);
+}
+
+.cwd-helper > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.cwd-helper span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.cwd-helper strong,
+.cwd-helper small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cwd-helper strong {
+  font-size: 13px;
+}
+
+.cwd-helper small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.cwd-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 6px;
+}
+
+.cwd-suggestions button {
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
 .preset-strip {
   display: grid;
   gap: 8px;
@@ -617,6 +678,7 @@ dd {
 @media (max-width: 820px) {
   .top-bar,
   .task-create-form,
+  .cwd-helper,
   .workspace-grid,
   .right-rail {
     grid-template-columns: 1fr;
@@ -628,6 +690,10 @@ dd {
 
   .fleet-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cwd-suggestions {
+    justify-content: start;
   }
 
   .terminal-host {

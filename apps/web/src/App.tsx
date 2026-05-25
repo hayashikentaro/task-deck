@@ -5,7 +5,7 @@ import { TaskCreateForm } from "./components/TaskCreateForm";
 import { TaskInfoPane } from "./components/TaskInfoPane";
 import { TaskList } from "./components/TaskList";
 import { TerminalPane } from "./components/TerminalPane";
-import type { CreateTaskInput, OutputEvent, Task, TaskPreset } from "./types";
+import type { CreateTaskInput, OutputEvent, Task, TaskDeckContext, TaskPreset } from "./types";
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
 
@@ -23,6 +23,7 @@ export function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [lastOutput, setLastOutput] = useState<OutputEvent | null>(null);
   const [presets, setPresets] = useState<TaskPreset[]>([]);
+  const [taskDeckContext, setTaskDeckContext] = useState<TaskDeckContext | null>(null);
   const [taskActionError, setTaskActionError] = useState("");
   const socketRef = useRef<WebSocket | null>(null);
   const outputSeqRef = useRef(0);
@@ -108,6 +109,18 @@ export function App() {
       window.clearTimeout(reconnectTimer);
       socketRef.current?.close();
     };
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/context")
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Unable to load TaskDeck context.");
+        }
+        return response.json();
+      })
+      .then((context: TaskDeckContext) => setTaskDeckContext(context))
+      .catch(() => setTaskDeckContext(null));
   }, []);
 
   const selectedTask = useMemo(
@@ -210,6 +223,7 @@ export function App() {
       <section className="create-band">
         <FleetSummary tasks={tasks} />
         <TaskCreateForm
+          context={taskDeckContext}
           disabled={connectionState !== "connected" || Boolean(runningTaskId)}
           onCreateTask={createTask}
           onClearPresets={clearPresets}

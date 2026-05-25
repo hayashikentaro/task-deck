@@ -58,6 +58,10 @@ app.get("/api/context", async (_request, response) => {
   });
 });
 
+app.post("/api/validate-cwd", async (request, response) => {
+  response.json(await validateCwd(String(request.body?.cwd || "")));
+});
+
 app.get("/api/tasks", (_request, response) => {
   response.json({
     tasks: listTasks(),
@@ -355,18 +359,53 @@ async function startTask({ title, command, cwd }, socket) {
 }
 
 async function resolveCwd(cwd, socket) {
-  const candidate = cwd ? path.resolve(repoRoot, cwd) : repoRoot;
+  const validation = await validateCwd(cwd);
+
+  if (!validation.ok) {
+    send(socket, { type: "error", message: validation.message });
+    return null;
+  }
+
+  return validation.resolvedCwd;
+}
+
+async function validateCwd(cwd) {
+  const inputCwd = String(cwd || "").trim();
+  const resolvedCwd = inputCwd ? path.resolve(repoRoot, inputCwd) : repoRoot;
 
   try {
-    const stat = await fs.stat(candidate);
+    const stat = await fs.stat(resolvedCwd);
     if (!stat.isDirectory()) {
-      send(socket, { type: "error", message: `cwd is not a directory: ${candidate}` });
-      return null;
+      return {
+        ok: false,
+        inputCwd,
+        resolvedCwd,
+        exists: true,
+        isDirectory: false,
+        isGitRepo: false,
+        message: `cwd is not a directory: ${resolvedCwd}`,
+      };
     }
-    return candidate;
+
+    return {
+      ok: true,
+      inputCwd,
+      resolvedCwd,
+      exists: true,
+      isDirectory: true,
+      isGitRepo: await cwdIsGitRepo(resolvedCwd),
+      message: inputCwd ? "Working directory is valid." : "Using repository root.",
+    };
   } catch {
-    send(socket, { type: "error", message: `cwd does not exist: ${candidate}` });
-    return null;
+    return {
+      ok: false,
+      inputCwd,
+      resolvedCwd,
+      exists: false,
+      isDirectory: false,
+      isGitRepo: false,
+      message: `cwd does not exist: ${resolvedCwd}`,
+    };
   }
 }
 
@@ -381,10 +420,10 @@ async function cwdIsGitRepo(cwd) {
 
 async function buildCwdSuggestions() {
   const candidates = [
-    { label: "Repository root", path: repoRoot },
-    { label: "apps/web", path: path.join(repoRoot, "apps/web") },
-    { label: "apps/server", path: path.join(repoRoot, "apps/server") },
-    { label: "packages/core", path: path.join(repoRoot, "packages/core") },
+    { label: "Repository root", path: repoRoot, value: "" },
+    { label: "apps/web", path: path.join(repoRoot, "apps/web"), value: "apps/web" },
+    { label: "apps/server", path: path.join(repoRoot, "apps/server"), value: "apps/server" },
+    { label: "packages/core", path: path.join(repoRoot, "packages/core"), value: "packages/core" },
   ];
 
   const suggestions = [];

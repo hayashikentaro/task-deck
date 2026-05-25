@@ -29,6 +29,7 @@ packages/core Shared task-state primitives
 
 ```text
 GET /api/context
+POST /api/validate-cwd
 GET /api/tasks
 DELETE /api/tasks
 GET /api/tasks/:taskId
@@ -41,6 +42,8 @@ DELETE /api/presets
 ```
 
 `GET /api/context` returns the repository root, default cwd, server cwd, shell, path separator, git-repository status, and in-repository cwd suggestions for task creation.
+
+`POST /api/validate-cwd` accepts `{ "cwd": "apps/web" }` and returns whether the cwd resolves to an existing directory, its absolute path, and git-repository status. The task form uses it to validate cwd before starting a task.
 
 The server persists tasks and logs under `.taskdeck/`, which is intentionally ignored by Git:
 
