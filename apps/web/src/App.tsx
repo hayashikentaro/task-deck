@@ -124,16 +124,29 @@ export function App() {
   const clearTasks = async () => {
     const response = await fetch("/api/tasks", { method: "DELETE" });
     const payload = (await response.json()) as { tasks: Task[]; runningTaskId: string | null };
-    setTasks(payload.tasks);
-    setRunningTaskId(payload.runningTaskId);
+    applyTaskList(payload.tasks, payload.runningTaskId);
+  };
+
+  const clearTask = async (taskId: string) => {
+    const response = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
+    if (!response.ok) {
+      return;
+    }
+    const payload = (await response.json()) as { tasks: Task[]; runningTaskId: string | null };
+    applyTaskList(payload.tasks, payload.runningTaskId);
+  };
+
+  const applyTaskList = (nextTasks: Task[], nextRunningTaskId: string | null) => {
+    setTasks(nextTasks);
+    setRunningTaskId(nextRunningTaskId);
     setSelectedTaskId((current) => {
-      if (payload.runningTaskId) {
-        return payload.runningTaskId;
+      if (nextRunningTaskId) {
+        return nextRunningTaskId;
       }
-      if (current && payload.tasks.some((task) => task.id === current)) {
+      if (current && nextTasks.some((task) => task.id === current)) {
         return current;
       }
-      return payload.tasks[0]?.id ?? null;
+      return nextTasks[0]?.id ?? null;
     });
   };
 
@@ -161,6 +174,7 @@ export function App() {
           tasks={tasks}
           selectedTaskId={selectedTaskId}
           runningTaskId={runningTaskId}
+          onClearTask={clearTask}
           onClearTasks={clearTasks}
           onSelectTask={setSelectedTaskId}
         />

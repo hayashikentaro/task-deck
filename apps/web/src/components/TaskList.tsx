@@ -4,11 +4,19 @@ type TaskListProps = {
   tasks: Task[];
   selectedTaskId: string | null;
   runningTaskId: string | null;
+  onClearTask: (taskId: string) => void;
   onClearTasks: () => void;
   onSelectTask: (taskId: string) => void;
 };
 
-export function TaskList({ tasks, selectedTaskId, runningTaskId, onClearTasks, onSelectTask }: TaskListProps) {
+export function TaskList({
+  tasks,
+  selectedTaskId,
+  runningTaskId,
+  onClearTask,
+  onClearTasks,
+  onSelectTask,
+}: TaskListProps) {
   const clearableCount = tasks.filter((task) => task.id !== runningTaskId).length;
 
   return (
@@ -25,19 +33,27 @@ export function TaskList({ tasks, selectedTaskId, runningTaskId, onClearTasks, o
       <div className="task-list-items">
         {tasks.length === 0 ? <p className="empty-state">No tasks yet.</p> : null}
         {tasks.map((task) => (
-          <button
+          <div
             className="task-list-item"
             data-selected={task.id === selectedTaskId}
             key={task.id}
-            onClick={() => onSelectTask(task.id)}
-            type="button"
           >
-            <span className="task-title">{task.title}</span>
-            <span className="task-meta">
-              {task.status}
-              {task.id === runningTaskId ? " / active" : ""}
-            </span>
-          </button>
+            <button className="task-select-button" onClick={() => onSelectTask(task.id)} type="button">
+              <span className="task-title">{task.title}</span>
+              <span className="task-meta">
+                {task.status}
+                {task.id === runningTaskId ? " / active" : ""}
+              </span>
+            </button>
+            <button
+              className="task-clear-button"
+              disabled={task.id === runningTaskId}
+              onClick={() => onClearTask(task.id)}
+              type="button"
+            >
+              Clear
+            </button>
+          </div>
         ))}
       </div>
     </aside>

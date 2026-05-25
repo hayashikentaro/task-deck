@@ -220,15 +220,33 @@ dd {
 .task-list-item {
   width: 100%;
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px;
-  padding: 10px;
-  text-align: left;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 6px;
   background: #11161b;
 }
 
 .task-list-item[data-selected="true"] {
   border-color: var(--accent);
   background: #142027;
+}
+
+.task-select-button {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  padding: 10px;
+  text-align: left;
+}
+
+.task-clear-button {
+  margin: 6px;
+  padding: 0 8px;
+  font-size: 12px;
 }
 
 .task-title {

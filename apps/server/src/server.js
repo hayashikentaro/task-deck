@@ -55,9 +55,7 @@ app.delete("/api/tasks", async (_request, response) => {
   const taskIdsToClear = Array.from(tasks.keys()).filter((taskId) => taskId !== runningTaskId);
 
   for (const taskId of taskIdsToClear) {
-    tasks.delete(taskId);
-    logs.delete(taskId);
-    await deleteTaskLog(taskId);
+    await clearTask(taskId);
   }
 
   await persistTasks();
@@ -68,6 +66,36 @@ app.delete("/api/tasks", async (_request, response) => {
     clearedTaskIds: taskIdsToClear,
     tasks: listTasks(),
     runningTaskId,
+  });
+});
+
+app.delete("/api/tasks/:taskId", async (request, response) => {
+  const { taskId } = request.params;
+  const task = tasks.get(taskId);
+
+  if (!task) {
+    response.status(404).json({ error: "Task not found." });
+    return;
+  }
+
+  if (activePty?.taskId === taskId) {
+    response.status(409).json({
+      ok: false,
+      error: "Cannot clear a running task.",
+      task: serializeTask(task),
+    });
+    return;
+  }
+
+  await clearTask(taskId);
+  await persistTasks();
+  broadcastTasks();
+
+  response.json({
+    ok: true,
+    clearedTaskId: taskId,
+    tasks: listTasks(),
+    runningTaskId: activePty?.taskId ?? null,
   });
 });
 
@@ -324,6 +352,12 @@ function broadcastTasks() {
     tasks: listTasks(),
     runningTaskId: activePty?.taskId ?? null,
   });
+}
+
+async function clearTask(taskId) {
+  tasks.delete(taskId);
+  logs.delete(taskId);
+  await deleteTaskLog(taskId);
 }
 
 function send(socket, payload) {

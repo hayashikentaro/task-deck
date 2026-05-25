@@ -29,6 +29,7 @@ packages/core Shared task-state primitives
 GET /api/tasks
 DELETE /api/tasks
 GET /api/tasks/:taskId
+DELETE /api/tasks/:taskId
 GET /api/tasks/:taskId/logs
 GET /api/tasks/:taskId/diff
 ```
