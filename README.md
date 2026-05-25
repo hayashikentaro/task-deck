@@ -33,6 +33,7 @@ DELETE /api/tasks
 GET /api/tasks/:taskId
 DELETE /api/tasks/:taskId
 GET /api/tasks/:taskId/logs
+GET /api/tasks/:taskId/logs?tail=200000
 GET /api/tasks/:taskId/diff
 GET /api/presets
 DELETE /api/presets
@@ -53,5 +54,7 @@ Multiple tasks can exist in the task list, while this iteration still allows one
 The UI includes a compact fleet summary for total, running, completed, failed, interrupted, and high/medium risk task counts. Task list filters let the operator focus on all, running, failed/interrupted, completed, or risky tasks without changing the underlying task records.
 
 Completed and other non-running tasks can be rerun from the selected task state pane. Rerun starts a new task with the same title, command, and cwd, leaving the original task record and log intact. Rerun is disabled while another task is running.
+
+The terminal pane keeps xterm.js as the renderer while adding operator controls for follow mode, clearing the current view, reloading persisted logs, copying the bounded visible log buffer, and counting simple search matches.
 
 TaskDeck also stores the 10 most recent task presets by `command` and `cwd` so common task shapes can be restarted quickly.

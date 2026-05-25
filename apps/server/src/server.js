@@ -132,9 +132,12 @@ app.get("/api/tasks/:taskId/logs", (request, response) => {
 
   readTaskLog(request.params.taskId)
     .then((taskLog) => {
+      const tailLength = normalizeTailLength(request.query.tail);
+      const logsForResponse = tailLength === null ? taskLog : taskLog.slice(-tailLength);
       response.json({
         taskId: request.params.taskId,
-        logs: taskLog,
+        logs: logsForResponse,
+        truncated: logsForResponse.length < taskLog.length,
       });
     })
     .catch((error) => {
@@ -145,6 +148,19 @@ app.get("/api/tasks/:taskId/logs", (request, response) => {
       });
     });
 });
+
+function normalizeTailLength(rawTail) {
+  if (rawTail === undefined) {
+    return null;
+  }
+
+  const tailLength = Number(rawTail);
+  if (!Number.isFinite(tailLength) || tailLength <= 0) {
+    return null;
+  }
+
+  return Math.min(Math.floor(tailLength), maxLogLength);
+}
 
 app.get("/api/tasks/:taskId/diff", async (request, response) => {
   const task = tasks.get(request.params.taskId);
