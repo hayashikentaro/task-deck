@@ -50,6 +50,27 @@ app.get("/api/tasks", (_request, response) => {
   });
 });
 
+app.delete("/api/tasks", async (_request, response) => {
+  const runningTaskId = activePty?.taskId ?? null;
+  const taskIdsToClear = Array.from(tasks.keys()).filter((taskId) => taskId !== runningTaskId);
+
+  for (const taskId of taskIdsToClear) {
+    tasks.delete(taskId);
+    logs.delete(taskId);
+    await deleteTaskLog(taskId);
+  }
+
+  await persistTasks();
+  broadcastTasks();
+
+  response.json({
+    ok: true,
+    clearedTaskIds: taskIdsToClear,
+    tasks: listTasks(),
+    runningTaskId,
+  });
+});
+
 app.get("/api/tasks/:taskId", (request, response) => {
   const task = tasks.get(request.params.taskId);
 
@@ -97,9 +118,10 @@ app.get("/api/tasks/:taskId/diff", async (request, response) => {
       response.json({
         taskId: task.id,
         cwd: task.cwd,
-        ok: true,
+        ok: false,
         isGitRepo: false,
         diff: "",
+        message: "Not a git repository",
       });
       return;
     }
@@ -370,6 +392,8 @@ function persistTasks() {
     .catch((error) => {
       console.error(`TaskDeck could not persist tasks: ${error.message}`);
     });
+
+  return persistTasksQueue;
 }
 
 async function readTaskLog(taskId) {
@@ -400,6 +424,14 @@ function appendTaskLog(taskId, data) {
   fs.appendFile(logPathForTask(taskId), data).catch((error) => {
     console.error(`TaskDeck could not append log for ${taskId}: ${error.message}`);
   });
+}
+
+async function deleteTaskLog(taskId) {
+  try {
+    await fs.rm(logPathForTask(taskId), { force: true });
+  } catch (error) {
+    console.error(`TaskDeck could not delete log for ${taskId}: ${error.message}`);
+  }
 }
 
 function logPathForTask(taskId) {

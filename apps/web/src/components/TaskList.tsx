@@ -4,15 +4,23 @@ type TaskListProps = {
   tasks: Task[];
   selectedTaskId: string | null;
   runningTaskId: string | null;
+  onClearTasks: () => void;
   onSelectTask: (taskId: string) => void;
 };
 
-export function TaskList({ tasks, selectedTaskId, runningTaskId, onSelectTask }: TaskListProps) {
+export function TaskList({ tasks, selectedTaskId, runningTaskId, onClearTasks, onSelectTask }: TaskListProps) {
+  const clearableCount = tasks.filter((task) => task.id !== runningTaskId).length;
+
   return (
     <aside className="task-list" aria-label="Tasks">
       <div className="pane-heading">
         <h2>Tasks</h2>
-        <span>{tasks.length}</span>
+        <div className="pane-actions">
+          <span>{tasks.length}</span>
+          <button disabled={clearableCount === 0} onClick={onClearTasks} type="button">
+            Clear
+          </button>
+        </div>
       </div>
       <div className="task-list-items">
         {tasks.length === 0 ? <p className="empty-state">No tasks yet.</p> : null}
@@ -35,4 +43,3 @@ export function TaskList({ tasks, selectedTaskId, runningTaskId, onSelectTask }:
     </aside>
   );
 }
-

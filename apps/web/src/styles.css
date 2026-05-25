@@ -191,6 +191,12 @@ dd {
   font-size: 12px;
 }
 
+.pane-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .pane-heading button {
   padding: 7px 10px;
   font-size: 12px;
@@ -323,4 +329,3 @@ dd {
     min-height: 420px;
   }
 }
-

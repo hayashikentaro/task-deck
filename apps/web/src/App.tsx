@@ -121,6 +121,22 @@ export function App() {
     }
   };
 
+  const clearTasks = async () => {
+    const response = await fetch("/api/tasks", { method: "DELETE" });
+    const payload = (await response.json()) as { tasks: Task[]; runningTaskId: string | null };
+    setTasks(payload.tasks);
+    setRunningTaskId(payload.runningTaskId);
+    setSelectedTaskId((current) => {
+      if (payload.runningTaskId) {
+        return payload.runningTaskId;
+      }
+      if (current && payload.tasks.some((task) => task.id === current)) {
+        return current;
+      }
+      return payload.tasks[0]?.id ?? null;
+    });
+  };
+
   return (
     <main className="app-shell">
       <header className="top-bar">
@@ -145,6 +161,7 @@ export function App() {
           tasks={tasks}
           selectedTaskId={selectedTaskId}
           runningTaskId={runningTaskId}
+          onClearTasks={clearTasks}
           onSelectTask={setSelectedTaskId}
         />
         <TerminalPane task={selectedTask} lastOutput={lastOutput} send={send} />

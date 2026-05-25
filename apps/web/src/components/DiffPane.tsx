@@ -8,11 +8,13 @@ type DiffPaneProps = {
 export function DiffPane({ task }: DiffPaneProps) {
   const [diff, setDiff] = useState("");
   const [status, setStatus] = useState("idle");
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     if (!task) {
       setDiff("");
       setStatus("idle");
+      setMessage("");
       return;
     }
 
@@ -20,17 +22,19 @@ export function DiffPane({ task }: DiffPaneProps) {
     setStatus("loading");
     fetch(`/api/tasks/${task.id}/diff`)
       .then((response) => response.json())
-      .then((payload: { diff?: string; error?: string }) => {
+      .then((payload: { diff?: string; error?: string; isGitRepo?: boolean; message?: string; ok?: boolean }) => {
         if (cancelled) {
           return;
         }
         setDiff(payload.diff || "");
-        setStatus(payload.error ? "unavailable" : "ready");
+        setMessage(payload.message || payload.error || "");
+        setStatus(payload.isGitRepo === false ? "not git" : payload.error ? "unavailable" : "ready");
       })
       .catch(() => {
         if (!cancelled) {
           setDiff("");
           setStatus("unavailable");
+          setMessage("");
         }
       });
 
@@ -45,8 +49,7 @@ export function DiffPane({ task }: DiffPaneProps) {
         <h2>Diff</h2>
         <span>{status}</span>
       </div>
-      <pre>{diff || "No working tree diff for this task."}</pre>
+      <pre>{diff || message || "No working tree diff for this task."}</pre>
     </section>
   );
 }
-
