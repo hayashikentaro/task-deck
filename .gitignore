@@ -1,5 +1,7 @@
 node_modules/
 .npm-cache/
+dist/
+apps/web/dist/
 .DS_Store
 *.log
 .env

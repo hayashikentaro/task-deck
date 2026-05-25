@@ -1,8 +1,11 @@
 import express from "express";
+import { execFile } from "node:child_process";
+import fs from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { WebSocketServer } from "ws";
 import pty from "node-pty";
 import {
@@ -12,10 +15,12 @@ import {
   serializeTask,
 } from "@taskdeck/core";
 
+const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../../..");
-const webRoot = path.join(repoRoot, "apps/web/src");
+const webRoot = path.join(repoRoot, "apps/web");
+const webDist = path.join(webRoot, "dist");
 
 const app = express();
 const server = http.createServer(app);
@@ -25,27 +30,73 @@ const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || "127.0.0.1";
 const shell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "bash");
 
-let activeTask = null;
-let activePty = null;
 const clients = new Set();
-const outputBuffer = [];
-const maxBufferedChunks = 500;
+const tasks = new Map();
+const logs = new Map();
+const maxLogLength = 250_000;
+let activePty = null;
 
-app.use(express.static(webRoot));
+app.use(express.json());
 
-app.get("/api/task", (_request, response) => {
+app.get("/api/tasks", (_request, response) => {
   response.json({
-    task: activeTask ? serializeTask(activeTask) : null,
-    hasPty: Boolean(activePty),
+    tasks: listTasks(),
+    runningTaskId: activePty?.taskId ?? null,
   });
+});
+
+app.get("/api/tasks/:taskId", (request, response) => {
+  const task = tasks.get(request.params.taskId);
+
+  if (!task) {
+    response.status(404).json({ error: "Task not found." });
+    return;
+  }
+
+  response.json({ task: serializeTask(task) });
+});
+
+app.get("/api/tasks/:taskId/logs", (request, response) => {
+  if (!tasks.has(request.params.taskId)) {
+    response.status(404).json({ error: "Task not found." });
+    return;
+  }
+
+  response.json({
+    taskId: request.params.taskId,
+    logs: logs.get(request.params.taskId) || "",
+  });
+});
+
+app.get("/api/tasks/:taskId/diff", async (request, response) => {
+  const task = tasks.get(request.params.taskId);
+
+  if (!task) {
+    response.status(404).json({ error: "Task not found." });
+    return;
+  }
+
+  try {
+    const { stdout } = await execFileAsync("git", ["-C", task.cwd, "diff", "--"], {
+      maxBuffer: 2 * 1024 * 1024,
+    });
+    response.json({ taskId: task.id, cwd: task.cwd, diff: stdout });
+  } catch (error) {
+    response.status(500).json({
+      taskId: task.id,
+      cwd: task.cwd,
+      diff: "",
+      error: error.message,
+    });
+  }
 });
 
 wss.on("connection", (socket) => {
   clients.add(socket);
   send(socket, {
     type: "snapshot",
-    task: activeTask ? serializeTask(activeTask) : null,
-    output: outputBuffer.join(""),
+    tasks: listTasks(),
+    runningTaskId: activePty?.taskId ?? null,
   });
 
   socket.on("message", (rawMessage) => {
@@ -59,27 +110,34 @@ wss.on("connection", (socket) => {
     }
 
     if (message.type === "start") {
-      startTask(String(message.command || "").trim(), socket);
+      startTask(
+        {
+          title: String(message.title || "").trim(),
+          command: String(message.command || "").trim(),
+          cwd: String(message.cwd || "").trim(),
+        },
+        socket,
+      );
       return;
     }
 
     if (message.type === "input") {
-      if (activePty && typeof message.data === "string") {
-        activePty.write(message.data);
+      if (activePty && activePty.taskId === message.taskId && typeof message.data === "string") {
+        activePty.process.write(message.data);
       }
       return;
     }
 
     if (message.type === "resize") {
-      if (activePty) {
-        activePty.resize(Number(message.cols) || 100, Number(message.rows) || 28);
+      if (activePty && activePty.taskId === message.taskId) {
+        activePty.process.resize(Number(message.cols) || 100, Number(message.rows) || 28);
       }
       return;
     }
 
     if (message.type === "interrupt") {
-      if (activePty) {
-        activePty.write("\x03");
+      if (activePty && activePty.taskId === message.taskId) {
+        activePty.process.write("\x03");
       }
       return;
     }
@@ -92,6 +150,8 @@ wss.on("connection", (socket) => {
   });
 });
 
+await configureWebApp();
+
 server.on("error", (error) => {
   console.error(`TaskDeck failed to listen on ${host}:${port}`);
   console.error(error);
@@ -102,7 +162,7 @@ server.listen(port, host, () => {
   console.log(`TaskDeck listening on http://${host}:${port}`);
 });
 
-function startTask(command, socket) {
+async function startTask({ title, command, cwd }, socket) {
   if (!command) {
     send(socket, { type: "error", message: "Enter a command before starting a task." });
     return;
@@ -116,40 +176,82 @@ function startTask(command, socket) {
     return;
   }
 
-  outputBuffer.length = 0;
-  activeTask = markTaskRunning(createTask({ command }));
-  broadcast({ type: "task", task: serializeTask(activeTask) });
+  const resolvedCwd = await resolveCwd(cwd, socket);
+  if (!resolvedCwd) {
+    return;
+  }
+
+  const task = markTaskRunning(createTask({ title, command, cwd: resolvedCwd }));
+  tasks.set(task.id, task);
+  logs.set(task.id, "");
 
   try {
-    activePty = pty.spawn(shell, ["-lc", command], {
+    const terminalProcess = pty.spawn(shell, ["-lc", command], {
       name: "xterm-256color",
       cols: 100,
       rows: 28,
-      cwd: repoRoot,
+      cwd: resolvedCwd,
       env: {
         ...process.env,
         TERM: "xterm-256color",
       },
     });
+
+    activePty = { taskId: task.id, process: terminalProcess };
+    broadcastTasks();
+
+    terminalProcess.onData((data) => {
+      appendLog(task.id, data);
+      broadcast({ type: "output", taskId: task.id, data });
+    });
+
+    terminalProcess.onExit(({ exitCode, signal }) => {
+      setTask(markTaskExited(tasks.get(task.id), { exitCode, signal }));
+      activePty = null;
+      broadcastTasks();
+    });
   } catch (error) {
-    activeTask = markTaskExited(activeTask, { exitCode: 1, signal: null });
-    broadcast({ type: "output", data: `\r\n[TaskDeck] Failed to start PTY: ${error.message}\r\n` });
-    broadcast({ type: "task", task: serializeTask(activeTask) });
-    return;
+    appendLog(task.id, `\r\n[TaskDeck] Failed to start PTY: ${error.message}\r\n`);
+    setTask(markTaskExited(tasks.get(task.id), { exitCode: 1, signal: null }));
+    broadcast({ type: "output", taskId: task.id, data: logs.get(task.id) });
+    broadcastTasks();
   }
+}
 
-  activePty.onData((data) => {
-    outputBuffer.push(data);
-    if (outputBuffer.length > maxBufferedChunks) {
-      outputBuffer.shift();
+async function resolveCwd(cwd, socket) {
+  const candidate = cwd ? path.resolve(repoRoot, cwd) : repoRoot;
+
+  try {
+    const stat = await fs.stat(candidate);
+    if (!stat.isDirectory()) {
+      send(socket, { type: "error", message: `cwd is not a directory: ${candidate}` });
+      return null;
     }
-    broadcast({ type: "output", data });
-  });
+    return candidate;
+  } catch {
+    send(socket, { type: "error", message: `cwd does not exist: ${candidate}` });
+    return null;
+  }
+}
 
-  activePty.onExit(({ exitCode, signal }) => {
-    activeTask = markTaskExited(activeTask, { exitCode, signal });
-    activePty = null;
-    broadcast({ type: "task", task: serializeTask(activeTask) });
+function setTask(task) {
+  tasks.set(task.id, task);
+}
+
+function listTasks() {
+  return Array.from(tasks.values()).map(serializeTask).reverse();
+}
+
+function appendLog(taskId, data) {
+  const nextLog = `${logs.get(taskId) || ""}${data}`;
+  logs.set(taskId, nextLog.slice(-maxLogLength));
+}
+
+function broadcastTasks() {
+  broadcast({
+    type: "tasks",
+    tasks: listTasks(),
+    runningTaskId: activePty?.taskId ?? null,
   });
 }
 
@@ -163,4 +265,26 @@ function broadcast(payload) {
   for (const client of clients) {
     send(client, payload);
   }
+}
+
+async function configureWebApp() {
+  if (process.env.NODE_ENV === "production") {
+    app.use(express.static(webDist));
+    app.get("*", (_request, response) => {
+      response.sendFile(path.join(webDist, "index.html"));
+    });
+    return;
+  }
+
+  const { createServer } = await import("vite");
+  const vite = await createServer({
+    root: webRoot,
+    server: {
+      middlewareMode: true,
+      hmr: { server },
+    },
+    appType: "spa",
+  });
+
+  app.use(vite.middlewares);
 }

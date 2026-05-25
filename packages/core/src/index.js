@@ -14,14 +14,18 @@ const dangerousPatterns = [
   />\s*\/dev\/sd[a-z]/,
 ];
 
-export function createTask({ command }) {
+export function createTask({ title, command, cwd }) {
   const now = new Date().toISOString();
+  const normalizedCommand = command.trim();
+  const normalizedTitle = title.trim() || normalizedCommand;
 
   return {
     id: cryptoRandomId(),
-    command,
+    title: normalizedTitle,
+    command: normalizedCommand,
+    cwd,
     status: TaskStatus.IDLE,
-    risk: assessCommandRisk(command),
+    risk: assessCommandRisk(normalizedCommand),
     createdAt: now,
     startedAt: null,
     updatedAt: now,
@@ -62,7 +66,9 @@ export function markTaskExited(task, { exitCode, signal }) {
 export function serializeTask(task) {
   return {
     id: task.id,
+    title: task.title,
     command: task.command,
+    cwd: task.cwd,
     status: task.status,
     risk: task.risk,
     createdAt: task.createdAt,
@@ -109,4 +115,3 @@ export function assessCommandRisk(command) {
 function cryptoRandomId() {
   return `task_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
-
