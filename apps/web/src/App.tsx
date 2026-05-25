@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DiffPane } from "./components/DiffPane";
+import { FleetSummary } from "./components/FleetSummary";
 import { TaskCreateForm } from "./components/TaskCreateForm";
 import { TaskInfoPane } from "./components/TaskInfoPane";
 import { TaskList } from "./components/TaskList";
@@ -207,6 +208,7 @@ export function App() {
       </header>
 
       <section className="create-band">
+        <FleetSummary tasks={tasks} />
         <TaskCreateForm
           disabled={connectionState !== "connected" || Boolean(runningTaskId)}
           onCreateTask={createTask}
