@@ -28,6 +28,7 @@ packages/core Shared task-state primitives
 ## Local API
 
 ```text
+GET /api/context
 GET /api/tasks
 DELETE /api/tasks
 GET /api/tasks/:taskId
@@ -38,6 +39,8 @@ GET /api/tasks/:taskId/diff
 GET /api/presets
 DELETE /api/presets
 ```
+
+`GET /api/context` returns the repository root, default cwd, server cwd, shell, path separator, git-repository status, and in-repository cwd suggestions for task creation.
 
 The server persists tasks and logs under `.taskdeck/`, which is intentionally ignored by Git:
 

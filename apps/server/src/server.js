@@ -46,6 +46,18 @@ let persistPresetsQueue = Promise.resolve();
 
 app.use(express.json());
 
+app.get("/api/context", async (_request, response) => {
+  response.json({
+    repoRoot,
+    defaultCwd: repoRoot,
+    serverCwd: process.cwd(),
+    shell,
+    pathSeparator: path.sep,
+    isGitRepo: await cwdIsGitRepo(repoRoot),
+    cwdSuggestions: await buildCwdSuggestions(),
+  });
+});
+
 app.get("/api/tasks", (_request, response) => {
   response.json({
     tasks: listTasks(),
@@ -365,6 +377,28 @@ async function cwdIsGitRepo(cwd) {
   } catch {
     return false;
   }
+}
+
+async function buildCwdSuggestions() {
+  const candidates = [
+    { label: "Repository root", path: repoRoot },
+    { label: "apps/web", path: path.join(repoRoot, "apps/web") },
+    { label: "apps/server", path: path.join(repoRoot, "apps/server") },
+    { label: "packages/core", path: path.join(repoRoot, "packages/core") },
+  ];
+
+  const suggestions = [];
+  for (const candidate of candidates) {
+    try {
+      const stat = await fs.stat(candidate.path);
+      if (stat.isDirectory()) {
+        suggestions.push(candidate);
+      }
+    } catch {
+      // Skip missing optional workspace paths.
+    }
+  }
+  return suggestions;
 }
 
 function setTask(task) {
