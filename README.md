@@ -15,6 +15,8 @@ Then open:
 http://localhost:3000
 ```
 
+The dev command runs the local server directly and mounts Vite as middleware for the React UI. Server-side code changes require restarting `npm run dev`.
+
 ## Workspace Layout
 
 ```text
