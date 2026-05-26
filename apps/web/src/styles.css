@@ -90,7 +90,7 @@ dd {
 .app-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
 }
 
 .top-bar {
@@ -336,7 +336,7 @@ dd {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr) 360px;
   gap: 14px;
-  padding: 14px;
+  padding: 14px 14px 8px;
 }
 
 .task-list,
@@ -706,6 +706,43 @@ dd {
   color: var(--muted);
 }
 
+.input-composer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--line);
+  background: rgba(16, 19, 22, 0.96);
+}
+
+.input-composer input {
+  height: 42px;
+  border-color: var(--line-strong);
+  background: #0b0e11;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.input-composer span {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.input-composer button {
+  height: 42px;
+  padding: 0 14px;
+}
+
+.composer-plus {
+  width: 42px;
+  padding: 0;
+  font-size: 18px;
+}
+
 @media (max-width: 1120px) {
   .fleet-summary {
     grid-template-columns: repeat(4, minmax(92px, 1fr));
@@ -768,5 +805,14 @@ dd {
   .terminal-search,
   .terminal-search-count {
     flex: 1 1 auto;
+  }
+
+  .input-composer {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .input-composer span {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 }

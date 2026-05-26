@@ -17,7 +17,6 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const selectedTaskIdRef = useRef<string | null>(null);
-  const canAcceptInputRef = useRef(false);
   const followOutputRef = useRef(true);
   const [followOutput, setFollowOutput] = useState(true);
   const [logBuffer, setLogBuffer] = useState("");
@@ -25,15 +24,13 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
   const [terminalMessage, setTerminalMessage] = useState("");
 
   const terminalMode = getTerminalMode(task, isConnected);
-  const canAcceptInput = terminalMode === "Interactive PTY";
   const searchMatchCount = useMemo(() => countMatches(logBuffer, searchTerm), [logBuffer, searchTerm]);
 
   useEffect(() => {
-    canAcceptInputRef.current = canAcceptInput;
     if (terminalRef.current) {
-      terminalRef.current.options.disableStdin = !canAcceptInput;
+      terminalRef.current.options.disableStdin = true;
     }
-  }, [canAcceptInput]);
+  }, []);
 
   useEffect(() => {
     followOutputRef.current = followOutput;
@@ -58,16 +55,10 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(hostRef.current);
+    terminal.options.disableStdin = true;
     fitAddon.fit();
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
-
-    terminal.onData((data) => {
-      const taskId = selectedTaskIdRef.current;
-      if (taskId && canAcceptInputRef.current) {
-        send({ type: "input", taskId, data });
-      }
-    });
 
     const resize = () => {
       fitAddon.fit();
