@@ -57,6 +57,8 @@ The server persists tasks and logs under `.taskdeck/`, which is intentionally ig
 
 Multiple tasks can exist in the task list, while this iteration still allows one running PTY at a time. Clearing tasks removes non-running tasks and their logs while preserving any active task.
 
+Task creation is centered on starting an interactive `zsh` shell session in a selected working directory. Commands are then sent through the bottom composer.
+
 The UI includes a compact fleet summary for total, running, completed, failed, interrupted, and high/medium risk task counts. Task list filters let the operator focus on all, running, failed/interrupted, completed, or risky tasks without changing the underlying task records.
 
 Completed and other non-running tasks can be rerun from the selected task state pane. Rerun starts a new task with the same title, command, and cwd, leaving the original task record and log intact. Rerun is disabled while another task is running.

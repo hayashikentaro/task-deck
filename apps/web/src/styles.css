@@ -191,7 +191,7 @@ dd {
 
 .task-create-form {
   display: grid;
-  grid-template-columns: minmax(160px, 0.7fr) minmax(280px, 1.4fr) minmax(160px, 0.8fr) auto;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(260px, 1fr) auto auto;
   gap: 10px;
   align-items: end;
 }
@@ -211,6 +211,29 @@ dd {
 .task-create-form button {
   height: 40px;
   padding: 0 16px;
+}
+
+.shell-command-note {
+  height: 40px;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #11161b;
+  padding: 0 12px;
+}
+
+.shell-command-note span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.shell-command-note strong {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
 }
 
 .cwd-helper {

@@ -9,9 +9,10 @@ type TaskCreateFormProps = {
   presets: TaskPreset[];
 };
 
+const defaultShellCommand = "zsh";
+
 export function TaskCreateForm({ context, disabled, onCreateTask, onClearPresets, presets }: TaskCreateFormProps) {
-  const [title, setTitle] = useState("Inspect repository");
-  const [command, setCommand] = useState("pwd && ls -la");
+  const [title, setTitle] = useState("Shell session");
   const [cwd, setCwd] = useState("");
   const [cwdValidation, setCwdValidation] = useState<CwdValidation | null>(null);
   const [isValidatingCwd, setIsValidatingCwd] = useState(false);
@@ -65,12 +66,11 @@ export function TaskCreateForm({ context, disabled, onCreateTask, onClearPresets
     if (!cwdIsValid) {
       return;
     }
-    onCreateTask({ title, command, cwd });
+    onCreateTask({ title: title.trim() || "Shell session", command: defaultShellCommand, cwd });
   };
 
   const applyPreset = (preset: TaskPreset) => {
-    setTitle(preset.title);
-    setCommand(preset.command);
+    setTitle(preset.title || "Shell session");
     setCwd(preset.cwd);
   };
 
@@ -85,16 +85,16 @@ export function TaskCreateForm({ context, disabled, onCreateTask, onClearPresets
           <span>Title</span>
           <input value={title} onChange={(event) => setTitle(event.target.value)} />
         </label>
-        <label className="command-field">
-          <span>Command</span>
-          <input value={command} onChange={(event) => setCommand(event.target.value)} />
-        </label>
         <label className="cwd-field">
           <span>CWD</span>
           <input placeholder="Repository root" value={cwd} onChange={(event) => setCwd(event.target.value)} />
         </label>
-        <button disabled={disabled || !command.trim() || isValidatingCwd || !cwdIsValid} type="submit">
-          Start
+        <div className="shell-command-note" aria-label="Shell command">
+          <span>Shell</span>
+          <strong>{defaultShellCommand}</strong>
+        </div>
+        <button disabled={disabled || isValidatingCwd || !cwdIsValid} type="submit">
+          Start shell
         </button>
       </form>
 
