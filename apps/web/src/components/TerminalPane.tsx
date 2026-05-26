@@ -127,7 +127,7 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
           }
         });
         setLogBuffer(logs);
-        setTerminalMessage(payload.truncated ? "Loaded tail of persisted log." : "Loaded persisted log.");
+        setTerminalMessage(payload.truncated ? `Showing last ${logTailLength.toLocaleString()} characters.` : "");
       })
       .catch((error) => {
         if (abortController.signal.aborted) {
@@ -184,44 +184,43 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
 
   return (
     <section className="terminal-pane" aria-label="Terminal">
-      <div className="pane-heading">
-        <h2>Terminal</h2>
-        <div className="terminal-heading-state">
-          <span>{task ? task.status : "idle"}</span>
+      <div className="terminal-toolbar">
+        <div className="terminal-title-group">
+          <h2>Terminal</h2>
           <strong data-mode={modeTone(terminalMode)}>{terminalMode}</strong>
+          <span>{task ? task.status : "idle"}</span>
         </div>
-      </div>
-      <div className="terminal-controls">
-        <button
-          aria-pressed={followOutput}
-          data-active={followOutput}
-          onClick={() => setFollowOutput((current) => !current)}
-          type="button"
-        >
-          Follow {followOutput ? "on" : "off"}
-        </button>
-        <button disabled={!task} onClick={clearTerminalView} type="button">
-          Clear view
-        </button>
-        <button disabled={!task} onClick={reloadLog} type="button">
-          Reload log
-        </button>
-        <button disabled={!task || logBuffer.length === 0} onClick={copyLog} type="button">
-          Copy log
-        </button>
-        <label className="terminal-search">
-          <span>Search</span>
-          <input
-            disabled={!task}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Find in selected log"
-            type="search"
-            value={searchTerm}
-          />
-        </label>
-        <span className="terminal-search-count">
-          {searchTerm ? `${searchMatchCount} match${searchMatchCount === 1 ? "" : "es"}` : "No search"}
-        </span>
+        <div className="terminal-controls">
+          <button
+            aria-pressed={followOutput}
+            data-active={followOutput}
+            onClick={() => setFollowOutput((current) => !current)}
+            type="button"
+          >
+            Follow {followOutput ? "on" : "off"}
+          </button>
+          <label className="terminal-search">
+            <input
+              disabled={!task}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search log"
+              type="search"
+              value={searchTerm}
+            />
+          </label>
+          <span className="terminal-search-count">
+            {searchTerm ? `${searchMatchCount} match${searchMatchCount === 1 ? "" : "es"}` : "No search"}
+          </span>
+          <button disabled={!task} onClick={clearTerminalView} type="button">
+            Clear
+          </button>
+          <button disabled={!task} onClick={reloadLog} type="button">
+            Reload
+          </button>
+          <button disabled={!task || logBuffer.length === 0} onClick={copyLog} type="button">
+            Copy
+          </button>
+        </div>
       </div>
       {terminalMessage ? <p className="terminal-message">{terminalMessage}</p> : null}
       <div className="terminal-host" ref={hostRef} />
