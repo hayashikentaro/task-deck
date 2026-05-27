@@ -6,7 +6,7 @@ type TaskFilter = "all" | "running" | "failed" | "completed" | "risk";
 type TaskListProps = {
   tasks: Task[];
   selectedTaskId: string | null;
-  runningTaskId: string | null;
+  runningTaskIds: string[];
   onClearTask: (taskId: string) => void;
   onClearTasks: () => void;
   onSelectTask: (taskId: string) => void;
@@ -15,13 +15,14 @@ type TaskListProps = {
 export function TaskList({
   tasks,
   selectedTaskId,
-  runningTaskId,
+  runningTaskIds,
   onClearTask,
   onClearTasks,
   onSelectTask,
 }: TaskListProps) {
   const [filter, setFilter] = useState<TaskFilter>("all");
-  const clearableCount = tasks.filter((task) => task.id !== runningTaskId).length;
+  const runningTaskIdSet = useMemo(() => new Set(runningTaskIds), [runningTaskIds]);
+  const clearableCount = tasks.filter((task) => !runningTaskIdSet.has(task.id)).length;
   const visibleTasks = useMemo(() => tasks.filter((task) => matchesFilter(task, filter)), [filter, tasks]);
 
   return (
@@ -57,7 +58,7 @@ export function TaskList({
           <div
             className="task-list-item"
             data-selected={task.id === selectedTaskId}
-            data-tone={taskTone(task, runningTaskId)}
+            data-tone={taskTone(task, runningTaskIdSet)}
             key={task.id}
           >
             <button className="task-select-button" onClick={() => onSelectTask(task.id)} type="button">
@@ -68,7 +69,7 @@ export function TaskList({
               <span className="task-badge-row">
                 <span className="task-badge" data-kind="status">
                   {task.status}
-                  {task.id === runningTaskId ? " / active" : ""}
+                  {runningTaskIdSet.has(task.id) ? " / active" : ""}
                 </span>
                 <span className="task-badge" data-kind={`risk-${task.risk.level}`}>
                   {task.risk.level}
@@ -88,7 +89,7 @@ export function TaskList({
             </button>
             <button
               className="task-clear-button"
-              disabled={task.id === runningTaskId}
+              disabled={runningTaskIdSet.has(task.id)}
               onClick={() => onClearTask(task.id)}
               type="button"
             >
@@ -121,8 +122,8 @@ function filterLabel(filter: TaskFilter) {
   return filter[0].toUpperCase() + filter.slice(1);
 }
 
-function taskTone(task: Task, runningTaskId: string | null) {
-  if (task.id === runningTaskId || task.status === "running") {
+function taskTone(task: Task, runningTaskIds: Set<string>) {
+  if (runningTaskIds.has(task.id) || task.status === "running") {
     return "active";
   }
   if (task.status === "failed" || task.status === "interrupted") {

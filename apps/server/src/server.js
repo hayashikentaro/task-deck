@@ -73,7 +73,7 @@ const tasks = new Map();
 const logs = new Map();
 let presets = [];
 const maxLogLength = 250_000;
-let activePty = null;
+const activePtys = new Map();
 let persistTasksQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
 
@@ -99,13 +99,14 @@ app.post("/api/validate-cwd", async (request, response) => {
 app.get("/api/tasks", (_request, response) => {
   response.json({
     tasks: listTasks(),
-    runningTaskId: activePty?.taskId ?? null,
+    runningTaskId: getPrimaryRunningTaskId(),
+    runningTaskIds: getRunningTaskIds(),
   });
 });
 
 app.delete("/api/tasks", async (_request, response) => {
-  const runningTaskId = activePty?.taskId ?? null;
-  const taskIdsToClear = Array.from(tasks.keys()).filter((taskId) => taskId !== runningTaskId);
+  const runningTaskIds = getRunningTaskIds();
+  const taskIdsToClear = Array.from(tasks.keys()).filter((taskId) => !activePtys.has(taskId));
 
   for (const taskId of taskIdsToClear) {
     await clearTask(taskId);
@@ -118,7 +119,8 @@ app.delete("/api/tasks", async (_request, response) => {
     ok: true,
     clearedTaskIds: taskIdsToClear,
     tasks: listTasks(),
-    runningTaskId,
+    runningTaskId: runningTaskIds[0] ?? null,
+    runningTaskIds,
   });
 });
 
@@ -131,7 +133,7 @@ app.delete("/api/tasks/:taskId", async (request, response) => {
     return;
   }
 
-  if (activePty?.taskId === taskId) {
+  if (activePtys.has(taskId)) {
     response.status(409).json({
       ok: false,
       error: "Cannot clear a running task.",
@@ -148,7 +150,8 @@ app.delete("/api/tasks/:taskId", async (request, response) => {
     ok: true,
     clearedTaskId: taskId,
     tasks: listTasks(),
-    runningTaskId: activePty?.taskId ?? null,
+    runningTaskId: getPrimaryRunningTaskId(),
+    runningTaskIds: getRunningTaskIds(),
   });
 });
 
@@ -262,7 +265,8 @@ wss.on("connection", (socket) => {
     type: "snapshot",
     tasks: listTasks(),
     presets,
-    runningTaskId: activePty?.taskId ?? null,
+    runningTaskId: getPrimaryRunningTaskId(),
+    runningTaskIds: getRunningTaskIds(),
   });
 
   socket.on("message", (rawMessage) => {
@@ -289,21 +293,24 @@ wss.on("connection", (socket) => {
     }
 
     if (message.type === "input") {
-      if (activePty && activePty.taskId === message.taskId && typeof message.data === "string") {
+      const activePty = activePtys.get(message.taskId);
+      if (activePty && typeof message.data === "string") {
         activePty.process.write(message.data);
       }
       return;
     }
 
     if (message.type === "resize") {
-      if (activePty && activePty.taskId === message.taskId) {
+      const activePty = activePtys.get(message.taskId);
+      if (activePty) {
         activePty.process.resize(Number(message.cols) || 100, Number(message.rows) || 28);
       }
       return;
     }
 
     if (message.type === "interrupt") {
-      if (activePty && activePty.taskId === message.taskId) {
+      const activePty = activePtys.get(message.taskId);
+      if (activePty) {
         activePty.process.write("\x03");
       }
       return;
@@ -336,14 +343,6 @@ async function startTask({ title, command, cwd, initialInstruction }, socket) {
     return;
   }
 
-  if (activePty) {
-    send(socket, {
-      type: "error",
-      message: "A task is already running. Interrupt or wait for it to exit before starting another.",
-    });
-    return;
-  }
-
   const resolvedCwd = await resolveCwd(cwd, socket);
   if (!resolvedCwd) {
     return;
@@ -372,7 +371,8 @@ async function startTask({ title, command, cwd, initialInstruction }, socket) {
       },
     });
 
-    activePty = { taskId: task.id, process: terminalProcess };
+    activePtys.set(task.id, { taskId: task.id, process: terminalProcess });
+    send(socket, { type: "started", taskId: task.id });
     broadcastTasks();
 
     terminalProcess.onData((data) => {
@@ -382,7 +382,7 @@ async function startTask({ title, command, cwd, initialInstruction }, socket) {
 
     if (initialInstruction) {
       setTimeout(() => {
-        if (activePty?.taskId === task.id) {
+        if (activePtys.has(task.id)) {
           terminalProcess.write(`${initialInstruction}\r`);
         }
       }, 350);
@@ -390,7 +390,7 @@ async function startTask({ title, command, cwd, initialInstruction }, socket) {
 
     terminalProcess.onExit(({ exitCode, signal }) => {
       setTask(markTaskExited(tasks.get(task.id), { exitCode, signal }));
-      activePty = null;
+      activePtys.delete(task.id);
       broadcastTasks();
     });
   } catch (error) {
@@ -502,8 +502,17 @@ function broadcastTasks() {
   broadcast({
     type: "tasks",
     tasks: listTasks(),
-    runningTaskId: activePty?.taskId ?? null,
+    runningTaskId: getPrimaryRunningTaskId(),
+    runningTaskIds: getRunningTaskIds(),
   });
+}
+
+function getRunningTaskIds() {
+  return Array.from(activePtys.keys()).reverse();
+}
+
+function getPrimaryRunningTaskId() {
+  return getRunningTaskIds()[0] ?? null;
 }
 
 function broadcastPresets() {

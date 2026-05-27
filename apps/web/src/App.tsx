@@ -11,16 +11,23 @@ import type { CreateTaskInput, OutputEvent, Task, TaskDeckContext, TaskPreset } 
 type ConnectionState = "connecting" | "connected" | "disconnected";
 
 type ServerMessage =
-  | { type: "snapshot"; tasks: Task[]; presets?: TaskPreset[]; runningTaskId: string | null }
-  | { type: "tasks"; tasks: Task[]; runningTaskId: string | null }
+  | {
+      type: "snapshot";
+      tasks: Task[];
+      presets?: TaskPreset[];
+      runningTaskId?: string | null;
+      runningTaskIds?: string[];
+    }
+  | { type: "tasks"; tasks: Task[]; runningTaskId?: string | null; runningTaskIds?: string[] }
   | { type: "presets"; presets: TaskPreset[] }
+  | { type: "started"; taskId: string }
   | { type: "output"; taskId: string; data: string }
   | { type: "error"; message: string };
 
 export function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [runningTaskId, setRunningTaskId] = useState<string | null>(null);
+  const [runningTaskIds, setRunningTaskIds] = useState<string[]>([]);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [lastOutput, setLastOutput] = useState<OutputEvent | null>(null);
   const [presets, setPresets] = useState<TaskPreset[]>([]);
@@ -29,15 +36,15 @@ export function App() {
   const socketRef = useRef<WebSocket | null>(null);
   const outputSeqRef = useRef(0);
   const selectedTaskIdRef = useRef<string | null>(null);
-  const runningTaskIdRef = useRef<string | null>(null);
+  const runningTaskIdsRef = useRef<string[]>([]);
 
   useEffect(() => {
     selectedTaskIdRef.current = selectedTaskId;
   }, [selectedTaskId]);
 
   useEffect(() => {
-    runningTaskIdRef.current = runningTaskId;
-  }, [runningTaskId]);
+    runningTaskIdsRef.current = runningTaskIds;
+  }, [runningTaskIds]);
 
   useEffect(() => {
     let reconnectTimer: number | undefined;
@@ -55,17 +62,18 @@ export function App() {
         const message = JSON.parse(event.data) as ServerMessage;
 
         if (message.type === "snapshot" || message.type === "tasks") {
+          const nextRunningTaskIds = getRunningTaskIdsFromMessage(message);
           setTasks(message.tasks);
-          setRunningTaskId(message.runningTaskId);
+          setRunningTaskIds(nextRunningTaskIds);
           if (message.type === "snapshot") {
             setPresets(message.presets ?? []);
           }
           setSelectedTaskId((current) => {
-            if (message.runningTaskId) {
-              return message.runningTaskId;
-            }
             if (current && message.tasks.some((task) => task.id === current)) {
               return current;
+            }
+            if (nextRunningTaskIds[0]) {
+              return nextRunningTaskIds[0];
             }
             return message.tasks[0]?.id ?? null;
           });
@@ -74,6 +82,11 @@ export function App() {
 
         if (message.type === "presets") {
           setPresets(message.presets);
+          return;
+        }
+
+        if (message.type === "started") {
+          setSelectedTaskId(message.taskId);
           return;
         }
 
@@ -88,7 +101,7 @@ export function App() {
           outputSeqRef.current += 1;
           setLastOutput({
             seq: outputSeqRef.current,
-            taskId: selectedTaskIdRef.current ?? runningTaskIdRef.current ?? "system",
+            taskId: selectedTaskIdRef.current ?? runningTaskIdsRef.current[0] ?? "system",
             data: `\r\n[TaskDeck] ${message.message}\r\n`,
           });
         }
@@ -131,7 +144,7 @@ export function App() {
 
   useEffect(() => {
     setTaskActionError("");
-  }, [selectedTaskId, runningTaskId]);
+  }, [selectedTaskId, runningTaskIds]);
 
   const send = useCallback((payload: unknown) => {
     const socket = socketRef.current;
@@ -166,10 +179,6 @@ export function App() {
     if (!selectedTask) {
       return;
     }
-    if (runningTaskId) {
-      setTaskActionError("Wait for the running task to finish before rerunning.");
-      return;
-    }
     const didStart = createTask({
       title: selectedTask.title,
       command: selectedTask.command,
@@ -182,8 +191,12 @@ export function App() {
 
   const clearTasks = async () => {
     const response = await fetch("/api/tasks", { method: "DELETE" });
-    const payload = (await response.json()) as { tasks: Task[]; runningTaskId: string | null };
-    applyTaskList(payload.tasks, payload.runningTaskId);
+    const payload = (await response.json()) as {
+      tasks: Task[];
+      runningTaskId?: string | null;
+      runningTaskIds?: string[];
+    };
+    applyTaskList(payload.tasks, getRunningTaskIdsFromMessage(payload));
   };
 
   const clearTask = async (taskId: string) => {
@@ -191,19 +204,23 @@ export function App() {
     if (!response.ok) {
       return;
     }
-    const payload = (await response.json()) as { tasks: Task[]; runningTaskId: string | null };
-    applyTaskList(payload.tasks, payload.runningTaskId);
+    const payload = (await response.json()) as {
+      tasks: Task[];
+      runningTaskId?: string | null;
+      runningTaskIds?: string[];
+    };
+    applyTaskList(payload.tasks, getRunningTaskIdsFromMessage(payload));
   };
 
-  const applyTaskList = (nextTasks: Task[], nextRunningTaskId: string | null) => {
+  const applyTaskList = (nextTasks: Task[], nextRunningTaskIds: string[]) => {
     setTasks(nextTasks);
-    setRunningTaskId(nextRunningTaskId);
+    setRunningTaskIds(nextRunningTaskIds);
     setSelectedTaskId((current) => {
-      if (nextRunningTaskId) {
-        return nextRunningTaskId;
-      }
       if (current && nextTasks.some((task) => task.id === current)) {
         return current;
+      }
+      if (nextRunningTaskIds[0]) {
+        return nextRunningTaskIds[0];
       }
       return nextTasks[0]?.id ?? null;
     });
@@ -225,7 +242,7 @@ export function App() {
         <FleetSummary tasks={tasks} />
         <TaskCreateForm
           context={taskDeckContext}
-          disabled={connectionState !== "connected" || Boolean(runningTaskId)}
+          disabled={connectionState !== "connected"}
           onCreateTask={createTask}
           onClearPresets={clearPresets}
           presets={presets}
@@ -236,7 +253,7 @@ export function App() {
         <TaskList
           tasks={tasks}
           selectedTaskId={selectedTaskId}
-          runningTaskId={runningTaskId}
+          runningTaskIds={runningTaskIds}
           onClearTask={clearTask}
           onClearTasks={clearTasks}
           onSelectTask={setSelectedTaskId}
@@ -250,7 +267,6 @@ export function App() {
         <aside className="right-rail">
           <TaskInfoPane
             actionError={taskActionError}
-            isRerunDisabled={Boolean(runningTaskId)}
             task={selectedTask}
             onInterrupt={interruptTask}
             onRerun={rerunTask}
@@ -261,4 +277,11 @@ export function App() {
       <InputComposer isConnected={connectionState === "connected"} task={selectedTask} send={send} />
     </main>
   );
+}
+
+function getRunningTaskIdsFromMessage(message: { runningTaskId?: string | null; runningTaskIds?: string[] }) {
+  if (Array.isArray(message.runningTaskIds)) {
+    return message.runningTaskIds;
+  }
+  return message.runningTaskId ? [message.runningTaskId] : [];
 }

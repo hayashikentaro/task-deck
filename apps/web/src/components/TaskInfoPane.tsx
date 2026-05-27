@@ -2,13 +2,12 @@ import type { Task } from "../types";
 
 type TaskInfoPaneProps = {
   actionError: string;
-  isRerunDisabled: boolean;
   task: Task | null;
   onInterrupt: () => void;
   onRerun: () => void;
 };
 
-export function TaskInfoPane({ actionError, isRerunDisabled, task, onInterrupt, onRerun }: TaskInfoPaneProps) {
+export function TaskInfoPane({ actionError, task, onInterrupt, onRerun }: TaskInfoPaneProps) {
   const canShowRerun = task && task.status !== "running";
 
   return (
@@ -17,7 +16,7 @@ export function TaskInfoPane({ actionError, isRerunDisabled, task, onInterrupt, 
         <h2>Task State</h2>
         <div className="pane-actions">
           {canShowRerun ? (
-            <button disabled={isRerunDisabled} onClick={onRerun} type="button">
+            <button onClick={onRerun} type="button">
               Rerun
             </button>
           ) : null}
