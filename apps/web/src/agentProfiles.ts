@@ -1,11 +1,6 @@
-export type AgentProfile = {
-  id: string;
-  label: string;
-  command: string;
-  description: string;
-};
+import type { AgentProfile } from "./types";
 
-export const agentProfiles: AgentProfile[] = [
+export const defaultAgentProfiles: AgentProfile[] = [
   {
     id: "codex",
     label: "Codex CLI",
@@ -37,4 +32,3 @@ export const agentProfiles: AgentProfile[] = [
     description: "Run a custom PTY command",
   },
 ];
-

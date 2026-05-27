@@ -41,7 +41,7 @@ GET /api/presets
 DELETE /api/presets
 ```
 
-`GET /api/context` returns the repository root, default cwd, server cwd, shell, path separator, git-repository status, and in-repository cwd suggestions for task creation.
+`GET /api/context` returns the repository root, default cwd, server cwd, shell, path separator, git-repository status, in-repository cwd suggestions, and configured agent profiles for task creation.
 
 `POST /api/validate-cwd` accepts `{ "cwd": "apps/web" }` and returns whether the cwd resolves to an existing directory, its absolute path, and git-repository status. The task form uses it to validate cwd before starting a task.
 
@@ -57,7 +57,7 @@ The server persists tasks and logs under `.taskdeck/`, which is intentionally ig
 
 Multiple tasks can exist in the task list, while this iteration still allows one running PTY at a time. Clearing tasks removes non-running tasks and their logs while preserving any active task.
 
-Task creation is centered on starting an AI agent session in a selected workspace. The UI offers fixed agent profiles for Codex CLI, Goose, aider, zsh fallback, and custom PTY commands. An optional initial instruction is sent to the running PTY after launch, and follow-up input goes through the bottom composer.
+Task creation is centered on starting an AI agent session in a selected workspace. Agent profiles are loaded from `taskdeck.config.json`; the committed default includes Codex CLI and Goose commands for an `ai-dev` Docker Compose service, plus aider, zsh, and custom PTY fallback entries. An optional initial instruction is sent to the running PTY after launch, and follow-up input goes through the bottom composer.
 
 The UI includes a compact fleet summary for total, running, completed, failed, interrupted, and high/medium risk task counts. Task list filters let the operator focus on all, running, failed/interrupted, completed, or risky tasks without changing the underlying task records.
 

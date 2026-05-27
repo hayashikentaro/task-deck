@@ -27,7 +27,9 @@ body {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
@@ -48,7 +50,9 @@ button:disabled {
   cursor: not-allowed;
 }
 
-input {
+input,
+select,
+textarea {
   width: 100%;
   min-width: 0;
   border: 1px solid var(--line);
@@ -218,21 +222,18 @@ dd {
   gap: 7px;
 }
 
-.agent-picker > div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.agent-picker button {
+.agent-picker select {
   height: 40px;
   padding: 0 10px;
-  color: var(--muted);
 }
 
-.agent-picker button[data-active="true"] {
-  border-color: var(--accent);
-  color: var(--accent);
+.agent-picker small {
+  min-height: 16px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-command-note {

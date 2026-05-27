@@ -1,0 +1,34 @@
+{
+  "agentProfiles": [
+    {
+      "id": "ai-dev-container-codex",
+      "label": "Codex CLI (AI dev container)",
+      "command": "docker compose exec ai-dev codex",
+      "description": "Run Codex CLI inside the selected workspace's AI development container"
+    },
+    {
+      "id": "ai-dev-container-goose",
+      "label": "Goose (AI dev container)",
+      "command": "docker compose exec ai-dev goose",
+      "description": "Run Goose inside the selected workspace's AI development container"
+    },
+    {
+      "id": "aider",
+      "label": "aider",
+      "command": "aider",
+      "description": "Git-aware coding assistant"
+    },
+    {
+      "id": "shell-zsh",
+      "label": "zsh",
+      "command": "zsh",
+      "description": "Interactive shell fallback"
+    },
+    {
+      "id": "custom",
+      "label": "Custom command",
+      "command": "",
+      "description": "Run a custom PTY command"
+    }
+  ]
+}

@@ -26,6 +26,39 @@ const dataRoot = path.join(repoRoot, ".taskdeck");
 const taskStorePath = path.join(dataRoot, "tasks.json");
 const presetStorePath = path.join(dataRoot, "presets.json");
 const logRoot = path.join(dataRoot, "logs");
+const configPath = path.join(repoRoot, "taskdeck.config.json");
+const defaultAgentProfiles = [
+  {
+    id: "codex",
+    label: "Codex CLI",
+    command: "codex",
+    description: "High-quality cloud coding agent",
+  },
+  {
+    id: "goose",
+    label: "Goose",
+    command: "goose",
+    description: "Local/alternative agent option",
+  },
+  {
+    id: "aider",
+    label: "aider",
+    command: "aider",
+    description: "Git-aware coding assistant",
+  },
+  {
+    id: "shell-zsh",
+    label: "zsh",
+    command: "zsh",
+    description: "Interactive shell fallback",
+  },
+  {
+    id: "custom",
+    label: "Custom command",
+    command: "",
+    description: "Run a custom PTY command",
+  },
+];
 
 const app = express();
 const server = http.createServer(app);
@@ -55,6 +88,7 @@ app.get("/api/context", async (_request, response) => {
     pathSeparator: path.sep,
     isGitRepo: await cwdIsGitRepo(repoRoot),
     cwdSuggestions: await buildCwdSuggestions(),
+    agentProfiles: await loadAgentProfiles(),
   });
 });
 
@@ -548,6 +582,69 @@ async function readJsonArray(filePath, label) {
   }
 
   return [];
+}
+
+async function loadAgentProfiles() {
+  try {
+    const rawContents = await fs.readFile(configPath, "utf8");
+    const parsed = JSON.parse(rawContents);
+    const configuredProfiles = sanitizeAgentProfiles(parsed?.agentProfiles);
+    if (configuredProfiles.length > 0) {
+      return ensureCustomAgentProfile(configuredProfiles);
+    }
+    console.warn(`TaskDeck ignored ${configPath} because it did not contain valid agentProfiles.`);
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      console.warn(`TaskDeck could not read ${configPath}: ${error.message}`);
+    }
+  }
+
+  return defaultAgentProfiles;
+}
+
+function sanitizeAgentProfiles(rawProfiles) {
+  if (!Array.isArray(rawProfiles)) {
+    return [];
+  }
+
+  const profiles = [];
+  const seenIds = new Set();
+  for (const rawProfile of rawProfiles) {
+    const id = String(rawProfile?.id || "").trim();
+    const label = String(rawProfile?.label || "").trim();
+    const command = String(rawProfile?.command || "").trim();
+    const description = String(rawProfile?.description || "").trim();
+
+    if (!id || !label || seenIds.has(id)) {
+      continue;
+    }
+
+    profiles.push({
+      id,
+      label,
+      command,
+      description,
+    });
+    seenIds.add(id);
+  }
+
+  return profiles;
+}
+
+function ensureCustomAgentProfile(profiles) {
+  if (profiles.some((profile) => profile.id === "custom")) {
+    return profiles;
+  }
+
+  return [
+    ...profiles,
+    {
+      id: "custom",
+      label: "Custom command",
+      command: "",
+      description: "Run a custom PTY command",
+    },
+  ];
 }
 
 function persistTasks() {

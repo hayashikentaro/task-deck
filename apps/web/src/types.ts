@@ -35,6 +35,13 @@ export type CreateTaskInput = {
 
 export type TaskPreset = CreateTaskInput;
 
+export type AgentProfile = {
+  id: string;
+  label: string;
+  command: string;
+  description: string;
+};
+
 export type CwdSuggestion = {
   label: string;
   path: string;
@@ -49,6 +56,7 @@ export type TaskDeckContext = {
   pathSeparator: string;
   isGitRepo: boolean;
   cwdSuggestions: CwdSuggestion[];
+  agentProfiles: AgentProfile[];
 };
 
 export type CwdValidation = {

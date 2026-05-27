@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { agentProfiles } from "../agentProfiles";
+import { defaultAgentProfiles } from "../agentProfiles";
 import type { CreateTaskInput, CwdValidation, TaskDeckContext, TaskPreset } from "../types";
 
 type TaskCreateFormProps = {
@@ -62,11 +62,18 @@ export function TaskCreateForm({ context, disabled, onCreateTask, onClearPresets
     };
   }, [cwd]);
 
-  const cwdIsValid = cwdValidation?.ok ?? false;
+  const agentProfiles = context?.agentProfiles.length ? context.agentProfiles : defaultAgentProfiles;
   const selectedAgent =
-    agentProfiles.find((profile) => profile.id === selectedAgentId) ?? agentProfiles[0];
+    agentProfiles.find((profile) => profile.id === selectedAgentId) ?? agentProfiles[0] ?? defaultAgentProfiles[0];
+  const cwdIsValid = cwdValidation?.ok ?? false;
   const command = selectedAgent.id === "custom" ? customCommand.trim() : selectedAgent.command;
   const canStart = !disabled && cwdIsValid && !isValidatingCwd && Boolean(command);
+
+  useEffect(() => {
+    if (!agentProfiles.some((profile) => profile.id === selectedAgentId)) {
+      setSelectedAgentId(agentProfiles[0]?.id ?? defaultAgentProfileId);
+    }
+  }, [agentProfiles, selectedAgentId]);
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -107,20 +114,14 @@ export function TaskCreateForm({ context, disabled, onCreateTask, onClearPresets
         </label>
         <div className="agent-picker" aria-label="Agent profiles">
           <span>Agent</span>
-          <div>
+          <select value={selectedAgent.id} onChange={(event) => setSelectedAgentId(event.target.value)}>
             {agentProfiles.map((profile) => (
-              <button
-                aria-pressed={selectedAgentId === profile.id}
-                data-active={selectedAgentId === profile.id}
-                key={profile.id}
-                onClick={() => setSelectedAgentId(profile.id)}
-                title={profile.description}
-                type="button"
-              >
+              <option key={profile.id} value={profile.id}>
                 {profile.label}
-              </button>
+              </option>
             ))}
-          </div>
+          </select>
+          <small>{selectedAgent.description}</small>
         </div>
         {selectedAgent.id === "custom" ? (
           <label className="custom-command-field">
