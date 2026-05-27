@@ -57,7 +57,7 @@ The server persists tasks and logs under `.taskdeck/`, which is intentionally ig
 
 Multiple tasks can exist in the task list, and multiple PTY-backed agent sessions can run at the same time. Clearing tasks removes non-running tasks and their logs while preserving active tasks.
 
-Task creation is centered on starting an AI agent session in a selected workspace. Agent profiles are loaded from `taskdeck.config.json`; the committed default includes Codex CLI and Goose commands for an `ai-dev` Docker Compose service, plus aider, zsh, and custom PTY fallback entries. An optional initial instruction is sent to the running PTY after launch, and follow-up input goes through the bottom composer.
+Task creation is centered on starting an AI agent session in a selected workspace. Agent profiles are loaded from `taskdeck.config.json`; the committed default includes Codex CLI and Goose commands that start and enter the `taskdeck-ai-dev` AI development container, plus aider, zsh, and custom PTY fallback entries. An optional initial instruction is sent to the running PTY after launch, and follow-up input goes through the bottom composer.
 
 The UI includes a compact fleet summary for total, running, completed, failed, interrupted, and high/medium risk task counts. Task list filters let the operator focus on all, running, failed/interrupted, completed, or risky tasks without changing the underlying task records.
 
