@@ -1,6 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { InputComposer } from "./InputComposer";
 import type { OutputEvent, Task } from "../types";
 
 type TerminalPaneProps = {
@@ -215,6 +216,7 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
       </div>
       {terminalMessage ? <p className="terminal-message">{terminalMessage}</p> : null}
       <div className="terminal-host" ref={hostRef} />
+      <InputComposer isConnected={isConnected} task={task} send={send} />
     </section>
   );
 }

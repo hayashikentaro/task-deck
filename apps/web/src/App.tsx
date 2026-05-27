@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DiffPane } from "./components/DiffPane";
 import { FleetSummary } from "./components/FleetSummary";
-import { InputComposer } from "./components/InputComposer";
 import { TaskCreateForm } from "./components/TaskCreateForm";
 import { TaskInfoPane } from "./components/TaskInfoPane";
 import { TaskList } from "./components/TaskList";
@@ -255,7 +254,6 @@ export function App() {
           <DiffPane task={selectedTask} />
         </aside>
       </section>
-      <InputComposer isConnected={connectionState === "connected"} task={selectedTask} send={send} />
     </main>
   );
 }
