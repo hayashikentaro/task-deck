@@ -6,7 +6,7 @@ import { TaskCreateForm } from "./components/TaskCreateForm";
 import { TaskInfoPane } from "./components/TaskInfoPane";
 import { TaskList } from "./components/TaskList";
 import { TerminalPane } from "./components/TerminalPane";
-import type { CreateTaskInput, OutputEvent, Task, TaskDeckContext, TaskPreset } from "./types";
+import type { CreateTaskInput, OutputEvent, Task, TaskDeckContext } from "./types";
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
 
@@ -14,12 +14,10 @@ type ServerMessage =
   | {
       type: "snapshot";
       tasks: Task[];
-      presets?: TaskPreset[];
       runningTaskId?: string | null;
       runningTaskIds?: string[];
     }
   | { type: "tasks"; tasks: Task[]; runningTaskId?: string | null; runningTaskIds?: string[] }
-  | { type: "presets"; presets: TaskPreset[] }
   | { type: "started"; taskId: string }
   | { type: "output"; taskId: string; data: string }
   | { type: "error"; message: string };
@@ -30,7 +28,6 @@ export function App() {
   const [runningTaskIds, setRunningTaskIds] = useState<string[]>([]);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [lastOutput, setLastOutput] = useState<OutputEvent | null>(null);
-  const [presets, setPresets] = useState<TaskPreset[]>([]);
   const [taskDeckContext, setTaskDeckContext] = useState<TaskDeckContext | null>(null);
   const [taskActionError, setTaskActionError] = useState("");
   const socketRef = useRef<WebSocket | null>(null);
@@ -65,9 +62,6 @@ export function App() {
           const nextRunningTaskIds = getRunningTaskIdsFromMessage(message);
           setTasks(message.tasks);
           setRunningTaskIds(nextRunningTaskIds);
-          if (message.type === "snapshot") {
-            setPresets(message.presets ?? []);
-          }
           setSelectedTaskId((current) => {
             if (current && message.tasks.some((task) => task.id === current)) {
               return current;
@@ -77,11 +71,6 @@ export function App() {
             }
             return message.tasks[0]?.id ?? null;
           });
-          return;
-        }
-
-        if (message.type === "presets") {
-          setPresets(message.presets);
           return;
         }
 
@@ -163,12 +152,6 @@ export function App() {
     return didSend;
   };
 
-  const clearPresets = async () => {
-    const response = await fetch("/api/presets", { method: "DELETE" });
-    const payload = (await response.json()) as { presets: TaskPreset[] };
-    setPresets(payload.presets);
-  };
-
   const interruptTask = () => {
     if (selectedTask) {
       send({ type: "interrupt", taskId: selectedTask.id });
@@ -244,8 +227,6 @@ export function App() {
           context={taskDeckContext}
           disabled={connectionState !== "connected"}
           onCreateTask={createTask}
-          onClearPresets={clearPresets}
-          presets={presets}
         />
       </section>
 

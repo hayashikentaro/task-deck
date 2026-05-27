@@ -195,7 +195,7 @@ dd {
 
 .task-create-form {
   display: grid;
-  grid-template-columns: minmax(220px, 0.8fr) minmax(300px, 1.2fr) minmax(130px, 0.4fr) auto;
+  grid-template-columns: minmax(280px, 0.7fr) minmax(0, 1.3fr) auto;
   gap: 10px;
   align-items: end;
 }
@@ -236,35 +236,12 @@ dd {
   white-space: nowrap;
 }
 
-.agent-command-note {
-  height: 40px;
-  display: grid;
-  align-content: center;
-  gap: 2px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: #11161b;
-  padding: 0 12px;
-}
-
-.agent-command-note span {
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.agent-command-note strong {
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 13px;
-}
-
 .custom-command-field {
   min-width: 0;
 }
 
 .instruction-field {
-  grid-column: 1 / 4;
+  min-width: 0;
 }
 
 .instruction-field textarea {
