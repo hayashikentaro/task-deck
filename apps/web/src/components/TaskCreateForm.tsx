@@ -98,7 +98,6 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
               </option>
             ))}
           </select>
-          <small>{selectedAgent.description}</small>
         </div>
         {selectedAgent.id === "custom" ? (
           <label className="custom-command-field">
@@ -114,7 +113,7 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
           <span>Initial instruction</span>
           <textarea
             placeholder="Describe the coding task for the agent..."
-            rows={3}
+            rows={1}
             value={initialInstruction}
             onChange={(event) => setInitialInstruction(event.target.value)}
           />

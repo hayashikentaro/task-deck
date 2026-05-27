@@ -234,15 +234,6 @@ dd {
   padding: 0 10px;
 }
 
-.agent-picker small {
-  min-height: 16px;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .custom-command-field {
   min-width: 0;
 }
@@ -252,8 +243,9 @@ dd {
 }
 
 .instruction-field textarea {
-  min-height: 68px;
-  resize: vertical;
+  height: 42px;
+  min-height: 42px;
+  resize: none;
 }
 
 .cwd-helper {
