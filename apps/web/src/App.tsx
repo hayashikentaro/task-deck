@@ -210,16 +210,6 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <header className="top-bar">
-        <div>
-          <p className="eyebrow">TaskDeck MVP</p>
-          <h1>Operational task deck</h1>
-        </div>
-        <div className="connection" data-state={connectionState}>
-          {connectionState}
-        </div>
-      </header>
-
       <section className="create-band">
         <FleetSummary tasks={tasks} />
         <TaskCreateForm

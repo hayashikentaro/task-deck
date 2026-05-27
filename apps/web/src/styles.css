@@ -101,42 +101,7 @@ dd {
   min-height: 0;
   height: 100%;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-}
-
-.top-bar {
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  align-items: end;
-  padding: 22px 28px;
-  border-bottom: 1px solid var(--line);
-  background: #15191e;
-}
-
-.eyebrow {
-  margin-bottom: 6px;
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.connection {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 7px 12px;
-  color: var(--warn);
-  font-size: 13px;
-}
-
-.connection[data-state="connected"] {
-  color: var(--ok);
-}
-
-.connection[data-state="disconnected"] {
-  color: var(--danger);
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .create-band {
@@ -825,16 +790,11 @@ dd {
 }
 
 @media (max-width: 820px) {
-  .top-bar,
   .task-create-form,
   .cwd-helper,
   .workspace-grid,
   .right-rail {
     grid-template-columns: 1fr;
-  }
-
-  .top-bar {
-    align-items: start;
   }
 
   .fleet-summary {
