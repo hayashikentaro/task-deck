@@ -25,19 +25,21 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
 
   return (
     <form className="input-composer" onSubmit={handleSubmit}>
-      <button className="composer-plus" disabled type="button" aria-label="Attach context">
-        +
-      </button>
-      <input
-        disabled={!canSend}
-        onChange={(event) => setValue(event.target.value)}
-        placeholder={canSend ? "Send input to running PTY" : modeText}
-        value={value}
-      />
-      <span>{modeText}</span>
-      <button disabled={!canSend || !value} type="submit">
-        Send
-      </button>
+      <div className="input-composer-inner">
+        <button className="composer-plus" disabled type="button" aria-label="Attach context">
+          +
+        </button>
+        <input
+          disabled={!canSend}
+          onChange={(event) => setValue(event.target.value)}
+          placeholder={canSend ? "Send input to running PTY" : modeText}
+          value={value}
+        />
+        <span>{modeText}</span>
+        <button disabled={!canSend || !value} type="submit">
+          Send
+        </button>
+      </div>
     </form>
   );
 }
