@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
+import { agentProfiles } from "../agentProfiles";
 import type { CreateTaskInput, CwdValidation, TaskDeckContext, TaskPreset } from "../types";
 
 type TaskCreateFormProps = {
@@ -9,10 +10,12 @@ type TaskCreateFormProps = {
   presets: TaskPreset[];
 };
 
-const defaultShellCommand = "zsh";
+const defaultAgentProfileId = "codex";
 
 export function TaskCreateForm({ context, disabled, onCreateTask, onClearPresets, presets }: TaskCreateFormProps) {
-  const [title, setTitle] = useState("Shell session");
+  const [selectedAgentId, setSelectedAgentId] = useState(defaultAgentProfileId);
+  const [customCommand, setCustomCommand] = useState("");
+  const [initialInstruction, setInitialInstruction] = useState("");
   const [cwd, setCwd] = useState("");
   const [cwdValidation, setCwdValidation] = useState<CwdValidation | null>(null);
   const [isValidatingCwd, setIsValidatingCwd] = useState(false);
@@ -60,17 +63,34 @@ export function TaskCreateForm({ context, disabled, onCreateTask, onClearPresets
   }, [cwd]);
 
   const cwdIsValid = cwdValidation?.ok ?? false;
+  const selectedAgent =
+    agentProfiles.find((profile) => profile.id === selectedAgentId) ?? agentProfiles[0];
+  const command = selectedAgent.id === "custom" ? customCommand.trim() : selectedAgent.command;
+  const canStart = !disabled && cwdIsValid && !isValidatingCwd && Boolean(command);
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
-    if (!cwdIsValid) {
+    if (!canStart) {
       return;
     }
-    onCreateTask({ title: title.trim() || "Shell session", command: defaultShellCommand, cwd });
+    onCreateTask({
+      title: buildTaskTitle(selectedAgent.label, initialInstruction),
+      command,
+      cwd,
+      initialInstruction: initialInstruction.trim(),
+    });
   };
 
   const applyPreset = (preset: TaskPreset) => {
-    setTitle(preset.title || "Shell session");
+    const matchingAgent = agentProfiles.find((profile) => profile.command === preset.command && profile.command);
+    if (matchingAgent) {
+      setSelectedAgentId(matchingAgent.id);
+      setCustomCommand("");
+    } else {
+      setSelectedAgentId("custom");
+      setCustomCommand(preset.command);
+    }
+    setInitialInstruction("");
     setCwd(preset.cwd);
   };
 
@@ -81,20 +101,53 @@ export function TaskCreateForm({ context, disabled, onCreateTask, onClearPresets
   return (
     <section className="task-create-panel">
       <form className="task-create-form" onSubmit={handleSubmit}>
-        <label>
-          <span>Title</span>
-          <input value={title} onChange={(event) => setTitle(event.target.value)} />
-        </label>
         <label className="cwd-field">
-          <span>CWD</span>
+          <span>Workspace</span>
           <input placeholder="Repository root" value={cwd} onChange={(event) => setCwd(event.target.value)} />
         </label>
-        <div className="shell-command-note" aria-label="Shell command">
-          <span>Shell</span>
-          <strong>{defaultShellCommand}</strong>
+        <div className="agent-picker" aria-label="Agent profiles">
+          <span>Agent</span>
+          <div>
+            {agentProfiles.map((profile) => (
+              <button
+                aria-pressed={selectedAgentId === profile.id}
+                data-active={selectedAgentId === profile.id}
+                key={profile.id}
+                onClick={() => setSelectedAgentId(profile.id)}
+                title={profile.description}
+                type="button"
+              >
+                {profile.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <button disabled={disabled || isValidatingCwd || !cwdIsValid} type="submit">
-          Start shell
+        {selectedAgent.id === "custom" ? (
+          <label className="custom-command-field">
+            <span>Custom PTY</span>
+            <input
+              placeholder="Command to run in a PTY"
+              value={customCommand}
+              onChange={(event) => setCustomCommand(event.target.value)}
+            />
+          </label>
+        ) : (
+          <div className="agent-command-note" aria-label="Agent command">
+            <span>PTY</span>
+            <strong>{selectedAgent.command}</strong>
+          </div>
+        )}
+        <label className="instruction-field">
+          <span>Initial instruction</span>
+          <textarea
+            placeholder="Describe the coding task for the agent..."
+            rows={3}
+            value={initialInstruction}
+            onChange={(event) => setInitialInstruction(event.target.value)}
+          />
+        </label>
+        <button disabled={!canStart} type="submit">
+          Start agent
         </button>
       </form>
 
@@ -142,4 +195,12 @@ export function TaskCreateForm({ context, disabled, onCreateTask, onClearPresets
       </div>
     </section>
   );
+}
+
+function buildTaskTitle(agentLabel: string, instruction: string) {
+  const firstLine = instruction.trim().split(/\r?\n/).find(Boolean);
+  if (!firstLine) {
+    return `${agentLabel} session`;
+  }
+  return firstLine.length > 72 ? `${firstLine.slice(0, 69)}...` : firstLine;
 }

@@ -30,6 +30,7 @@ export type CreateTaskInput = {
   title: string;
   command: string;
   cwd: string;
+  initialInstruction?: string;
 };
 
 export type TaskPreset = CreateTaskInput;

@@ -191,7 +191,7 @@ dd {
 
 .task-create-form {
   display: grid;
-  grid-template-columns: minmax(180px, 0.8fr) minmax(260px, 1fr) auto auto;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(300px, 1.2fr) minmax(130px, 0.4fr) auto;
   gap: 10px;
   align-items: end;
 }
@@ -213,7 +213,29 @@ dd {
   padding: 0 16px;
 }
 
-.shell-command-note {
+.agent-picker {
+  display: grid;
+  gap: 7px;
+}
+
+.agent-picker > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agent-picker button {
+  height: 40px;
+  padding: 0 10px;
+  color: var(--muted);
+}
+
+.agent-picker button[data-active="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.agent-command-note {
   height: 40px;
   display: grid;
   align-content: center;
@@ -224,16 +246,29 @@ dd {
   padding: 0 12px;
 }
 
-.shell-command-note span {
+.agent-command-note span {
   color: var(--muted);
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
 }
 
-.shell-command-note strong {
+.agent-command-note strong {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 13px;
+}
+
+.custom-command-field {
+  min-width: 0;
+}
+
+.instruction-field {
+  grid-column: 1 / 4;
+}
+
+.instruction-field textarea {
+  min-height: 68px;
+  resize: vertical;
 }
 
 .cwd-helper {
@@ -814,6 +849,10 @@ dd {
 
   .cwd-suggestions {
     justify-content: start;
+  }
+
+  .instruction-field {
+    grid-column: auto;
   }
 
   .terminal-host {

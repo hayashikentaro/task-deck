@@ -247,6 +247,7 @@ wss.on("connection", (socket) => {
           title: String(message.title || "").trim(),
           command: String(message.command || "").trim(),
           cwd: String(message.cwd || "").trim(),
+          initialInstruction: String(message.initialInstruction || "").trim(),
         },
         socket,
       );
@@ -295,7 +296,7 @@ server.listen(port, host, () => {
   console.log(`TaskDeck listening on http://${host}:${port}`);
 });
 
-async function startTask({ title, command, cwd }, socket) {
+async function startTask({ title, command, cwd, initialInstruction }, socket) {
   if (!command) {
     send(socket, { type: "error", message: "Enter a command before starting a task." });
     return;
@@ -344,6 +345,14 @@ async function startTask({ title, command, cwd }, socket) {
       appendLog(task.id, data);
       broadcast({ type: "output", taskId: task.id, data });
     });
+
+    if (initialInstruction) {
+      setTimeout(() => {
+        if (activePty?.taskId === task.id) {
+          terminalProcess.write(`${initialInstruction}\r`);
+        }
+      }, 350);
+    }
 
     terminalProcess.onExit(({ exitCode, signal }) => {
       setTask(markTaskExited(tasks.get(task.id), { exitCode, signal }));
