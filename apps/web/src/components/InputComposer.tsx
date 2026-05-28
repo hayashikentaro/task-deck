@@ -12,11 +12,23 @@ type ComposerAction = {
   text: string;
 };
 
+type DiagnosticCommand = {
+  label: string;
+  command: string;
+};
+
 const maxComposerHeight = 140;
-const composerActions: ComposerAction[] = [
+const insertActions: ComposerAction[] = [
   { label: "Continue", text: "Continue from the current state." },
   { label: "Summarize", text: "Summarize the current state, blockers, and next step." },
   { label: "Review diff", text: "Review the current diff and call out risks before changing more files." },
+];
+const diagnosticCommands: DiagnosticCommand[] = [
+  { label: "pwd", command: "pwd" },
+  { label: "ls", command: "ls" },
+  { label: "git status", command: "git status" },
+  { label: "which codex", command: "which codex" },
+  { label: "which goose", command: "which goose" },
 ];
 
 export function InputComposer({ isConnected, task, send }: InputComposerProps) {
@@ -53,26 +65,64 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
+  const sendDiagnosticCommand = (command: string) => {
+    sendInput(command);
+  };
+
+  const sendAllDiagnostics = () => {
+    sendInput(diagnosticCommands.map((diagnostic) => diagnostic.command).join("\n"));
+  };
+
   const sendValue = () => {
-    if (!task || !canSend || !value) {
+    if (!value) {
       return;
     }
-    const data = value.endsWith("\n") || value.endsWith("\r") ? value : `${value}\r`;
-    const didSend = send({ type: "input", taskId: task.id, data });
+    const didSend = sendInput(value);
     if (didSend) {
       setValue("");
     }
   };
 
+  const sendInput = (input: string) => {
+    if (!task || !canSend || !input) {
+      return false;
+    }
+    const data = input.endsWith("\n") || input.endsWith("\r") ? input : `${input}\r`;
+    return send({ type: "input", taskId: task.id, data });
+  };
+
   return (
     <form className="input-composer" onSubmit={handleSubmit}>
       <div className="input-composer-inner">
-        <div className="composer-actions" aria-label="Composer quick actions">
-          {composerActions.map((action) => (
-            <button disabled={!canSend} key={action.label} type="button" onClick={() => insertQuickAction(action.text)}>
-              {action.label}
-            </button>
-          ))}
+        <div className="composer-action-groups" aria-label="Composer quick actions">
+          <div className="composer-action-group">
+            <span>Insert</span>
+            <div className="composer-actions">
+              {insertActions.map((action) => (
+                <button disabled={!canSend} key={action.label} type="button" onClick={() => insertQuickAction(action.text)}>
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="composer-action-group">
+            <span>Send diagnostics</span>
+            <div className="composer-actions">
+              {diagnosticCommands.map((diagnostic) => (
+                <button
+                  disabled={!canSend}
+                  key={diagnostic.command}
+                  type="button"
+                  onClick={() => sendDiagnosticCommand(diagnostic.command)}
+                >
+                  {diagnostic.label}
+                </button>
+              ))}
+              <button disabled={!canSend} type="button" onClick={sendAllDiagnostics}>
+                all
+              </button>
+            </div>
+          </div>
         </div>
         <textarea
           ref={textareaRef}

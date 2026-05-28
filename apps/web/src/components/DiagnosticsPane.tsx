@@ -80,13 +80,16 @@ export function DiagnosticsPane({ isConnected }: DiagnosticsPaneProps) {
             </div>
             <small>{container.image || container.error || "No image information."}</small>
             {container.workspaces?.length ? (
-              <div className="diagnostic-workspaces">
-                {container.workspaces.map((workspace) => (
-                  <span data-state={workspace.exists ? "ok" : "warn"} key={workspace.path}>
-                    {workspace.path}: {workspace.exists ? "ready" : workspace.status}
-                  </span>
-                ))}
-              </div>
+              <details className="diagnostic-disclosure">
+                <summary>Container checks</summary>
+                <div className="diagnostic-workspaces">
+                  {container.workspaces.map((workspace) => (
+                    <span data-state={workspace.exists ? "ok" : "warn"} key={workspace.path}>
+                      {workspace.path}: {workspace.exists ? "ready" : workspace.status}
+                    </span>
+                  ))}
+                </div>
+              </details>
             ) : null}
             <div className="diagnostic-actions">
               <button type="button" onClick={() => copyText(`docker inspect ${container.name}`, "inspect command")}>
@@ -104,7 +107,7 @@ export function DiagnosticsPane({ isConnected }: DiagnosticsPaneProps) {
         ))}
         <p className="diagnostic-note">
           Goose Container Shell opens bash in <code>chrome-goose-1</code>. Goose Container direct runs <code>goose</code>
-          directly in <code>/workspace</code>.
+          directly in <code>/workspace</code>. Server diagnostics are shown here and documented in README.
         </p>
       </div>
     </section>

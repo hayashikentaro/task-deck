@@ -45,7 +45,7 @@ DELETE /api/presets
 
 `GET /api/context` returns the repository root, default cwd, server cwd, shell, path separator, git-repository status, in-repository cwd suggestions, and configured agent profiles for task creation.
 
-`GET /api/diagnostics` returns Docker reachability, merged agent-profile config sources, configured agent-container status, and configured container workspace checks. `POST /api/diagnostics/containers/:containerName/start` starts a configured diagnostic container when it exists but is stopped.
+`GET /api/diagnostics` returns Docker reachability, merged agent-profile config sources, configured agent-container status, and configured container workspace checks. The right-rail Agent Diagnostics panel surfaces this server diagnostics API in the UI. `POST /api/diagnostics/containers/:containerName/start` starts a configured diagnostic container when it exists but is stopped.
 
 `POST /api/validate-cwd` accepts `{ "cwd": "apps/web" }` and returns whether the cwd resolves to an existing directory, its absolute path, and git-repository status. The task form uses it to validate cwd before starting a task.
 
@@ -74,7 +74,7 @@ Expanded task cards can also resume agent sessions. Tasks with a saved `resumeCo
 
 The terminal pane keeps xterm.js as the renderer while adding operator controls for follow mode, clearing the current view, reloading persisted logs, copying the bounded visible log buffer, and counting simple search matches.
 
-Terminal input is sent through the fixed bottom composer. It targets the selected running PTY and stays disabled for read-only logs, disconnected sessions, or no selected task. The composer supports multi-line instructions and quick action inserts: Enter sends, Shift+Enter inserts a newline, Cmd/Ctrl+Enter sends, and IME composition is preserved for Japanese input.
+Terminal input is sent through the fixed bottom composer. It targets the selected running PTY and stays disabled for read-only logs, disconnected sessions, or no selected task. The composer supports multi-line instructions, insert quick actions, and PTY diagnostics quick actions. Enter sends, Shift+Enter inserts a newline, Cmd/Ctrl+Enter sends, and IME composition is preserved for Japanese input. PTY diagnostics can send `pwd`, `ls`, `git status`, `which codex`, and `which goose` to the selected running session.
 
 TaskDeck also stores the 10 most recent task presets by `command` and `cwd` so common task shapes can be restarted quickly.
 
@@ -82,4 +82,4 @@ TaskDeck also stores the 10 most recent task presets by `command` and `cwd` so c
 
 Agent profiles can be changed without editing application code. TaskDeck merges profiles by `id`: built-in defaults are loaded first, then `taskdeck.config.json`, then ignored `taskdeck.local.json`, then `TASKDECK_CONFIG`. Later files override matching ids and append new ids. For machine-local profiles, copy `taskdeck.local.example.json` to `taskdeck.local.json`; that local file is ignored by Git. To point TaskDeck at another profile file, start the server with `TASKDECK_CONFIG=/path/to/taskdeck.profiles.json npm run dev`.
 
-Each profile supports `id`, `label`, `command`, `description`, optional `diagnosticContainer`, and optional `diagnosticWorkspace`. The diagnostics panel uses these fields to inspect/start configured Docker containers and check whether expected container workspace directories exist.
+Each profile supports `id`, `label`, `command`, `description`, optional `diagnosticContainer`, and optional `diagnosticWorkspace`. The diagnostics panel uses these fields to inspect/start configured Docker containers and check whether expected container workspace directories exist. The committed Goose container profiles are `goose-container-shell` (`Goose Container Shell`, opens bash) and `goose-container-direct` (`Goose Container direct`, runs `docker exec -it -w /workspace chrome-goose-1 goose`).
