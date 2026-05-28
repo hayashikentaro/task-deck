@@ -501,6 +501,10 @@ async function buildCwdSuggestions() {
   return suggestions;
 }
 
+function normalizeStoredTaskAgentState(task) {
+  return { ...task, agentState: task.agentState ?? inferAgentStateFromStatus(task) };
+}
+
 function updateAgentStateFromOutput(taskId, data) {
   const task = tasks.get(taskId);
   if (!task || task.status !== TaskStatus.RUNNING) {
@@ -517,29 +521,54 @@ function updateAgentStateFromOutput(taskId, data) {
 }
 
 function inferAgentStateFromOutput(data) {
-  const normalized = String(data).toLowerCase();
+  const text = stripTerminalControlSequences(String(data));
+  const normalized = text.toLowerCase();
+  const lastLine = lastMeaningfulLine(text).toLowerCase();
 
-  if (/(approve|approval|permission|confirm|allow|deny|yes.no|y.n)/.test(normalized)) {
+  if (!normalized.trim()) {
+    return null;
+  }
+
+  if (/(approval required|requires approval|approve\?|allow\?|deny\?|permission requested|confirm\?|continue\?|yes\/no|\by\/n\b)/.test(normalized)) {
     return AgentState.WAITING_APPROVAL;
   }
 
-  if (/(waiting for input|press enter|type|enter your|select|choose|prompt|\?\s*$)/.test(normalized)) {
+  if (isInteractivePrompt(lastLine) || /(waiting for input|press enter|enter your|select an? |choose an? |type .*:|\?\s*$)/.test(normalized)) {
     return AgentState.WAITING_INPUT;
   }
 
-  if (/(review|ready for review|diff|changes|summary|completed|done)/.test(normalized)) {
+  if (/(ready for review|review ready|please review|changes are ready|diff is ready|summary of changes|task complete|completed successfully)/.test(normalized)) {
     return AgentState.REVIEW_READY;
   }
 
-  if (/(thinking|reasoning|analyzing|planning)/.test(normalized)) {
+  if (/(thinking|reasoning|analyzing|planning|inspecting|checking|reading|searching)/.test(normalized)) {
     return AgentState.THINKING;
   }
 
-  if (normalized.trim()) {
-    return AgentState.WORKING;
-  }
+  return AgentState.WORKING;
+}
 
-  return null;
+function stripTerminalControlSequences(value) {
+  return value
+    .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "")
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
+    .replace(/\r/g, "\n");
+}
+
+function lastMeaningfulLine(value) {
+  return value
+    .split(/\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .at(-1) ?? "";
+}
+
+function isInteractivePrompt(line) {
+  return (
+    /^gpt-[\w.-]+\s+default\s+[·•-]\s+\S+/.test(line) ||
+    /^>\s*$/.test(line) ||
+    /^[^\s]+@[^^]+:[^$#]+[$#]\s*$/.test(line)
+  );
 }
 
 function setTask(task) {
@@ -622,7 +651,7 @@ async function initializePersistence() {
     const task =
       storedTask.status === TaskStatus.RUNNING
         ? markTaskExited(storedTask, { exitCode: 1, signal: "server-restart" })
-        : { ...storedTask, agentState: storedTask.agentState ?? inferAgentStateFromStatus(storedTask) };
+        : normalizeStoredTaskAgentState(storedTask);
 
     if (task !== storedTask) {
       changed = true;
