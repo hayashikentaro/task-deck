@@ -22,7 +22,6 @@ export function TaskList({
 }: TaskListProps) {
   const [filter, setFilter] = useState<TaskFilter>("all");
   const runningTaskIdSet = useMemo(() => new Set(runningTaskIds), [runningTaskIds]);
-  const clearableCount = tasks.filter((task) => !runningTaskIdSet.has(task.id)).length;
   const visibleTasks = useMemo(() => tasks.filter((task) => matchesFilter(task, filter)), [filter, tasks]);
 
   return (
@@ -31,7 +30,7 @@ export function TaskList({
         <h2>Tasks</h2>
         <div className="pane-actions">
           <span>{tasks.length}</span>
-          <button disabled={clearableCount === 0} onClick={onClearTasks} type="button">
+          <button disabled={tasks.length === 0} onClick={onClearTasks} type="button">
             Clear
           </button>
         </div>
