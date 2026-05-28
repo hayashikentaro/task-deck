@@ -541,7 +541,31 @@ dd {
 }
 
 .task-badge[data-kind="status"] {
-  color: var(--text);
+  color: var(--muted);
+}
+
+.task-badge[data-kind="agent-starting"],
+.task-badge[data-kind="agent-thinking"],
+.task-badge[data-kind="agent-working"] {
+  border-color: #2dd4bf;
+  color: #99f6e4;
+}
+
+.task-badge[data-kind="agent-waiting_input"],
+.task-badge[data-kind="agent-waiting_approval"],
+.task-badge[data-kind="agent-review_ready"] {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.task-badge[data-kind="agent-done"] {
+  color: var(--ok);
+}
+
+.task-badge[data-kind="agent-failed"],
+.task-badge[data-kind="agent-stopped"] {
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .task-badge[data-kind="risk-medium"] {

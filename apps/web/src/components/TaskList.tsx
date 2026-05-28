@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import type { Task } from "../types";
+import type { AgentState, Task } from "../types";
 
-type TaskFilter = "all" | "running" | "failed" | "completed" | "risk";
+type TaskFilter = "all" | "active" | "needs_input" | "review" | "done" | "failed" | "risk";
 
 type TaskListProps = {
   tasks: Task[];
@@ -36,7 +36,7 @@ export function TaskList({
         </div>
       </div>
       <div className="task-filters" aria-label="Task filters">
-        {(["all", "running", "failed", "completed", "risk"] as TaskFilter[]).map((nextFilter) => (
+        {(["all", "active", "needs_input", "review", "done", "failed", "risk"] as TaskFilter[]).map((nextFilter) => (
           <button
             aria-pressed={filter === nextFilter}
             data-active={filter === nextFilter}
@@ -66,6 +66,9 @@ export function TaskList({
                 <span className="task-updated">{formatTime(task.updatedAt)}</span>
               </span>
               <span className="task-badge-row">
+                <span className="task-badge" data-kind={`agent-${task.agentState}`}>
+                  {agentStateLabel(task.agentState)}
+                </span>
                 <span className="task-badge" data-kind="status">
                   {task.status}
                   {runningTaskIdSet.has(task.id) ? " / active" : ""}
@@ -101,14 +104,20 @@ export function TaskList({
 }
 
 function matchesFilter(task: Task, filter: TaskFilter) {
-  if (filter === "running") {
-    return task.status === "running";
+  if (filter === "active") {
+    return task.agentState === "starting" || task.agentState === "thinking" || task.agentState === "working";
+  }
+  if (filter === "needs_input") {
+    return task.agentState === "waiting_input" || task.agentState === "waiting_approval";
+  }
+  if (filter === "review") {
+    return task.agentState === "review_ready";
+  }
+  if (filter === "done") {
+    return task.agentState === "done";
   }
   if (filter === "failed") {
-    return task.status === "failed" || task.status === "interrupted";
-  }
-  if (filter === "completed") {
-    return task.status === "succeeded" || task.status === "failed" || task.status === "interrupted";
+    return task.agentState === "failed" || task.agentState === "stopped";
   }
   if (filter === "risk") {
     return task.risk.level === "high" || task.risk.level === "medium";
@@ -117,23 +126,36 @@ function matchesFilter(task: Task, filter: TaskFilter) {
 }
 
 function filterLabel(filter: TaskFilter) {
-  return filter[0].toUpperCase() + filter.slice(1);
+  if (filter === "active") return "Active";
+  if (filter === "needs_input") return "Needs input";
+  if (filter === "review") return "Review";
+  if (filter === "done") return "Done";
+  if (filter === "failed") return "Failed/stopped";
+  if (filter === "risk") return "Risk";
+  return "All";
 }
 
 function taskTone(task: Task, runningTaskIds: Set<string>) {
-  if (runningTaskIds.has(task.id) || task.status === "running") {
-    return "active";
-  }
-  if (task.status === "failed" || task.status === "interrupted") {
+  if (task.agentState === "failed" || task.agentState === "stopped") {
     return "attention";
+  }
+  if (task.agentState === "waiting_input" || task.agentState === "waiting_approval" || task.agentState === "review_ready") {
+    return "risk";
+  }
+  if (runningTaskIds.has(task.id) || task.agentState === "starting" || task.agentState === "thinking" || task.agentState === "working") {
+    return "active";
   }
   if (task.risk.level === "high" || task.risk.level === "medium") {
     return "risk";
   }
-  if (task.status === "succeeded") {
+  if (task.agentState === "done") {
     return "subdued";
   }
   return "neutral";
+}
+
+function agentStateLabel(agentState: AgentState) {
+  return agentState.replace(/_/g, " ");
 }
 
 function shortCommand(command: string) {

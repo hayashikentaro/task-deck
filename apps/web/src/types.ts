@@ -1,4 +1,14 @@
 export type TaskStatus = "idle" | "running" | "succeeded" | "failed" | "interrupted";
+export type AgentState =
+  | "starting"
+  | "thinking"
+  | "working"
+  | "waiting_input"
+  | "waiting_approval"
+  | "review_ready"
+  | "done"
+  | "failed"
+  | "stopped";
 
 export type TaskRisk = {
   level: "unknown" | "low" | "medium" | "high";
@@ -11,6 +21,7 @@ export type Task = {
   command: string;
   cwd: string;
   status: TaskStatus;
+  agentState: AgentState;
   risk: TaskRisk;
   createdAt: string;
   startedAt: string | null;

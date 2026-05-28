@@ -9,11 +9,14 @@ import { promisify } from "node:util";
 import { WebSocketServer } from "ws";
 import pty from "node-pty";
 import {
+  AgentState,
   createTask,
+  markTaskAgentState,
   markTaskExited,
   markTaskRunning,
   serializeTask,
   TaskStatus,
+  inferAgentStateFromStatus,
 } from "@taskdeck/core";
 
 const execFileAsync = promisify(execFile);
@@ -296,6 +299,11 @@ wss.on("connection", (socket) => {
     if (message.type === "input") {
       const activePty = activePtys.get(message.taskId);
       if (activePty && typeof message.data === "string") {
+        const task = tasks.get(message.taskId);
+        if (task) {
+          setTask(markTaskAgentState(task, AgentState.WORKING));
+          broadcastTasks();
+        }
         activePty.process.write(message.data);
       }
       return;
@@ -373,6 +381,7 @@ async function startTask({ title, command, cwd, initialInstruction }, socket) {
     });
 
     activePtys.set(task.id, { taskId: task.id, process: terminalProcess });
+    setTask(markTaskAgentState(task, AgentState.THINKING));
     send(socket, { type: "started", taskId: task.id });
     broadcastTasks();
 
@@ -381,6 +390,7 @@ async function startTask({ title, command, cwd, initialInstruction }, socket) {
         return;
       }
       appendLog(task.id, data);
+      updateAgentStateFromOutput(task.id, data);
       broadcast({ type: "output", taskId: task.id, data });
     });
 
@@ -491,6 +501,47 @@ async function buildCwdSuggestions() {
   return suggestions;
 }
 
+function updateAgentStateFromOutput(taskId, data) {
+  const task = tasks.get(taskId);
+  if (!task || task.status !== TaskStatus.RUNNING) {
+    return;
+  }
+
+  const nextAgentState = inferAgentStateFromOutput(data);
+  if (!nextAgentState || task.agentState === nextAgentState) {
+    return;
+  }
+
+  setTask(markTaskAgentState(task, nextAgentState));
+  broadcastTasks();
+}
+
+function inferAgentStateFromOutput(data) {
+  const normalized = String(data).toLowerCase();
+
+  if (/(approve|approval|permission|confirm|allow|deny|yes.no|y.n)/.test(normalized)) {
+    return AgentState.WAITING_APPROVAL;
+  }
+
+  if (/(waiting for input|press enter|type|enter your|select|choose|prompt|\?\s*$)/.test(normalized)) {
+    return AgentState.WAITING_INPUT;
+  }
+
+  if (/(review|ready for review|diff|changes|summary|completed|done)/.test(normalized)) {
+    return AgentState.REVIEW_READY;
+  }
+
+  if (/(thinking|reasoning|analyzing|planning)/.test(normalized)) {
+    return AgentState.THINKING;
+  }
+
+  if (normalized.trim()) {
+    return AgentState.WORKING;
+  }
+
+  return null;
+}
+
 function setTask(task) {
   tasks.set(task.id, task);
   persistTasks();
@@ -571,7 +622,7 @@ async function initializePersistence() {
     const task =
       storedTask.status === TaskStatus.RUNNING
         ? markTaskExited(storedTask, { exitCode: 1, signal: "server-restart" })
-        : storedTask;
+        : { ...storedTask, agentState: storedTask.agentState ?? inferAgentStateFromStatus(storedTask) };
 
     if (task !== storedTask) {
       changed = true;

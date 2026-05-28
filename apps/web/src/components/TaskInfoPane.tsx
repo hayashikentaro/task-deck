@@ -1,4 +1,4 @@
-import type { Task } from "../types";
+import type { AgentState, Task } from "../types";
 
 type TaskInfoPaneProps = {
   actionError: string;
@@ -31,7 +31,8 @@ export function TaskInfoPane({ actionError, task, onInterrupt, onRerun }: TaskIn
       ) : (
         <dl className="info-grid">
           <Info label="Title" value={task.title} />
-          <Info label="Status" value={task.status} />
+          <Info label="Agent state" value={agentStateLabel(task.agentState)} />
+          <Info label="Process" value={task.status} />
           <Info label="Risk" value={task.risk.level} />
           <Info label="Exit" value={task.exitCode === null ? "-" : String(task.exitCode)} />
           <Info label="CWD" value={task.cwd} />
@@ -58,4 +59,8 @@ function formatDate(value: string | null) {
     return "-";
   }
   return new Date(value).toLocaleTimeString();
+}
+
+function agentStateLabel(agentState: AgentState) {
+  return agentState.replace(/_/g, " ");
 }

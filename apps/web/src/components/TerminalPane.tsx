@@ -180,7 +180,7 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
         <div className="terminal-title-group">
           <h2>Terminal</h2>
           <strong data-mode={modeTone(terminalMode)}>{terminalMode}</strong>
-          <span>{task ? task.status : "idle"}</span>
+          <span>{task ? task.agentState.replace(/_/g, " ") : "idle"}</span>
         </div>
         <div className="terminal-controls">
           <button

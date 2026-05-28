@@ -6,6 +6,18 @@ export const TaskStatus = Object.freeze({
   INTERRUPTED: "interrupted",
 });
 
+export const AgentState = Object.freeze({
+  STARTING: "starting",
+  THINKING: "thinking",
+  WORKING: "working",
+  WAITING_INPUT: "waiting_input",
+  WAITING_APPROVAL: "waiting_approval",
+  REVIEW_READY: "review_ready",
+  DONE: "done",
+  FAILED: "failed",
+  STOPPED: "stopped",
+});
+
 const dangerousPatterns = [
   /\brm\s+-rf\b/,
   /\bsudo\b/,
@@ -25,6 +37,7 @@ export function createTask({ title, command, cwd }) {
     command: normalizedCommand,
     cwd,
     status: TaskStatus.IDLE,
+    agentState: AgentState.STARTING,
     risk: assessCommandRisk(normalizedCommand),
     createdAt: now,
     startedAt: null,
@@ -41,6 +54,7 @@ export function markTaskRunning(task) {
   return {
     ...task,
     status: TaskStatus.RUNNING,
+    agentState: task.agentState ?? AgentState.STARTING,
     startedAt: now,
     updatedAt: now,
     endedAt: null,
@@ -49,13 +63,23 @@ export function markTaskRunning(task) {
   };
 }
 
+export function markTaskAgentState(task, agentState) {
+  return {
+    ...task,
+    agentState,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 export function markTaskExited(task, { exitCode, signal }) {
   const now = new Date().toISOString();
   const status = exitCode === 0 ? TaskStatus.SUCCEEDED : signal ? TaskStatus.INTERRUPTED : TaskStatus.FAILED;
+  const agentState = exitCode === 0 ? AgentState.DONE : signal ? AgentState.STOPPED : AgentState.FAILED;
 
   return {
     ...task,
     status,
+    agentState,
     updatedAt: now,
     endedAt: now,
     exitCode,
@@ -70,6 +94,7 @@ export function serializeTask(task) {
     command: task.command,
     cwd: task.cwd,
     status: task.status,
+    agentState: task.agentState ?? inferAgentStateFromStatus(task),
     risk: task.risk,
     createdAt: task.createdAt,
     startedAt: task.startedAt,
@@ -110,6 +135,14 @@ export function assessCommandRisk(command) {
     level: "low",
     reasons: ["No high-risk command pattern detected."],
   };
+}
+
+export function inferAgentStateFromStatus(task) {
+  if (task.status === TaskStatus.RUNNING) return AgentState.WORKING;
+  if (task.status === TaskStatus.SUCCEEDED) return AgentState.DONE;
+  if (task.status === TaskStatus.INTERRUPTED) return AgentState.STOPPED;
+  if (task.status === TaskStatus.FAILED) return AgentState.FAILED;
+  return AgentState.STARTING;
 }
 
 function cryptoRandomId() {
