@@ -9,10 +9,12 @@ type TaskCreateFormProps = {
 };
 
 const defaultAgentProfileId = "codex";
+type CodexSessionMode = "new" | "resume";
 
 export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFormProps) {
   const [selectedAgentId, setSelectedAgentId] = useState(defaultAgentProfileId);
   const [customCommand, setCustomCommand] = useState("");
+  const [codexSessionMode, setCodexSessionMode] = useState<CodexSessionMode>("new");
   const [initialInstruction, setInitialInstruction] = useState("");
   const [cwd, setCwd] = useState("");
   const [cwdValidation, setCwdValidation] = useState<CwdValidation | null>(null);
@@ -64,7 +66,11 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
   const selectedAgent =
     agentProfiles.find((profile) => profile.id === selectedAgentId) ?? agentProfiles[0] ?? defaultAgentProfiles[0];
   const cwdIsValid = cwdValidation?.ok ?? false;
-  const command = selectedAgent.id === "custom" ? customCommand.trim() : selectedAgent.command;
+  const isCodexAgent = isCodexProfile(selectedAgent.id, selectedAgent.command);
+  const command =
+    selectedAgent.id === "custom"
+      ? customCommand.trim()
+      : buildAgentCommand(selectedAgent.command, isCodexAgent ? codexSessionMode : "new");
   const canStart = !disabled && cwdIsValid && !isValidatingCwd && Boolean(command);
 
   useEffect(() => {
@@ -88,7 +94,7 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
 
   return (
     <section className="task-create-panel">
-      <form className="task-create-form" onSubmit={handleSubmit}>
+      <form className={"task-create-form" + (isCodexAgent ? " has-session-mode" : "")} onSubmit={handleSubmit}>
         <div className="agent-picker" aria-label="Agent profiles">
           <span>Agent</span>
           <select value={selectedAgent.id} onChange={(event) => setSelectedAgentId(event.target.value)}>
@@ -99,6 +105,18 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
             ))}
           </select>
         </div>
+        {isCodexAgent ? (
+          <label className="codex-session-field">
+            <span>Session</span>
+            <select
+              value={codexSessionMode}
+              onChange={(event) => setCodexSessionMode(event.target.value as CodexSessionMode)}
+            >
+              <option value="new">New</option>
+              <option value="resume">Resume last</option>
+            </select>
+          </label>
+        ) : null}
         {selectedAgent.id === "custom" ? (
           <label className="custom-command-field">
             <span>Custom command</span>
@@ -124,6 +142,23 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
       </form>
     </section>
   );
+}
+
+function isCodexProfile(profileId: string, command: string) {
+  return profileId.includes("codex") || /\bcodex\b/.test(command);
+}
+
+function buildAgentCommand(command: string, sessionMode: CodexSessionMode) {
+  if (sessionMode === "resume") {
+    if (command.includes("codex resume")) {
+      return command;
+    }
+    return command.replace(/\bcodex\b/, "sh -lc 'codex resume --last || codex'");
+  }
+
+  return command
+    .replace("sh -lc 'codex resume --last || codex'", "codex")
+    .replace(/codex resume --last \|\| codex/, "codex");
 }
 
 function buildTaskTitle(agentLabel: string, instruction: string) {

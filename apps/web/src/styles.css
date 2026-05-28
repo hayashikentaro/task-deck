@@ -172,6 +172,10 @@ dd {
   align-items: end;
 }
 
+.task-create-form.has-session-mode {
+  grid-template-columns: minmax(260px, 0.65fr) minmax(140px, 0.25fr) minmax(0, 1.25fr) auto;
+}
+
 .task-create-form label {
   display: grid;
   gap: 7px;
@@ -194,11 +198,13 @@ dd {
   gap: 7px;
 }
 
-.agent-picker select {
+.agent-picker select,
+.codex-session-field select {
   height: 40px;
   padding: 0 10px;
 }
 
+.codex-session-field,
 .custom-command-field {
   min-width: 0;
 }
