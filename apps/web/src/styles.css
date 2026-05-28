@@ -416,7 +416,9 @@ dd {
 }
 
 .task-list-item {
+  position: relative;
   width: 100%;
+  overflow: hidden;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px;
@@ -426,9 +428,16 @@ dd {
   background: #11161b;
 }
 
-.task-list-item[data-selected="true"] {
-  border-color: var(--accent);
-  background: #142027;
+.task-list-item[data-selected="true"]::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--accent);
+}
+
+.task-list-item[data-selected="true"] .task-select-button {
+  padding-left: 14px;
 }
 
 .task-list-item[data-tone="active"] {
@@ -443,6 +452,19 @@ dd {
 .task-list-item[data-tone="risk"] {
   border-color: var(--warn);
   background: #1f1d12;
+}
+
+.task-list-item[data-selected="true"] {
+  border-color: var(--accent);
+  background: #142027;
+}
+
+.task-list-item[data-selected="true"][data-tone="attention"] {
+  background: #201b22;
+}
+
+.task-list-item[data-selected="true"][data-tone="risk"] {
+  background: #1f211b;
 }
 
 .task-list-item[data-tone="subdued"] {
