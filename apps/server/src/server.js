@@ -44,6 +44,12 @@ const defaultAgentProfiles = [
     description: "Local/alternative agent option",
   },
   {
+    id: "aider",
+    label: "aider",
+    command: "aider",
+    description: "Git-aware coding assistant",
+  },
+  {
     id: "shell-zsh",
     label: "zsh",
     command: "zsh",
@@ -283,6 +289,10 @@ wss.on("connection", (socket) => {
           title: String(message.title || "").trim(),
           command: String(message.command || "").trim(),
           cwd: String(message.cwd || "").trim(),
+          agentProfileId: String(message.agentProfileId || "").trim(),
+          agentLabel: String(message.agentLabel || "").trim(),
+          sessionMode: String(message.sessionMode || "").trim(),
+          resumeCommand: String(message.resumeCommand || "").trim(),
           initialInstruction: String(message.initialInstruction || "").trim(),
         },
         socket,
@@ -340,7 +350,16 @@ server.listen(port, host, () => {
   console.log(`TaskDeck listening on http://${host}:${port}`);
 });
 
-async function startTask({ title, command, cwd, initialInstruction }, socket) {
+async function startTask({
+  title,
+  command,
+  cwd,
+  agentProfileId,
+  agentLabel,
+  sessionMode,
+  resumeCommand,
+  initialInstruction,
+}, socket) {
   if (!command) {
     send(socket, { type: "error", message: "Enter a command before starting a task." });
     return;
@@ -351,7 +370,16 @@ async function startTask({ title, command, cwd, initialInstruction }, socket) {
     return;
   }
 
-  const task = markTaskRunning(createTask({ title, command, cwd: resolvedCwd, initialInstruction }));
+  const task = markTaskRunning(createTask({
+    title,
+    command,
+    cwd: resolvedCwd,
+    agentProfileId,
+    agentLabel,
+    sessionMode,
+    resumeCommand,
+    initialInstruction,
+  }));
   tasks.set(task.id, task);
   logs.set(task.id, "");
   persistTasks();

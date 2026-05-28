@@ -162,6 +162,10 @@ export function App() {
       title: selectedTask.title,
       command: selectedTask.command,
       cwd: selectedTask.cwd,
+      agentProfileId: selectedTask.agentProfileId,
+      agentLabel: selectedTask.agentLabel,
+      sessionMode: selectedTask.sessionMode,
+      resumeCommand: selectedTask.resumeCommand,
       initialInstruction: selectedTask.initialInstruction,
     });
     if (didStart) {

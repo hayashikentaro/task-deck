@@ -3,7 +3,7 @@
     {
       "id": "ai-dev-container-codex",
       "label": "Codex CLI (AI dev container)",
-      "command": "docker start taskdeck-ai-dev >/dev/null && docker exec -it -w /workspace taskdeck-ai-dev sh -lc 'codex resume --last || codex'",
+      "command": "docker start taskdeck-ai-dev >/dev/null && docker exec -it -w /workspace taskdeck-ai-dev codex",
       "description": "Run Codex CLI inside the chrome AI development container"
     },
     {
@@ -11,6 +11,12 @@
       "label": "Goose (AI dev container)",
       "command": "docker start taskdeck-ai-dev >/dev/null && docker exec -it -w /workspace taskdeck-ai-dev goose",
       "description": "Run Goose inside the chrome AI development container"
+    },
+    {
+      "id": "aider",
+      "label": "aider",
+      "command": "aider",
+      "description": "Git-aware coding assistant"
     },
     {
       "id": "shell-zsh",

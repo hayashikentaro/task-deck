@@ -20,6 +20,10 @@ export type Task = {
   title: string;
   command: string;
   cwd: string;
+  agentProfileId?: string;
+  agentLabel?: string;
+  sessionMode?: string;
+  resumeCommand?: string;
   status: TaskStatus;
   agentState: AgentState;
   risk: TaskRisk;
@@ -42,6 +46,10 @@ export type CreateTaskInput = {
   title: string;
   command: string;
   cwd: string;
+  agentProfileId?: string;
+  agentLabel?: string;
+  sessionMode?: string;
+  resumeCommand?: string;
   initialInstruction?: string;
 };
 

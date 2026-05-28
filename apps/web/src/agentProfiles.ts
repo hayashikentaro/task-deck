@@ -14,6 +14,12 @@ export const defaultAgentProfiles: AgentProfile[] = [
     description: "Local/alternative agent option",
   },
   {
+    id: "aider",
+    label: "aider",
+    command: "aider",
+    description: "Git-aware coding assistant",
+  },
+  {
     id: "shell-zsh",
     label: "zsh",
     command: "zsh",

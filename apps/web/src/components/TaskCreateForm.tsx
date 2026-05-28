@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { defaultAgentProfiles } from "../agentProfiles";
-import type { CreateTaskInput, CwdValidation, TaskDeckContext } from "../types";
+import type { AgentProfile, CreateTaskInput, CwdValidation, TaskDeckContext } from "../types";
 
 type TaskCreateFormProps = {
   context: TaskDeckContext | null;
@@ -8,7 +8,7 @@ type TaskCreateFormProps = {
   onCreateTask: (input: CreateTaskInput) => void;
 };
 
-const defaultAgentProfileId = "codex";
+const defaultAgentProfileId = "goose";
 type SessionMode = "new" | "resume_last" | "custom_resume";
 
 export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFormProps) {
@@ -71,15 +71,17 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
 
   const agentProfiles = context?.agentProfiles.length ? context.agentProfiles : defaultAgentProfiles;
   const selectedAgent =
-    agentProfiles.find((profile) => profile.id === selectedAgentId) ?? agentProfiles[0] ?? defaultAgentProfiles[0];
+    agentProfiles.find((profile) => profile.id === selectedAgentId) ??
+    findDefaultAgentProfile(agentProfiles) ??
+    defaultAgentProfiles[0];
   const cwdIsValid = cwdValidation?.ok ?? false;
-  const baseCommand = selectedAgent.id === "custom" ? customCommand.trim() : selectedAgent.command;
-  const command = buildAgentCommand(baseCommand, sessionMode, customResumeCommand);
+  const launchCommand = buildLaunchCommand(selectedAgent, sessionMode, customResumeCommand, customCommand);
+  const command = launchCommand.command;
   const canStart = !disabled && cwdIsValid && !isValidatingCwd && Boolean(command);
 
   useEffect(() => {
     if (!agentProfiles.some((profile) => profile.id === selectedAgentId)) {
-      setSelectedAgentId(agentProfiles[0]?.id ?? defaultAgentProfileId);
+      setSelectedAgentId(findDefaultAgentProfile(agentProfiles)?.id ?? defaultAgentProfileId);
     }
   }, [agentProfiles, selectedAgentId]);
 
@@ -92,6 +94,10 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
       title: buildTaskTitle(selectedAgent.label, initialInstruction),
       command,
       cwd,
+      agentProfileId: selectedAgent.id,
+      agentLabel: selectedAgent.label,
+      sessionMode,
+      resumeCommand: launchCommand.resumeCommand || undefined,
       initialInstruction: initialInstruction.trim(),
     });
   };
@@ -169,25 +175,55 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
   );
 }
 
-function isCodexProfile(profileId: string, command: string) {
-  return profileId.includes("codex") || /\bcodex\b/.test(command);
+function findDefaultAgentProfile(agentProfiles: AgentProfile[]) {
+  return (
+    agentProfiles.find((profile) => isGooseProfile(profile)) ??
+    agentProfiles[0] ??
+    null
+  );
 }
 
-function buildAgentCommand(command: string, sessionMode: SessionMode, customResumeCommand: string) {
+function isGooseProfile(profile: AgentProfile) {
+  return (
+    profile.id.includes("goose") ||
+    profile.label.toLowerCase().includes("goose") ||
+    /\bgoose\b/.test(profile.command)
+  );
+}
+
+function isCodexProfile(profile: AgentProfile) {
+  return (
+    profile.id.includes("codex") ||
+    profile.label.toLowerCase().includes("codex") ||
+    /\bcodex\b/.test(profile.command)
+  );
+}
+
+function buildLaunchCommand(
+  profile: AgentProfile,
+  sessionMode: SessionMode,
+  customResumeCommand: string,
+  customCommand: string,
+) {
   if (sessionMode === "custom_resume") {
-    return customResumeCommand.trim();
+    const resumeCommand = customResumeCommand.trim();
+    return { command: resumeCommand, resumeCommand };
   }
 
-  if (sessionMode === "resume_last" && isCodexProfile("", command)) {
-    if (command.includes("codex resume")) {
-      return command;
-    }
-    return command.replace(/\bcodex\b/, "sh -lc 'codex resume --last || codex'");
+  if (sessionMode === "resume_last" && isCodexProfile(profile)) {
+    const resumeCommand = buildCodexResumeLastCommand(profile);
+    return { command: resumeCommand, resumeCommand };
   }
 
-  return command
-    .replace("sh -lc 'codex resume --last || codex'", "codex")
-    .replace(/codex resume --last \|\| codex/, "codex");
+  const command = profile.id === "custom" ? customCommand.trim() : profile.command.trim();
+  return { command, resumeCommand: "" };
+}
+
+function buildCodexResumeLastCommand(profile: AgentProfile) {
+  if (profile.id === "ai-dev-container-codex") {
+    return "docker start taskdeck-ai-dev >/dev/null && docker exec -it -w /workspace taskdeck-ai-dev sh -lc 'codex resume --last'";
+  }
+  return "codex resume --last";
 }
 
 function buildTaskTitle(agentLabel: string, instruction: string) {

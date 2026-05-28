@@ -112,7 +112,7 @@ export function TaskList({
                     {workspaceLabel(task.cwd)}
                   </span>
                   <span className="task-command" title={task.command}>
-                    {agentOrCommandLabel(task.command)}
+                    {task.agentLabel || agentOrCommandLabel(task.command)}
                   </span>
                 </span>
               </button>
@@ -128,13 +128,18 @@ export function TaskList({
                 <div className="task-card-detail">
                   {isSelected && actionError ? <p className="task-action-error">{actionError}</p> : null}
                   <dl className="task-detail-grid">
+                    <Info label="Agent" value={task.agentLabel || agentOrCommandLabel(task.command)} />
+                    <Info label="Session mode" value={sessionModeLabel(task.sessionMode)} />
+                    {task.resumeCommand ? <Info label="Resume command" value={task.resumeCommand} wide /> : null}
                     <Info label="Command" value={task.command} />
                     <Info label="CWD" value={task.cwd} />
                     <Info label="Process" value={task.status} />
                     <Info label="Exit" value={task.exitCode === null ? "-" : String(task.exitCode)} />
                     <Info label="Started" value={formatDate(task.startedAt)} />
                     <Info label="Updated" value={formatDate(task.updatedAt)} />
-                    <Info label="Initial instruction" value={task.initialInstruction || "-"} wide />
+                    {task.initialInstruction ? (
+                      <Info label="Initial instruction" value={task.initialInstruction} wide />
+                    ) : null}
                     <div className="task-detail-item">
                       <dt>Diff</dt>
                       <dd>
@@ -269,6 +274,13 @@ function taskTone(task: Task, runningTaskIds: Set<string>) {
 
 function agentStateLabel(agentState: AgentState) {
   return agentState.replace(/_/g, " ");
+}
+
+function sessionModeLabel(sessionMode: string | undefined) {
+  if (sessionMode === "resume_last") return "Resume last";
+  if (sessionMode === "custom_resume") return "Custom resume command";
+  if (sessionMode === "new") return "New session";
+  return "-";
 }
 
 function agentOrCommandLabel(command: string) {

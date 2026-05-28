@@ -26,7 +26,16 @@ const dangerousPatterns = [
   />\s*\/dev\/sd[a-z]/,
 ];
 
-export function createTask({ title, command, cwd, initialInstruction = "" }) {
+export function createTask({
+  title,
+  command,
+  cwd,
+  agentProfileId = "",
+  agentLabel = "",
+  sessionMode = "",
+  resumeCommand = "",
+  initialInstruction = "",
+}) {
   const now = new Date().toISOString();
   const normalizedCommand = command.trim();
   const normalizedTitle = title.trim() || normalizedCommand;
@@ -36,6 +45,10 @@ export function createTask({ title, command, cwd, initialInstruction = "" }) {
     title: normalizedTitle,
     command: normalizedCommand,
     cwd,
+    agentProfileId,
+    agentLabel,
+    sessionMode,
+    resumeCommand,
     status: TaskStatus.IDLE,
     agentState: AgentState.STARTING,
     risk: assessCommandRisk(normalizedCommand),
@@ -94,6 +107,10 @@ export function serializeTask(task) {
     title: task.title,
     command: task.command,
     cwd: task.cwd,
+    agentProfileId: task.agentProfileId || "",
+    agentLabel: task.agentLabel || "",
+    sessionMode: task.sessionMode || "",
+    resumeCommand: task.resumeCommand || "",
     status: task.status,
     agentState: task.agentState ?? inferAgentStateFromStatus(task),
     risk: task.risk,
