@@ -12,6 +12,9 @@ type TaskListProps = {
   onClearTasks: () => void;
   onInterruptTask: () => void;
   onRerunTask: () => void;
+  onResumeLastTask: (task: Task) => void;
+  onResumeTask: (task: Task) => void;
+  pendingResumeKeys: string[];
   onSelectTask: (taskId: string) => void;
 };
 
@@ -24,6 +27,9 @@ export function TaskList({
   onClearTasks,
   onInterruptTask,
   onRerunTask,
+  onResumeLastTask,
+  onResumeTask,
+  pendingResumeKeys,
   onSelectTask,
 }: TaskListProps) {
   const [filter, setFilter] = useState<TaskFilter>("all");
@@ -81,6 +87,16 @@ export function TaskList({
           const isSelected = task.id === selectedTaskId;
           const isExpanded = expandedTaskIds.has(task.id);
           const canRerun = task.status !== "running" && runningTaskIds.length === 0;
+          const resumeCommand = task.resumeCommand?.trim() || "";
+          const resumeLastCommand = !resumeCommand && isCodexTask(task) ? buildCodexResumeLastCommand(task) : "";
+          const isResumePending = resumeCommand
+            ? pendingResumeKeys.includes(resumeTaskKey(task.id, resumeCommand))
+            : false;
+          const isResumeLastPending = resumeLastCommand
+            ? pendingResumeKeys.includes(resumeTaskKey(task.id, resumeLastCommand))
+            : false;
+          const canResume = Boolean(resumeCommand) && !isResumePending;
+          const canResumeLast = Boolean(resumeLastCommand) && !isResumeLastPending;
           return (
             <article
               className="task-list-item"
@@ -147,14 +163,33 @@ export function TaskList({
                       </dd>
                     </div>
                   </dl>
-                  {isSelected ? (
+                  {isSelected || resumeCommand || canResumeLast ? (
                     <div className="task-detail-actions">
-                      <button disabled={!canRerun} onClick={onRerunTask} type="button">
-                        Rerun
-                      </button>
-                      <button disabled={task.status !== "running"} onClick={onInterruptTask} type="button">
-                        Interrupt
-                      </button>
+                      {isSelected ? (
+                        <button disabled={!canRerun} onClick={onRerunTask} type="button">
+                          Rerun
+                        </button>
+                      ) : null}
+                      {isSelected ? (
+                        <button disabled={task.status !== "running"} onClick={onInterruptTask} type="button">
+                          Interrupt
+                        </button>
+                      ) : null}
+                      {resumeCommand ? (
+                        <button disabled={!canResume} onClick={() => onResumeTask(task)} type="button">
+                          Resume
+                        </button>
+                      ) : null}
+                      {canResumeLast ? (
+                        <button
+                          data-priority="secondary"
+                          disabled={isResumeLastPending}
+                          onClick={() => onResumeLastTask(task)}
+                          type="button"
+                        >
+                          Resume last
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -281,6 +316,23 @@ function sessionModeLabel(sessionMode: string | undefined) {
   if (sessionMode === "custom_resume") return "Custom resume command";
   if (sessionMode === "new") return "New session";
   return "-";
+}
+
+function resumeTaskKey(taskId: string, resumeCommand: string) {
+  return `${taskId}:${resumeCommand}`;
+}
+
+function isCodexTask(task: Task) {
+  const haystack = `${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command}`.toLowerCase();
+  return /\bcodex\b/.test(haystack);
+}
+
+function buildCodexResumeLastCommand(task: Task) {
+  const command = task.command.toLowerCase();
+  if (task.agentProfileId === "ai-dev-container-codex" || /docker\s+exec\b.*\bcodex\b/.test(command)) {
+    return "docker start taskdeck-ai-dev >/dev/null && docker exec -it -w /workspace taskdeck-ai-dev sh -lc 'codex resume --last'";
+  }
+  return "codex resume --last";
 }
 
 function agentOrCommandLabel(command: string) {

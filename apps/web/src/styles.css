@@ -1086,6 +1086,11 @@ dd {
   font-size: 12px;
 }
 
+.task-detail-actions button[data-priority="secondary"] {
+  border-color: var(--line);
+  color: var(--status-muted);
+}
+
 .task-action-error {
   margin: 10px 0 0;
   padding: 8px 10px;

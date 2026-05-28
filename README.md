@@ -66,6 +66,8 @@ Expanded task cards show command, cwd, process status, exit code, timing, initia
 
 Completed and other non-running tasks can be rerun from the expanded selected task card. Rerun starts a new task with the same title, command, and cwd, leaving the original task record and log intact.
 
+Expanded task cards can also resume agent sessions. Tasks with a saved `resumeCommand` show a primary Resume action that starts a new `Resume: ...` task in the same cwd without replaying the original initial instruction. Older Codex tasks without saved resume metadata show a lower-priority Resume last action.
+
 The terminal pane keeps xterm.js as the renderer while adding operator controls for follow mode, clearing the current view, reloading persisted logs, copying the bounded visible log buffer, and counting simple search matches.
 
 Terminal input is sent through the fixed bottom composer. It targets the selected running PTY and stays disabled for read-only logs, disconnected sessions, or no selected task.

@@ -26,6 +26,7 @@ export function App() {
   const [lastOutput, setLastOutput] = useState<OutputEvent | null>(null);
   const [taskDeckContext, setTaskDeckContext] = useState<TaskDeckContext | null>(null);
   const [taskActionError, setTaskActionError] = useState("");
+  const [pendingResumeKeys, setPendingResumeKeys] = useState<string[]>([]);
   const socketRef = useRef<WebSocket | null>(null);
   const outputSeqRef = useRef(0);
   const selectedTaskIdRef = useRef<string | null>(null);
@@ -72,6 +73,7 @@ export function App() {
 
         if (message.type === "started") {
           setSelectedTaskId(message.taskId);
+          setPendingResumeKeys([]);
           return;
         }
 
@@ -83,6 +85,7 @@ export function App() {
 
         if (message.type === "error") {
           setTaskActionError(message.message);
+          setPendingResumeKeys([]);
           outputSeqRef.current += 1;
           setLastOutput({
             seq: outputSeqRef.current,
@@ -173,6 +176,45 @@ export function App() {
     }
   };
 
+  const resumeTask = (task: Task) => {
+    const resumeCommand = task.resumeCommand?.trim();
+    if (!resumeCommand) {
+      return;
+    }
+    startResumeTask(task, resumeCommand, task.sessionMode || "custom_resume");
+  };
+
+  const resumeLastTask = (task: Task) => {
+    if (!isCodexTask(task)) {
+      return;
+    }
+    startResumeTask(task, buildCodexResumeLastCommand(task), "resume_last");
+  };
+
+  const startResumeTask = (task: Task, resumeCommand: string, sessionMode: string) => {
+    const resumeKey = resumeTaskKey(task.id, resumeCommand);
+    if (pendingResumeKeys.includes(resumeKey)) {
+      return;
+    }
+    setPendingResumeKeys((current) => [...current, resumeKey]);
+    const didStart = createTask({
+      title: `Resume: ${task.title}`,
+      command: resumeCommand,
+      cwd: task.cwd,
+      agentProfileId: task.agentProfileId,
+      agentLabel: task.agentLabel,
+      sessionMode,
+      resumeCommand,
+    });
+    if (!didStart) {
+      setPendingResumeKeys((current) => current.filter((key) => key !== resumeKey));
+      return;
+    }
+    window.setTimeout(() => {
+      setPendingResumeKeys((current) => current.filter((key) => key !== resumeKey));
+    }, 4000);
+  };
+
   const clearTasks = async () => {
     const response = await fetch("/api/tasks", { method: "DELETE" });
     const payload = (await response.json()) as {
@@ -222,6 +264,9 @@ export function App() {
           onClearTasks={clearTasks}
           onInterruptTask={interruptTask}
           onRerunTask={rerunTask}
+          onResumeLastTask={resumeLastTask}
+          onResumeTask={resumeTask}
+          pendingResumeKeys={pendingResumeKeys}
           onSelectTask={setSelectedTaskId}
         />
         <TerminalPane
@@ -240,6 +285,23 @@ export function App() {
       </section>
     </main>
   );
+}
+
+function resumeTaskKey(taskId: string, resumeCommand: string) {
+  return `${taskId}:${resumeCommand}`;
+}
+
+function isCodexTask(task: Task) {
+  const haystack = `${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command}`.toLowerCase();
+  return /\bcodex\b/.test(haystack);
+}
+
+function buildCodexResumeLastCommand(task: Task) {
+  const command = task.command.toLowerCase();
+  if (task.agentProfileId === "ai-dev-container-codex" || /docker\s+exec\b.*\bcodex\b/.test(command)) {
+    return "docker start taskdeck-ai-dev >/dev/null && docker exec -it -w /workspace taskdeck-ai-dev sh -lc 'codex resume --last'";
+  }
+  return "codex resume --last";
 }
 
 function getRunningTaskIdsFromMessage(message: { runningTaskId?: string | null; runningTaskIds?: string[] }) {
