@@ -52,7 +52,6 @@ export function TaskList({
 
   const selectTask = (taskId: string) => {
     onSelectTask(taskId);
-    setExpandedTaskIds((current) => new Set(current).add(taskId));
   };
 
   const confirmResumeLast = (task: Task) => {
@@ -141,8 +140,15 @@ export function TaskList({
                 </span>
               </button>
               <div className="task-card-actions">
-                <button aria-expanded={isExpanded} onClick={() => toggleExpanded(task.id)} type="button">
-                  {isExpanded ? "Less" : "More"}
+                <button
+                  aria-expanded={isExpanded}
+                  aria-label={isExpanded ? "Collapse task details" : "Expand task details"}
+                  className="task-expand-button"
+                  onClick={() => toggleExpanded(task.id)}
+                  title={isExpanded ? "Collapse task details" : "Expand task details"}
+                  type="button"
+                >
+                  {isExpanded ? "⌃" : "⌄"}
                 </button>
                 <button onClick={() => onClearTask(task.id)} type="button">
                   Clear

@@ -198,7 +198,7 @@ export function App() {
     }
     setPendingResumeKeys((current) => [...current, resumeKey]);
     const didStart = createTask({
-      title: `Resume: ${task.title}`,
+      title: `${sessionMode === "resume_last" ? "Resume last" : "Resume saved"}: ${task.title}`,
       command: resumeCommand,
       cwd: task.cwd,
       agentProfileId: task.agentProfileId,
