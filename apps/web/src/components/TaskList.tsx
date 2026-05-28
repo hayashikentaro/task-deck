@@ -137,19 +137,28 @@ function filterLabel(filter: TaskFilter) {
 
 function taskTone(task: Task, runningTaskIds: Set<string>) {
   if (task.agentState === "failed" || task.agentState === "stopped") {
-    return "attention";
+    return task.agentState;
   }
-  if (task.agentState === "waiting_input" || task.agentState === "waiting_approval" || task.agentState === "review_ready") {
-    return "risk";
+  if (
+    task.agentState === "waiting_input" ||
+    task.agentState === "waiting_approval" ||
+    task.agentState === "review_ready"
+  ) {
+    return task.agentState;
   }
-  if (runningTaskIds.has(task.id) || task.agentState === "starting" || task.agentState === "thinking" || task.agentState === "working") {
-    return "active";
+  if (
+    runningTaskIds.has(task.id) ||
+    task.agentState === "starting" ||
+    task.agentState === "thinking" ||
+    task.agentState === "working"
+  ) {
+    return task.agentState;
   }
   if (task.risk.level === "high" || task.risk.level === "medium") {
     return "risk";
   }
   if (task.agentState === "done") {
-    return "subdued";
+    return "done";
   }
   return "neutral";
 }
