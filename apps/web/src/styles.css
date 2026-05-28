@@ -848,20 +848,34 @@ dd {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   gap: 8px;
-  align-items: center;
+  align-items: end;
 }
 
-.input-composer input {
-  height: 42px;
+.input-composer textarea {
+  min-height: 42px;
+  max-height: 140px;
   border-color: var(--line-strong);
   background: var(--surface-input);
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  line-height: 1.4;
+  resize: none;
+  overflow-y: auto;
+}
+
+.composer-meta {
+  display: grid;
+  gap: 3px;
+  padding-bottom: 4px;
 }
 
 .input-composer span {
   color: var(--status-muted);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.composer-hint {
+  font-size: 11px;
 }
 
 .input-composer button {
@@ -938,7 +952,7 @@ dd {
     grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
-  .input-composer span {
+  .composer-meta {
     grid-column: 1 / -1;
     grid-row: 2;
   }
@@ -957,6 +971,88 @@ dd {
 .right-rail {
   display: block;
   overflow: auto;
+}
+
+.diagnostics-panel {
+  min-width: 0;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.diagnostics-panel .pane-heading,
+.diagnostics-body {
+  padding: 12px;
+}
+
+.diagnostics-panel .pane-heading {
+  border-bottom: 1px solid var(--line);
+}
+
+.diagnostics-panel button {
+  height: 32px;
+  padding: 0 10px;
+}
+
+.diagnostics-body {
+  display: grid;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.diagnostics-body p {
+  margin: 0;
+}
+
+.diagnostic-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.diagnostic-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagnostic-row strong {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: var(--status-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.diagnostic-row strong[data-state="ok"] {
+  border-color: var(--status-done-border);
+  color: var(--status-done);
+}
+
+.diagnostic-row strong[data-state="warn"] {
+  border-color: var(--status-risk-medium);
+  color: var(--status-risk-medium);
+}
+
+.diagnostic-container {
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.diagnostic-container small,
+.diagnostic-note {
+  color: var(--status-muted);
+}
+
+.diagnostic-note code {
+  color: var(--text-secondary);
 }
 
 .task-create-panel {

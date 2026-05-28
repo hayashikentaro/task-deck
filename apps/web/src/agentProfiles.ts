@@ -17,7 +17,8 @@ export const defaultAgentProfiles: AgentProfile[] = [
     id: "goose-container",
     label: "Goose Container",
     command: "docker exec -it chrome-goose-1 bash",
-    description: "Enter the existing Goose container shell",
+    description: "Enter the existing chrome-goose-1 shell; run goose inside the container when needed",
+    diagnosticContainer: "chrome-goose-1",
   },
   {
     id: "aider",

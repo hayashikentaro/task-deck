@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, KeyboardEvent, useLayoutEffect, useRef, useState } from "react";
 import type { Task } from "../types";
 
 type InputComposerProps = {
@@ -7,17 +7,43 @@ type InputComposerProps = {
   send: (payload: unknown) => boolean;
 };
 
+const maxComposerHeight = 140;
+
 export function InputComposer({ isConnected, task, send }: InputComposerProps) {
   const [value, setValue] = useState("");
+  const [isComposing, setIsComposing] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const canSend = Boolean(task && task.status === "running" && isConnected);
   const modeText = getComposerMode(task, isConnected);
 
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      return;
+    }
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, maxComposerHeight)}px`;
+  }, [value]);
+
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
+    sendValue();
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter" || event.shiftKey || isComposing || event.nativeEvent.isComposing) {
+      return;
+    }
+    event.preventDefault();
+    sendValue();
+  };
+
+  const sendValue = () => {
     if (!task || !canSend || !value) {
       return;
     }
-    const didSend = send({ type: "input", taskId: task.id, data: `${value}\r` });
+    const data = value.endsWith("\n") || value.endsWith("\r") ? value : `${value}\r`;
+    const didSend = send({ type: "input", taskId: task.id, data });
     if (didSend) {
       setValue("");
     }
@@ -29,13 +55,21 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
         <button className="composer-plus" disabled type="button" aria-label="Attach context">
           +
         </button>
-        <input
+        <textarea
+          ref={textareaRef}
           disabled={!canSend}
           onChange={(event) => setValue(event.target.value)}
+          onCompositionEnd={() => setIsComposing(false)}
+          onCompositionStart={() => setIsComposing(true)}
+          onKeyDown={handleKeyDown}
           placeholder={canSend ? "Send input to running PTY" : modeText}
+          rows={1}
           value={value}
         />
-        <span>{modeText}</span>
+        <div className="composer-meta">
+          <span className="composer-status">{modeText}</span>
+          <span className="composer-hint">Enter to send · Shift+Enter newline</span>
+        </div>
         <button disabled={!canSend || !value} type="submit">
           Send
         </button>

@@ -47,7 +47,8 @@ const defaultAgentProfiles = [
     id: "goose-container",
     label: "Goose Container",
     command: "docker exec -it chrome-goose-1 bash",
-    description: "Enter the existing Goose container shell",
+    description: "Enter the existing chrome-goose-1 shell; run goose inside the container when needed",
+    diagnosticContainer: "chrome-goose-1",
   },
   {
     id: "aider",
@@ -99,6 +100,10 @@ app.get("/api/context", async (_request, response) => {
     cwdSuggestions: await buildCwdSuggestions(),
     agentProfiles: await loadAgentProfiles(),
   });
+});
+
+app.get("/api/diagnostics", async (_request, response) => {
+  response.json(await buildDiagnostics());
 });
 
 app.post("/api/validate-cwd", async (request, response) => {
@@ -739,6 +744,7 @@ function sanitizeAgentProfiles(rawProfiles) {
     const label = String(rawProfile?.label || "").trim();
     const command = String(rawProfile?.command || "").trim();
     const description = String(rawProfile?.description || "").trim();
+    const diagnosticContainer = String(rawProfile?.diagnosticContainer || "").trim();
 
     if (!id || !label || seenIds.has(id)) {
       continue;
@@ -749,6 +755,7 @@ function sanitizeAgentProfiles(rawProfiles) {
       label,
       command,
       description,
+      ...(diagnosticContainer ? { diagnosticContainer } : {}),
     });
     seenIds.add(id);
   }
@@ -772,6 +779,74 @@ function ensureCustomAgentProfile(profiles) {
   ];
 }
 
+async function buildDiagnostics() {
+  const profiles = await loadAgentProfiles();
+  const containerNames = Array.from(
+    new Set(profiles.map((profile) => profile.diagnosticContainer).filter(Boolean)),
+  );
+  const docker = await checkDocker();
+  const containers = docker.ok
+    ? await Promise.all(containerNames.map((containerName) => inspectContainer(containerName)))
+    : containerNames.map((containerName) => ({
+        name: containerName,
+        present: false,
+        running: false,
+        status: "unknown",
+        image: "",
+        error: docker.message,
+      }));
+
+  return {
+    checkedAt: new Date().toISOString(),
+    docker,
+    containers,
+  };
+}
+
+async function checkDocker() {
+  try {
+    const { stdout } = await execFileAsync("docker", ["version", "--format", "{{.Server.Version}}"], {
+      timeout: 3000,
+    });
+    const version = stdout.trim();
+    return {
+      ok: true,
+      message: version ? `Docker daemon reachable (${version}).` : "Docker daemon reachable.",
+      version,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message: `Docker is not reachable: ${error.message}`,
+    };
+  }
+}
+
+async function inspectContainer(containerName) {
+  try {
+    const { stdout } = await execFileAsync("docker", ["inspect", containerName], {
+      maxBuffer: 1024 * 1024,
+      timeout: 3000,
+    });
+    const [container] = JSON.parse(stdout);
+    return {
+      name: containerName,
+      present: true,
+      running: Boolean(container?.State?.Running),
+      status: String(container?.State?.Status || "unknown"),
+      image: String(container?.Config?.Image || container?.Image || ""),
+    };
+  } catch (error) {
+    return {
+      name: containerName,
+      present: false,
+      running: false,
+      status: "missing",
+      image: "",
+      error: error.message,
+    };
+  }
+}
 function persistTasks() {
   const serializedTasks = Array.from(tasks.values()).map(serializeTask);
 

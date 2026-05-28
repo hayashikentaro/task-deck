@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DiagnosticsPane } from "./components/DiagnosticsPane";
 import { TaskCreateForm } from "./components/TaskCreateForm";
 import { TaskList } from "./components/TaskList";
 import { TerminalPane } from "./components/TerminalPane";
@@ -281,6 +282,7 @@ export function App() {
             disabled={connectionState !== "connected"}
             onCreateTask={createTask}
           />
+          <DiagnosticsPane isConnected={connectionState === "connected"} />
         </aside>
       </section>
     </main>

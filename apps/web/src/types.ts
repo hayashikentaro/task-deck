@@ -60,6 +60,26 @@ export type AgentProfile = {
   label: string;
   command: string;
   description: string;
+  diagnosticContainer?: string;
+};
+
+export type DiagnosticContainer = {
+  name: string;
+  present: boolean;
+  running: boolean;
+  status: string;
+  image: string;
+  error?: string;
+};
+
+export type TaskDeckDiagnostics = {
+  checkedAt: string;
+  docker: {
+    ok: boolean;
+    message: string;
+    version?: string;
+  };
+  containers: DiagnosticContainer[];
 };
 
 export type CwdSuggestion = {

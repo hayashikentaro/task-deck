@@ -29,6 +29,7 @@ packages/core Shared task-state primitives
 
 ```text
 GET /api/context
+GET /api/diagnostics
 POST /api/validate-cwd
 GET /api/tasks
 DELETE /api/tasks
@@ -42,6 +43,8 @@ DELETE /api/presets
 ```
 
 `GET /api/context` returns the repository root, default cwd, server cwd, shell, path separator, git-repository status, in-repository cwd suggestions, and configured agent profiles for task creation.
+
+`GET /api/diagnostics` returns Docker reachability and configured agent-container status for quick launcher diagnostics.
 
 `POST /api/validate-cwd` accepts `{ "cwd": "apps/web" }` and returns whether the cwd resolves to an existing directory, its absolute path, and git-repository status. The task form uses it to validate cwd before starting a task.
 
@@ -70,6 +73,6 @@ Expanded task cards can also resume agent sessions. Tasks with a saved `resumeCo
 
 The terminal pane keeps xterm.js as the renderer while adding operator controls for follow mode, clearing the current view, reloading persisted logs, copying the bounded visible log buffer, and counting simple search matches.
 
-Terminal input is sent through the fixed bottom composer. It targets the selected running PTY and stays disabled for read-only logs, disconnected sessions, or no selected task.
+Terminal input is sent through the fixed bottom composer. It targets the selected running PTY and stays disabled for read-only logs, disconnected sessions, or no selected task. The composer supports multi-line instructions: Enter sends, Shift+Enter inserts a newline, and IME composition is preserved for Japanese input.
 
 TaskDeck also stores the 10 most recent task presets by `command` and `cwd` so common task shapes can be restarted quickly.
