@@ -3,7 +3,7 @@
     {
       "id": "ai-dev-container-codex",
       "label": "Codex CLI (AI dev container)",
-      "command": "docker start taskdeck-ai-dev >/dev/null && docker exec -it -w /workspace taskdeck-ai-dev codex",
+      "command": "docker start taskdeck-ai-dev >/dev/null && docker exec -it -w /workspace taskdeck-ai-dev sh -lc 'codex resume --last || codex'",
       "description": "Run Codex CLI inside the chrome AI development container"
     },
     {
