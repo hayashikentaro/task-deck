@@ -13,12 +13,6 @@
       "description": "Run Goose inside the chrome AI development container"
     },
     {
-      "id": "aider",
-      "label": "aider",
-      "command": "aider",
-      "description": "Git-aware coding assistant"
-    },
-    {
       "id": "shell-zsh",
       "label": "zsh",
       "command": "zsh",
