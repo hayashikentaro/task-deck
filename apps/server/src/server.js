@@ -44,6 +44,12 @@ const defaultAgentProfiles = [
     description: "Local/alternative agent option",
   },
   {
+    id: "goose-container",
+    label: "Goose Container",
+    command: "docker exec -it chrome-goose-1 bash",
+    description: "Enter the existing Goose container shell",
+  },
+  {
     id: "aider",
     label: "aider",
     command: "aider",

@@ -13,6 +13,12 @@
       "description": "Run Goose inside the chrome AI development container"
     },
     {
+      "id": "goose-container",
+      "label": "Goose Container",
+      "command": "docker exec -it chrome-goose-1 bash",
+      "description": "Enter the existing Goose container shell"
+    },
+    {
       "id": "aider",
       "label": "aider",
       "command": "aider",
