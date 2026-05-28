@@ -9,12 +9,13 @@ type TaskCreateFormProps = {
 };
 
 const defaultAgentProfileId = "codex";
-type CodexSessionMode = "new" | "resume";
+type SessionMode = "new" | "resume_last" | "custom_resume";
 
 export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFormProps) {
   const [selectedAgentId, setSelectedAgentId] = useState(defaultAgentProfileId);
   const [customCommand, setCustomCommand] = useState("");
-  const [codexSessionMode, setCodexSessionMode] = useState<CodexSessionMode>("new");
+  const [customResumeCommand, setCustomResumeCommand] = useState("");
+  const [sessionMode, setSessionMode] = useState<SessionMode>("new");
   const [initialInstruction, setInitialInstruction] = useState("");
   const [cwd, setCwd] = useState("");
   const [cwdValidation, setCwdValidation] = useState<CwdValidation | null>(null);
@@ -72,11 +73,8 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
   const selectedAgent =
     agentProfiles.find((profile) => profile.id === selectedAgentId) ?? agentProfiles[0] ?? defaultAgentProfiles[0];
   const cwdIsValid = cwdValidation?.ok ?? false;
-  const isCodexAgent = isCodexProfile(selectedAgent.id, selectedAgent.command);
-  const command =
-    selectedAgent.id === "custom"
-      ? customCommand.trim()
-      : buildAgentCommand(selectedAgent.command, isCodexAgent ? codexSessionMode : "new");
+  const baseCommand = selectedAgent.id === "custom" ? customCommand.trim() : selectedAgent.command;
+  const command = buildAgentCommand(baseCommand, sessionMode, customResumeCommand);
   const canStart = !disabled && cwdIsValid && !isValidatingCwd && Boolean(command);
 
   useEffect(() => {
@@ -114,16 +112,22 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
             ))}
           </select>
         </div>
-        {isCodexAgent ? (
-          <label className="codex-session-field">
-            <span>Session</span>
-            <select
-              value={codexSessionMode}
-              onChange={(event) => setCodexSessionMode(event.target.value as CodexSessionMode)}
-            >
-              <option value="new">New</option>
-              <option value="resume">Resume last</option>
-            </select>
+        <label className="session-mode-field">
+          <span>Session</span>
+          <select value={sessionMode} onChange={(event) => setSessionMode(event.target.value as SessionMode)}>
+            <option value="new">New session</option>
+            <option value="resume_last">Resume last</option>
+            <option value="custom_resume">Custom resume command</option>
+          </select>
+        </label>
+        {sessionMode === "custom_resume" ? (
+          <label className="custom-resume-field">
+            <span>Custom resume command</span>
+            <input
+              placeholder="Command that resumes the external agent session"
+              value={customResumeCommand}
+              onChange={(event) => setCustomResumeCommand(event.target.value)}
+            />
           </label>
         ) : null}
         <label className="workspace-field">
@@ -169,8 +173,12 @@ function isCodexProfile(profileId: string, command: string) {
   return profileId.includes("codex") || /\bcodex\b/.test(command);
 }
 
-function buildAgentCommand(command: string, sessionMode: CodexSessionMode) {
-  if (sessionMode === "resume") {
+function buildAgentCommand(command: string, sessionMode: SessionMode, customResumeCommand: string) {
+  if (sessionMode === "custom_resume") {
+    return customResumeCommand.trim();
+  }
+
+  if (sessionMode === "resume_last" && isCodexProfile("", command)) {
     if (command.includes("codex resume")) {
       return command;
     }
