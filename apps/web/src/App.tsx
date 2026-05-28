@@ -188,7 +188,7 @@ export function App() {
     if (!isCodexTask(task)) {
       return;
     }
-    startResumeTask(task, buildCodexResumeLastCommand(task), "resume_last");
+    startResumeTask(task, "codex resume --last", "resume_last");
   };
 
   const startResumeTask = (task: Task, resumeCommand: string, sessionMode: string) => {
@@ -294,14 +294,6 @@ function resumeTaskKey(taskId: string, resumeCommand: string) {
 function isCodexTask(task: Task) {
   const haystack = `${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command}`.toLowerCase();
   return /\bcodex\b/.test(haystack);
-}
-
-function buildCodexResumeLastCommand(task: Task) {
-  const command = task.command.toLowerCase();
-  if (task.agentProfileId === "ai-dev-container-codex" || /docker\s+exec\b.*\bcodex\b/.test(command)) {
-    return "docker start taskdeck-ai-dev >/dev/null && docker exec -it -w /workspace taskdeck-ai-dev sh -lc 'codex resume --last'";
-  }
-  return "codex resume --last";
 }
 
 function getRunningTaskIdsFromMessage(message: { runningTaskId?: string | null; runningTaskIds?: string[] }) {
