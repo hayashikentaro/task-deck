@@ -1119,6 +1119,39 @@ dd {
   white-space: nowrap;
 }
 
+.resume-last-confirmation {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  border: 1px solid var(--status-needs-input);
+  border-radius: 6px;
+  background: var(--tone-risk-bg);
+  padding: 9px;
+}
+
+.resume-last-confirmation p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.resume-last-confirmation div {
+  display: flex;
+  justify-content: end;
+  gap: 8px;
+}
+
+.resume-last-confirmation button {
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.resume-last-confirmation button[data-priority="secondary"] {
+  border-color: var(--line);
+  color: var(--status-muted);
+}
+
 .task-action-error {
   margin: 10px 0 0;
   padding: 8px 10px;

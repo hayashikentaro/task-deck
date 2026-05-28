@@ -34,6 +34,7 @@ export function TaskList({
 }: TaskListProps) {
   const [filter, setFilter] = useState<TaskFilter>("all");
   const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set());
+  const [confirmResumeLastTaskId, setConfirmResumeLastTaskId] = useState<string | null>(null);
   const runningTaskIdSet = useMemo(() => new Set(runningTaskIds), [runningTaskIds]);
   const visibleTasks = useMemo(() => tasks.filter((task) => matchesFilter(task, filter)), [filter, tasks]);
 
@@ -52,6 +53,11 @@ export function TaskList({
   const selectTask = (taskId: string) => {
     onSelectTask(taskId);
     setExpandedTaskIds((current) => new Set(current).add(taskId));
+  };
+
+  const confirmResumeLast = (task: Task) => {
+    onResumeLastTask(task);
+    setConfirmResumeLastTaskId(null);
   };
 
   return (
@@ -98,6 +104,7 @@ export function TaskList({
           const canResume = Boolean(resumeCommand) && !isResumePending;
           const canResumeLast = Boolean(resumeLastCommand) && !isResumeLastPending;
           const resumePreviewCommand = resumeCommand || resumeLastCommand;
+          const isConfirmingResumeLast = confirmResumeLastTaskId === task.id;
           return (
             <article
               className="task-list-item"
@@ -174,27 +181,44 @@ export function TaskList({
                       ) : null}
                       <div className="task-detail-actions">
                         <button disabled={!canRerun} onClick={onRerunTask} type="button">
-                          Rerun
+                          Rerun command
                         </button>
                         <button disabled={task.status !== "running"} onClick={onInterruptTask} type="button">
                           Interrupt
                         </button>
                         {resumeCommand ? (
                           <button disabled={!canResume} onClick={() => onResumeTask(task)} type="button">
-                            Resume
+                            Resume saved
                           </button>
                         ) : null}
                         {canResumeLast ? (
                           <button
                             data-priority="secondary"
                             disabled={isResumeLastPending}
-                            onClick={() => onResumeLastTask(task)}
+                            onClick={() => setConfirmResumeLastTaskId(task.id)}
                             type="button"
                           >
                             Resume last
                           </button>
                         ) : null}
                       </div>
+                      {isConfirmingResumeLast ? (
+                        <div className="resume-last-confirmation">
+                          <p>Resume last uses the latest Codex session, not necessarily this task.</p>
+                          <div>
+                            <button disabled={isResumeLastPending} onClick={() => confirmResumeLast(task)} type="button">
+                              Confirm resume last
+                            </button>
+                            <button
+                              data-priority="secondary"
+                              onClick={() => setConfirmResumeLastTaskId(null)}
+                              type="button"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
                     </>
                   ) : null}
                 </div>
