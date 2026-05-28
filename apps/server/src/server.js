@@ -29,7 +29,9 @@ const dataRoot = path.join(repoRoot, ".taskdeck");
 const taskStorePath = path.join(dataRoot, "tasks.json");
 const presetStorePath = path.join(dataRoot, "presets.json");
 const logRoot = path.join(dataRoot, "logs");
-const configPath = path.join(repoRoot, "taskdeck.config.json");
+const defaultConfigPath = path.join(repoRoot, "taskdeck.config.json");
+const localConfigPath = path.join(repoRoot, "taskdeck.local.json");
+const envConfigPath = process.env.TASKDECK_CONFIG ? path.resolve(process.env.TASKDECK_CONFIG) : "";
 const defaultAgentProfiles = [
   {
     id: "codex",
@@ -99,11 +101,16 @@ app.get("/api/context", async (_request, response) => {
     isGitRepo: await cwdIsGitRepo(repoRoot),
     cwdSuggestions: await buildCwdSuggestions(),
     agentProfiles: await loadAgentProfiles(),
+    agentProfileConfig: await getAgentProfileConfigSummary(),
   });
 });
 
 app.get("/api/diagnostics", async (_request, response) => {
   response.json(await buildDiagnostics());
+});
+
+app.post("/api/diagnostics/containers/:containerName/start", async (request, response) => {
+  response.json(await startDiagnosticContainer(request.params.containerName));
 });
 
 app.post("/api/validate-cwd", async (request, response) => {
@@ -715,21 +722,58 @@ async function readJsonArray(filePath, label) {
 }
 
 async function loadAgentProfiles() {
-  try {
-    const rawContents = await fs.readFile(configPath, "utf8");
-    const parsed = JSON.parse(rawContents);
-    const configuredProfiles = sanitizeAgentProfiles(parsed?.agentProfiles);
-    if (configuredProfiles.length > 0) {
-      return ensureCustomAgentProfile(configuredProfiles);
-    }
-    console.warn(`TaskDeck ignored ${configPath} because it did not contain valid agentProfiles.`);
-  } catch (error) {
-    if (error.code !== "ENOENT") {
-      console.warn(`TaskDeck could not read ${configPath}: ${error.message}`);
+  const loadedConfig = await loadAgentProfileConfig();
+  if (loadedConfig.profiles.length > 0) {
+    return ensureCustomAgentProfile(loadedConfig.profiles);
+  }
+  return defaultAgentProfiles;
+}
+
+async function getAgentProfileConfigSummary() {
+  const loadedConfig = await loadAgentProfileConfig();
+  return {
+    source: loadedConfig.source,
+    path: loadedConfig.path,
+    message: loadedConfig.message,
+  };
+}
+
+async function loadAgentProfileConfig() {
+  for (const configCandidate of getAgentProfileConfigCandidates()) {
+    try {
+      const rawContents = await fs.readFile(configCandidate.path, "utf8");
+      const parsed = JSON.parse(rawContents);
+      const configuredProfiles = sanitizeAgentProfiles(parsed?.agentProfiles);
+      if (configuredProfiles.length > 0) {
+        return {
+          source: configCandidate.source,
+          path: configCandidate.path,
+          message: `Loaded ${configuredProfiles.length} agent profiles from ${configCandidate.source}.`,
+          profiles: configuredProfiles,
+        };
+      }
+      console.warn(`TaskDeck ignored ${configCandidate.path} because it did not contain valid agentProfiles.`);
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        console.warn(`TaskDeck could not read ${configCandidate.path}: ${error.message}`);
+      }
     }
   }
 
-  return defaultAgentProfiles;
+  return {
+    source: "default",
+    path: "",
+    message: "Using built-in agent profiles.",
+    profiles: [],
+  };
+}
+
+function getAgentProfileConfigCandidates() {
+  return [
+    ...(envConfigPath ? [{ source: "TASKDECK_CONFIG", path: envConfigPath }] : []),
+    { source: "taskdeck.local.json", path: localConfigPath },
+    { source: "taskdeck.config.json", path: defaultConfigPath },
+  ];
 }
 
 function sanitizeAgentProfiles(rawProfiles) {
@@ -796,8 +840,11 @@ async function buildDiagnostics() {
         error: docker.message,
       }));
 
+  const config = await getAgentProfileConfigSummary();
+
   return {
     checkedAt: new Date().toISOString(),
+    config,
     docker,
     containers,
   };
@@ -820,6 +867,45 @@ async function checkDocker() {
       message: `Docker is not reachable: ${error.message}`,
     };
   }
+}
+
+async function startDiagnosticContainer(containerName) {
+  if (!isSafeContainerName(containerName)) {
+    return {
+      ok: false,
+      message: "Invalid container name.",
+      container: null,
+    };
+  }
+
+  const profiles = await loadAgentProfiles();
+  const allowedContainers = new Set(profiles.map((profile) => profile.diagnosticContainer).filter(Boolean));
+  if (!allowedContainers.has(containerName)) {
+    return {
+      ok: false,
+      message: "Container is not configured for diagnostics.",
+      container: null,
+    };
+  }
+
+  try {
+    await execFileAsync("docker", ["start", containerName], { timeout: 5000 });
+    return {
+      ok: true,
+      message: `Started ${containerName}.`,
+      container: await inspectContainer(containerName),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message: `Could not start ${containerName}: ${error.message}`,
+      container: await inspectContainer(containerName),
+    };
+  }
+}
+
+function isSafeContainerName(containerName) {
+  return /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(containerName);
 }
 
 async function inspectContainer(containerName) {
@@ -847,6 +933,7 @@ async function inspectContainer(containerName) {
     };
   }
 }
+
 function persistTasks() {
   const serializedTasks = Array.from(tasks.values()).map(serializeTask);
 

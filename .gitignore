@@ -7,3 +7,4 @@ apps/web/dist/
 *.log
 .env
 .env.local
+taskdeck.local.json

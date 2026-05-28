@@ -31,11 +31,16 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key !== "Enter" || event.shiftKey || isComposing || event.nativeEvent.isComposing) {
+    if (event.key !== "Enter" || isComposing || event.nativeEvent.isComposing) {
       return;
     }
-    event.preventDefault();
-    sendValue();
+    if (event.shiftKey) {
+      return;
+    }
+    if (event.metaKey || event.ctrlKey || !event.altKey) {
+      event.preventDefault();
+      sendValue();
+    }
   };
 
   const sendValue = () => {
@@ -57,6 +62,9 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
         </button>
         <textarea
           ref={textareaRef}
+          autoCapitalize="off"
+          autoComplete="off"
+          autoCorrect="off"
           disabled={!canSend}
           onChange={(event) => setValue(event.target.value)}
           onCompositionEnd={() => setIsComposing(false)}
@@ -64,11 +72,12 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
           onKeyDown={handleKeyDown}
           placeholder={canSend ? "Send input to running PTY" : modeText}
           rows={1}
+          spellCheck={false}
           value={value}
         />
         <div className="composer-meta">
           <span className="composer-status">{modeText}</span>
-          <span className="composer-hint">Enter to send · Shift+Enter newline</span>
+          <span className="composer-hint">Enter to send · Shift+Enter newline · Cmd/Ctrl+Enter send</span>
         </div>
         <button disabled={!canSend || !value} type="submit">
           Send

@@ -1046,6 +1046,18 @@ dd {
   padding-top: 10px;
 }
 
+.diagnostic-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.diagnostic-actions button {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
 .diagnostic-container small,
 .diagnostic-note {
   color: var(--status-muted);

@@ -72,8 +72,15 @@ export type DiagnosticContainer = {
   error?: string;
 };
 
+export type AgentProfileConfigSummary = {
+  source: string;
+  path: string;
+  message: string;
+};
+
 export type TaskDeckDiagnostics = {
   checkedAt: string;
+  config: AgentProfileConfigSummary;
   docker: {
     ok: boolean;
     message: string;
@@ -97,6 +104,7 @@ export type TaskDeckContext = {
   isGitRepo: boolean;
   cwdSuggestions: CwdSuggestion[];
   agentProfiles: AgentProfile[];
+  agentProfileConfig?: AgentProfileConfigSummary;
 };
 
 export type CwdValidation = {
