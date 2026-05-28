@@ -29,6 +29,7 @@ export type Task = {
   endedAt: string | null;
   exitCode: number | null;
   signal: number | string | null;
+  initialInstruction?: string;
 };
 
 export type OutputEvent = {

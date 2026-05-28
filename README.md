@@ -59,9 +59,12 @@ Multiple tasks can exist in the task list, and multiple PTY-backed agent session
 
 Tasks carry both a low-level process `status` and a supervisor-facing `agentState` such as thinking, working, waiting for input, review ready, done, failed, or stopped. Task creation is centered on starting an AI agent session in a selected workspace. Agent profiles are loaded from `taskdeck.config.json`; the committed default includes Codex CLI and Goose commands that start and enter the `taskdeck-ai-dev` AI development container, plus aider, zsh, and custom PTY fallback entries. When the Codex container profile is selected, the form lets the operator choose a fresh Codex session or resume the most recent workspace session with `codex resume --last`. An optional initial instruction is sent to the running PTY after launch, and follow-up input goes through the bottom composer.
 
-The UI includes a compact fleet summary for total tasks plus thinking, working, needs-input, review-ready, done, and failed/stopped counts. Task list filters let the operator focus on all, active, needs-input, review-ready, done, failed/stopped, or risky tasks without changing the underlying task records.
+The UI is organized around a supervision-first workspace: the left rail is an expandable task-card list, the center pane is the terminal and persisted log view, the right rail launches new agent sessions, and the composer stays attached to the terminal. Task list filters let the operator focus on all, active, needs-input, review-ready, done, failed/stopped, or risky tasks without changing the underlying task records.
 
-Completed and other non-running tasks can be rerun from the selected task state pane. Rerun starts a new task with the same title, command, and cwd, leaving the original task record and log intact.
+Expanded task cards show command, cwd, process status, exit code, timing, initial instruction when available, and compact diff status. The former top summary strip and right-side task-state panel are intentionally folded into the card model.
+
+
+Completed and other non-running tasks can be rerun from the expanded selected task card. Rerun starts a new task with the same title, command, and cwd, leaving the original task record and log intact.
 
 The terminal pane keeps xterm.js as the renderer while adding operator controls for follow mode, clearing the current view, reloading persisted logs, copying the bounded visible log buffer, and counting simple search matches.
 

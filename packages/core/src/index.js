@@ -26,7 +26,7 @@ const dangerousPatterns = [
   />\s*\/dev\/sd[a-z]/,
 ];
 
-export function createTask({ title, command, cwd }) {
+export function createTask({ title, command, cwd, initialInstruction = "" }) {
   const now = new Date().toISOString();
   const normalizedCommand = command.trim();
   const normalizedTitle = title.trim() || normalizedCommand;
@@ -45,6 +45,7 @@ export function createTask({ title, command, cwd }) {
     endedAt: null,
     exitCode: null,
     signal: null,
+    initialInstruction,
   };
 }
 
@@ -102,6 +103,7 @@ export function serializeTask(task) {
     endedAt: task.endedAt,
     exitCode: task.exitCode,
     signal: task.signal,
+    initialInstruction: task.initialInstruction || "",
   };
 }
 

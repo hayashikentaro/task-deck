@@ -1,28 +1,52 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AgentState, Task } from "../types";
 
 type TaskFilter = "all" | "active" | "needs_input" | "review" | "done" | "failed" | "risk";
 
 type TaskListProps = {
+  actionError: string;
   tasks: Task[];
   selectedTaskId: string | null;
   runningTaskIds: string[];
   onClearTask: (taskId: string) => void;
   onClearTasks: () => void;
+  onInterruptTask: () => void;
+  onRerunTask: () => void;
   onSelectTask: (taskId: string) => void;
 };
 
 export function TaskList({
+  actionError,
   tasks,
   selectedTaskId,
   runningTaskIds,
   onClearTask,
   onClearTasks,
+  onInterruptTask,
+  onRerunTask,
   onSelectTask,
 }: TaskListProps) {
   const [filter, setFilter] = useState<TaskFilter>("all");
+  const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set());
   const runningTaskIdSet = useMemo(() => new Set(runningTaskIds), [runningTaskIds]);
   const visibleTasks = useMemo(() => tasks.filter((task) => matchesFilter(task, filter)), [filter, tasks]);
+
+  const toggleExpanded = (taskId: string) => {
+    setExpandedTaskIds((current) => {
+      const next = new Set(current);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+      }
+      return next;
+    });
+  };
+
+  const selectTask = (taskId: string) => {
+    onSelectTask(taskId);
+    setExpandedTaskIds((current) => new Set(current).add(taskId));
+  };
 
   return (
     <aside className="task-list" aria-label="Tasks">
@@ -53,53 +77,133 @@ export function TaskList({
         {tasks.length > 0 && visibleTasks.length === 0 ? (
           <p className="empty-state">No tasks match this filter.</p>
         ) : null}
-        {visibleTasks.map((task) => (
-          <div
-            className="task-list-item"
-            data-selected={task.id === selectedTaskId}
-            data-tone={taskTone(task, runningTaskIdSet)}
-            key={task.id}
-          >
-            <button className="task-select-button" onClick={() => onSelectTask(task.id)} type="button">
-              <span className="task-row-heading">
-                <span className="task-title">{task.title}</span>
-                <span className="task-updated">{formatTime(task.updatedAt)}</span>
-              </span>
-              <span className="task-badge-row">
-                <span className="task-badge" data-kind={`agent-${task.agentState}`}>
-                  {agentStateLabel(task.agentState)}
-                </span>
-                <span className="task-badge" data-kind="status">
-                  {task.status}
-                  {runningTaskIdSet.has(task.id) ? " / active" : ""}
-                </span>
-                <span className="task-badge" data-kind={`risk-${task.risk.level}`}>
-                  {task.risk.level}
-                </span>
-                {task.exitCode === null ? null : (
-                  <span className="task-badge" data-kind="exit">
-                    exit {task.exitCode}
-                  </span>
-                )}
-              </span>
-              <span className="task-command" title={task.command}>
-                {shortCommand(task.command)}
-              </span>
-              <span className="task-cwd" title={task.cwd}>
-                {cwdLabel(task.cwd)}
-              </span>
-            </button>
-            <button
-              className="task-clear-button"
-              onClick={() => onClearTask(task.id)}
-              type="button"
+        {visibleTasks.map((task) => {
+          const isSelected = task.id === selectedTaskId;
+          const isExpanded = expandedTaskIds.has(task.id);
+          const canRerun = task.status !== "running" && runningTaskIds.length === 0;
+          return (
+            <article
+              className="task-list-item"
+              data-expanded={isExpanded}
+              data-selected={isSelected}
+              data-tone={taskTone(task, runningTaskIdSet)}
+              key={task.id}
             >
-              Clear
-            </button>
-          </div>
-        ))}
+              <button className="task-select-button" onClick={() => selectTask(task.id)} type="button">
+                <span className="task-row-heading">
+                  <span className="task-title">{task.title}</span>
+                  <span className="task-updated">{formatTime(task.updatedAt)}</span>
+                </span>
+                <span className="task-badge-row">
+                  <span className="task-badge" data-kind={`agent-${task.agentState}`}>
+                    {agentStateLabel(task.agentState)}
+                  </span>
+                  <span className="task-badge" data-kind={`risk-${task.risk.level}`}>
+                    {task.risk.level}
+                  </span>
+                  {task.exitCode === null ? null : (
+                    <span className="task-badge" data-kind="exit">
+                      exit {task.exitCode}
+                    </span>
+                  )}
+                </span>
+                <span className="task-card-meta">
+                  <span className="task-cwd" title={task.cwd}>
+                    {workspaceLabel(task.cwd)}
+                  </span>
+                  <span className="task-command" title={task.command}>
+                    {agentOrCommandLabel(task.command)}
+                  </span>
+                </span>
+              </button>
+              <div className="task-card-actions">
+                <button aria-expanded={isExpanded} onClick={() => toggleExpanded(task.id)} type="button">
+                  {isExpanded ? "Less" : "More"}
+                </button>
+                <button onClick={() => onClearTask(task.id)} type="button">
+                  Clear
+                </button>
+              </div>
+              {isExpanded ? (
+                <div className="task-card-detail">
+                  {isSelected && actionError ? <p className="task-action-error">{actionError}</p> : null}
+                  <dl className="task-detail-grid">
+                    <Info label="Command" value={task.command} />
+                    <Info label="CWD" value={task.cwd} />
+                    <Info label="Process" value={task.status} />
+                    <Info label="Exit" value={task.exitCode === null ? "-" : String(task.exitCode)} />
+                    <Info label="Started" value={formatDate(task.startedAt)} />
+                    <Info label="Updated" value={formatDate(task.updatedAt)} />
+                    <Info label="Initial instruction" value={task.initialInstruction || "-"} wide />
+                    <div className="task-detail-item">
+                      <dt>Diff</dt>
+                      <dd>
+                        <TaskDiffStatus task={task} />
+                      </dd>
+                    </div>
+                  </dl>
+                  {isSelected ? (
+                    <div className="task-detail-actions">
+                      <button disabled={!canRerun} onClick={onRerunTask} type="button">
+                        Rerun
+                      </button>
+                      <button disabled={task.status !== "running"} onClick={onInterruptTask} type="button">
+                        Interrupt
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
       </div>
     </aside>
+  );
+}
+
+function TaskDiffStatus({ task }: { task: Task }) {
+  const [summary, setSummary] = useState("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    setSummary("loading");
+    fetch(`/api/tasks/${task.id}/diff`)
+      .then((response) => response.json())
+      .then((payload: { diff?: string; isGitRepo?: boolean; message?: string; error?: string }) => {
+        if (cancelled) {
+          return;
+        }
+        if (payload.isGitRepo === false) {
+          setSummary(payload.message || "Not a git repository");
+          return;
+        }
+        if (payload.error) {
+          setSummary("Diff unavailable");
+          return;
+        }
+        setSummary(payload.diff ? "Diff ready" : "No diff");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSummary("Diff unavailable");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [task.id, task.updatedAt]);
+
+  return <span className="task-diff-summary">{summary}</span>;
+}
+
+function Info({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
+  return (
+    <div className="task-detail-item" data-wide={wide}>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
   );
 }
 
@@ -167,16 +271,31 @@ function agentStateLabel(agentState: AgentState) {
   return agentState.replace(/_/g, " ");
 }
 
+function agentOrCommandLabel(command: string) {
+  const lowered = command.toLowerCase();
+  if (/\bcodex\b/.test(lowered)) return "Codex CLI";
+  if (/\bgoose\b/.test(lowered)) return "Goose";
+  if (/\baider\b/.test(lowered)) return "aider";
+  return shortCommand(command);
+}
+
 function shortCommand(command: string) {
   return command.length > 54 ? `${command.slice(0, 51)}...` : command;
 }
 
-function cwdLabel(cwd: string) {
+function workspaceLabel(cwd: string) {
   const trimmed = cwd.replace(/\/+$/, "");
   const basename = trimmed.split("/").filter(Boolean).pop();
-  return basename ? `cwd ${basename}` : "Repository root";
+  return basename || "Repository root";
 }
 
 function formatTime(value: string) {
   return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatDate(value: string | null) {
+  if (!value) {
+    return "-";
+  }
+  return new Date(value).toLocaleTimeString();
 }

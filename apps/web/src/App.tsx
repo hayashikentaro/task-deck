@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DiffPane } from "./components/DiffPane";
-import { FleetSummary } from "./components/FleetSummary";
 import { TaskCreateForm } from "./components/TaskCreateForm";
-import { TaskInfoPane } from "./components/TaskInfoPane";
 import { TaskList } from "./components/TaskList";
 import { TerminalPane } from "./components/TerminalPane";
 import type { CreateTaskInput, OutputEvent, Task, TaskDeckContext } from "./types";
@@ -165,6 +162,7 @@ export function App() {
       title: selectedTask.title,
       command: selectedTask.command,
       cwd: selectedTask.cwd,
+      initialInstruction: selectedTask.initialInstruction,
     });
     if (didStart) {
       setTaskActionError("");
@@ -210,22 +208,16 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <section className="create-band">
-        <FleetSummary tasks={tasks} />
-        <TaskCreateForm
-          context={taskDeckContext}
-          disabled={connectionState !== "connected"}
-          onCreateTask={createTask}
-        />
-      </section>
-
       <section className="workspace-grid">
         <TaskList
+          actionError={taskActionError}
           tasks={tasks}
           selectedTaskId={selectedTaskId}
           runningTaskIds={runningTaskIds}
           onClearTask={clearTask}
           onClearTasks={clearTasks}
+          onInterruptTask={interruptTask}
+          onRerunTask={rerunTask}
           onSelectTask={setSelectedTaskId}
         />
         <TerminalPane
@@ -235,13 +227,11 @@ export function App() {
           send={send}
         />
         <aside className="right-rail">
-          <TaskInfoPane
-            actionError={taskActionError}
-            task={selectedTask}
-            onInterrupt={interruptTask}
-            onRerun={rerunTask}
+          <TaskCreateForm
+            context={taskDeckContext}
+            disabled={connectionState !== "connected"}
+            onCreateTask={createTask}
           />
-          <DiffPane task={selectedTask} />
         </aside>
       </section>
     </main>

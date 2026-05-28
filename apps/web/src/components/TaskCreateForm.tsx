@@ -21,6 +21,12 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
   const [isValidatingCwd, setIsValidatingCwd] = useState(false);
 
   useEffect(() => {
+    if (!cwd && context?.defaultCwd) {
+      setCwd(context.defaultCwd);
+    }
+  }, [context?.defaultCwd, cwd]);
+
+  useEffect(() => {
     const abortController = new AbortController();
     const validationTimer = window.setTimeout(() => {
       setIsValidatingCwd(true);
@@ -93,8 +99,11 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
   };
 
   return (
-    <section className="task-create-panel">
-      <form className={"task-create-form" + (isCodexAgent ? " has-session-mode" : "")} onSubmit={handleSubmit}>
+    <section className="task-create-panel" aria-label="New agent session">
+      <div className="pane-heading">
+        <h2>New Agent Session</h2>
+      </div>
+      <form className="task-create-form" onSubmit={handleSubmit}>
         <div className="agent-picker" aria-label="Agent profiles">
           <span>Agent</span>
           <select value={selectedAgent.id} onChange={(event) => setSelectedAgentId(event.target.value)}>
@@ -117,6 +126,18 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
             </select>
           </label>
         ) : null}
+        <label className="workspace-field">
+          <span>Workspace</span>
+          <input
+            aria-invalid={!cwdIsValid}
+            onChange={(event) => setCwd(event.target.value)}
+            placeholder="Workspace path"
+            value={cwd}
+          />
+          <small data-state={cwdValidation?.ok ? "valid" : "invalid"}>
+            {isValidatingCwd ? "Checking workspace..." : cwdValidation?.message || "Workspace is required."}
+          </small>
+        </label>
         {selectedAgent.id === "custom" ? (
           <label className="custom-command-field">
             <span>Custom command</span>
@@ -131,13 +152,13 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
           <span>Initial instruction</span>
           <textarea
             placeholder="Describe the coding task for the agent..."
-            rows={1}
+            rows={3}
             value={initialInstruction}
             onChange={(event) => setInitialInstruction(event.target.value)}
           />
         </label>
         <button disabled={!canStart} type="submit">
-          Start agent
+          Start
         </button>
       </form>
     </section>

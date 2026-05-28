@@ -357,7 +357,7 @@ async function startTask({ title, command, cwd, initialInstruction }, socket) {
     return;
   }
 
-  const task = markTaskRunning(createTask({ title, command, cwd: resolvedCwd }));
+  const task = markTaskRunning(createTask({ title, command, cwd: resolvedCwd, initialInstruction }));
   tasks.set(task.id, task);
   logs.set(task.id, "");
   persistTasks();
