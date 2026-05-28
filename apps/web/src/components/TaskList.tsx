@@ -88,7 +88,6 @@ export function TaskList({
             </button>
             <button
               className="task-clear-button"
-              disabled={runningTaskIdSet.has(task.id)}
               onClick={() => onClearTask(task.id)}
               type="button"
             >

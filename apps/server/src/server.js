@@ -133,13 +133,14 @@ app.delete("/api/tasks/:taskId", async (request, response) => {
     return;
   }
 
-  if (activePtys.has(taskId)) {
-    response.status(409).json({
-      ok: false,
-      error: "Cannot clear a running task.",
-      task: serializeTask(task),
-    });
-    return;
+  const activePty = activePtys.get(taskId);
+  if (activePty) {
+    activePtys.delete(taskId);
+    try {
+      activePty.process.kill();
+    } catch (error) {
+      console.error("TaskDeck could not stop PTY for " + taskId + ": " + error.message);
+    }
   }
 
   await clearTask(taskId);
@@ -376,6 +377,9 @@ async function startTask({ title, command, cwd, initialInstruction }, socket) {
     broadcastTasks();
 
     terminalProcess.onData((data) => {
+      if (!tasks.has(task.id)) {
+        return;
+      }
       appendLog(task.id, data);
       broadcast({ type: "output", taskId: task.id, data });
     });
@@ -389,8 +393,12 @@ async function startTask({ title, command, cwd, initialInstruction }, socket) {
     }
 
     terminalProcess.onExit(({ exitCode, signal }) => {
-      setTask(markTaskExited(tasks.get(task.id), { exitCode, signal }));
+      const currentTask = tasks.get(task.id);
       activePtys.delete(task.id);
+      if (!currentTask) {
+        return;
+      }
+      setTask(markTaskExited(currentTask, { exitCode, signal }));
       broadcastTasks();
     });
   } catch (error) {
