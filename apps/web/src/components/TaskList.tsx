@@ -97,6 +97,7 @@ export function TaskList({
             : false;
           const canResume = Boolean(resumeCommand) && !isResumePending;
           const canResumeLast = Boolean(resumeLastCommand) && !isResumeLastPending;
+          const resumePreviewCommand = resumeCommand || resumeLastCommand;
           return (
             <article
               className="task-list-item"
@@ -164,29 +165,37 @@ export function TaskList({
                     </div>
                   </dl>
                   {isSelected ? (
-                    <div className="task-detail-actions">
-                      <button disabled={!canRerun} onClick={onRerunTask} type="button">
-                        Rerun
-                      </button>
-                      <button disabled={task.status !== "running"} onClick={onInterruptTask} type="button">
-                        Interrupt
-                      </button>
-                      {resumeCommand ? (
-                        <button disabled={!canResume} onClick={() => onResumeTask(task)} type="button">
-                          Resume
-                        </button>
+                    <>
+                      {resumePreviewCommand ? (
+                        <p className="resume-command-preview" title={resumePreviewCommand}>
+                          <span>Resume command:</span>
+                          <code>{resumePreviewCommand}</code>
+                        </p>
                       ) : null}
-                      {canResumeLast ? (
-                        <button
-                          data-priority="secondary"
-                          disabled={isResumeLastPending}
-                          onClick={() => onResumeLastTask(task)}
-                          type="button"
-                        >
-                          Resume last
+                      <div className="task-detail-actions">
+                        <button disabled={!canRerun} onClick={onRerunTask} type="button">
+                          Rerun
                         </button>
-                      ) : null}
-                    </div>
+                        <button disabled={task.status !== "running"} onClick={onInterruptTask} type="button">
+                          Interrupt
+                        </button>
+                        {resumeCommand ? (
+                          <button disabled={!canResume} onClick={() => onResumeTask(task)} type="button">
+                            Resume
+                          </button>
+                        ) : null}
+                        {canResumeLast ? (
+                          <button
+                            data-priority="secondary"
+                            disabled={isResumeLastPending}
+                            onClick={() => onResumeLastTask(task)}
+                            type="button"
+                          >
+                            Resume last
+                          </button>
+                        ) : null}
+                      </div>
+                    </>
                   ) : null}
                 </div>
               ) : null}

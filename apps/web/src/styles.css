@@ -1091,6 +1091,34 @@ dd {
   color: var(--status-muted);
 }
 
+.resume-command-preview {
+  min-width: 0;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  padding: 7px 9px;
+  color: var(--status-muted);
+  font-size: 12px;
+}
+
+.resume-command-preview span {
+  flex: 0 0 auto;
+  font-weight: 700;
+}
+
+.resume-command-preview code {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .task-action-error {
   margin: 10px 0 0;
   padding: 8px 10px;
