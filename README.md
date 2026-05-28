@@ -45,7 +45,7 @@ DELETE /api/presets
 
 `GET /api/context` returns the repository root, default cwd, server cwd, shell, path separator, git-repository status, in-repository cwd suggestions, and configured agent profiles for task creation.
 
-`GET /api/diagnostics` returns Docker reachability, agent-profile config source, and configured agent-container status for quick launcher diagnostics. `POST /api/diagnostics/containers/:containerName/start` starts a configured diagnostic container when it exists but is stopped.
+`GET /api/diagnostics` returns Docker reachability, merged agent-profile config sources, configured agent-container status, and configured container workspace checks. `POST /api/diagnostics/containers/:containerName/start` starts a configured diagnostic container when it exists but is stopped.
 
 `POST /api/validate-cwd` accepts `{ "cwd": "apps/web" }` and returns whether the cwd resolves to an existing directory, its absolute path, and git-repository status. The task form uses it to validate cwd before starting a task.
 
@@ -61,7 +61,7 @@ The server persists tasks and logs under `.taskdeck/`, which is intentionally ig
 
 Multiple tasks can exist in the task list, and multiple PTY-backed agent sessions can run at the same time. Bulk clearing removes non-running tasks and their logs while preserving active tasks; clearing an individual running task stops its PTY and removes that task.
 
-Tasks carry both a low-level process `status` and a supervisor-facing `agentState` such as thinking, working, waiting for input, review ready, done, failed, or stopped. Task creation is centered on starting an AI agent session in a selected workspace. Agent profiles are loaded from `TASKDECK_CONFIG`, ignored `taskdeck.local.json`, or committed `taskdeck.config.json`; the committed default includes Codex CLI and Goose commands for the AI development container, a Goose Container profile that enters the existing `chrome-goose-1` shell, plus aider, zsh, and custom PTY fallback entries. Goose is selected by default so local or lower-cost experimentation is the first path. The launcher lets the operator choose a new session, resume the last Codex session with `codex resume --last`, or provide a custom resume command for an external agent session. Automatic session discovery is not implemented yet. Task records preserve the selected agent profile, session mode, resume command when provided, and initial instruction. An optional initial instruction is sent to the running PTY after launch, and follow-up input goes through the bottom composer.
+Tasks carry both a low-level process `status` and a supervisor-facing `agentState` such as thinking, working, waiting for input, review ready, done, failed, or stopped. Task creation is centered on starting an AI agent session in a selected workspace. Agent profiles are merged from built-in defaults, committed `taskdeck.config.json`, ignored `taskdeck.local.json`, and optional `TASKDECK_CONFIG`; the committed default includes Codex CLI and Goose commands for the AI development container, separate Goose Container Shell and Goose Container direct profiles for `chrome-goose-1`, plus aider, zsh, and custom PTY fallback entries. Goose is selected by default so local or lower-cost experimentation is the first path. The launcher lets the operator choose a new session, resume the last Codex session with `codex resume --last`, or provide a custom resume command for an external agent session. Automatic session discovery is not implemented yet. Task records preserve the selected agent profile, session mode, resume command when provided, and initial instruction. An optional initial instruction is sent to the running PTY after launch, and follow-up input goes through the bottom composer.
 
 The UI is organized around a supervision-first workspace: the left rail is an expandable task-card list, the center pane is the terminal and persisted log view, the right rail launches new agent sessions, and the composer stays attached to the terminal. Task list filters let the operator focus on all, active, needs-input, review-ready, done, failed/stopped, or risky tasks without changing the underlying task records.
 
@@ -74,12 +74,12 @@ Expanded task cards can also resume agent sessions. Tasks with a saved `resumeCo
 
 The terminal pane keeps xterm.js as the renderer while adding operator controls for follow mode, clearing the current view, reloading persisted logs, copying the bounded visible log buffer, and counting simple search matches.
 
-Terminal input is sent through the fixed bottom composer. It targets the selected running PTY and stays disabled for read-only logs, disconnected sessions, or no selected task. The composer supports multi-line instructions: Enter sends, Shift+Enter inserts a newline, and IME composition is preserved for Japanese input.
+Terminal input is sent through the fixed bottom composer. It targets the selected running PTY and stays disabled for read-only logs, disconnected sessions, or no selected task. The composer supports multi-line instructions and quick action inserts: Enter sends, Shift+Enter inserts a newline, Cmd/Ctrl+Enter sends, and IME composition is preserved for Japanese input.
 
 TaskDeck also stores the 10 most recent task presets by `command` and `cwd` so common task shapes can be restarted quickly.
 
 ## Agent Profiles
 
-Agent profiles can be changed without editing application code. For machine-local profiles, copy `taskdeck.local.example.json` to `taskdeck.local.json`; that local file is ignored by Git. To point TaskDeck at another profile file, start the server with `TASKDECK_CONFIG=/path/to/taskdeck.profiles.json npm run dev`.
+Agent profiles can be changed without editing application code. TaskDeck merges profiles by `id`: built-in defaults are loaded first, then `taskdeck.config.json`, then ignored `taskdeck.local.json`, then `TASKDECK_CONFIG`. Later files override matching ids and append new ids. For machine-local profiles, copy `taskdeck.local.example.json` to `taskdeck.local.json`; that local file is ignored by Git. To point TaskDeck at another profile file, start the server with `TASKDECK_CONFIG=/path/to/taskdeck.profiles.json npm run dev`.
 
-Each profile supports `id`, `label`, `command`, `description`, and optional `diagnosticContainer`. The diagnostics panel uses `diagnosticContainer` to inspect and start configured Docker containers.
+Each profile supports `id`, `label`, `command`, `description`, optional `diagnosticContainer`, and optional `diagnosticWorkspace`. The diagnostics panel uses these fields to inspect/start configured Docker containers and check whether expected container workspace directories exist.

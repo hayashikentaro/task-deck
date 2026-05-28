@@ -61,6 +61,14 @@ export type AgentProfile = {
   command: string;
   description: string;
   diagnosticContainer?: string;
+  diagnosticWorkspace?: string;
+};
+
+export type DiagnosticWorkspace = {
+  path: string;
+  exists: boolean;
+  status: string;
+  error?: string;
 };
 
 export type DiagnosticContainer = {
@@ -69,6 +77,7 @@ export type DiagnosticContainer = {
   running: boolean;
   status: string;
   image: string;
+  workspaces?: DiagnosticWorkspace[];
   error?: string;
 };
 

@@ -1,11 +1,20 @@
 {
   "agentProfiles": [
     {
-      "id": "goose-container",
-      "label": "Goose Container",
+      "id": "goose-container-shell",
+      "label": "Goose Container Shell",
       "command": "docker exec -it chrome-goose-1 bash",
-      "description": "Enter the existing chrome-goose-1 shell; run goose inside the container when needed",
-      "diagnosticContainer": "chrome-goose-1"
+      "description": "Enter the existing chrome-goose-1 shell; run goose manually inside the container when needed",
+      "diagnosticContainer": "chrome-goose-1",
+      "diagnosticWorkspace": "/workspace"
+    },
+    {
+      "id": "goose-container-direct",
+      "label": "Goose Container direct",
+      "command": "docker exec -it -w /workspace chrome-goose-1 goose",
+      "description": "Run Goose directly inside the existing chrome-goose-1 container",
+      "diagnosticContainer": "chrome-goose-1",
+      "diagnosticWorkspace": "/workspace"
     },
     {
       "id": "custom",

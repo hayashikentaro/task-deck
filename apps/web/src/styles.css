@@ -846,9 +846,23 @@ dd {
 .input-composer-inner {
   min-width: 0;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 8px;
   align-items: end;
+}
+
+.composer-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.composer-actions button {
+  height: 28px;
+  padding: 0 9px;
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 
 .input-composer textarea {
@@ -863,6 +877,7 @@ dd {
 }
 
 .composer-meta {
+  min-width: 0;
   display: grid;
   gap: 3px;
   padding-bottom: 4px;
@@ -871,6 +886,8 @@ dd {
 .input-composer span {
   color: var(--status-muted);
   font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -1044,6 +1061,30 @@ dd {
   gap: 4px;
   border-top: 1px solid var(--line);
   padding-top: 10px;
+}
+
+.diagnostic-workspaces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.diagnostic-workspaces span {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 2px 7px;
+  color: var(--status-muted);
+  font-size: 11px;
+}
+
+.diagnostic-workspaces span[data-state="ok"] {
+  border-color: var(--status-done-border);
+  color: var(--status-done);
+}
+
+.diagnostic-workspaces span[data-state="warn"] {
+  border-color: var(--status-risk-medium);
+  color: var(--status-risk-medium);
 }
 
 .diagnostic-actions {

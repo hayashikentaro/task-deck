@@ -79,6 +79,15 @@ export function DiagnosticsPane({ isConnected }: DiagnosticsPaneProps) {
               </strong>
             </div>
             <small>{container.image || container.error || "No image information."}</small>
+            {container.workspaces?.length ? (
+              <div className="diagnostic-workspaces">
+                {container.workspaces.map((workspace) => (
+                  <span data-state={workspace.exists ? "ok" : "warn"} key={workspace.path}>
+                    {workspace.path}: {workspace.exists ? "ready" : workspace.status}
+                  </span>
+                ))}
+              </div>
+            ) : null}
             <div className="diagnostic-actions">
               <button type="button" onClick={() => copyText(`docker inspect ${container.name}`, "inspect command")}>
                 Copy inspect
@@ -94,8 +103,8 @@ export function DiagnosticsPane({ isConnected }: DiagnosticsPaneProps) {
           </div>
         ))}
         <p className="diagnostic-note">
-          Goose Container opens a bash shell in <code>chrome-goose-1</code>; run <code>goose</code> inside that
-          shell when needed.
+          Goose Container Shell opens bash in <code>chrome-goose-1</code>. Goose Container direct runs <code>goose</code>
+          directly in <code>/workspace</code>.
         </p>
       </div>
     </section>

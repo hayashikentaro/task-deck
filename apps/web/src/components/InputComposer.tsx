@@ -7,7 +7,17 @@ type InputComposerProps = {
   send: (payload: unknown) => boolean;
 };
 
+type ComposerAction = {
+  label: string;
+  text: string;
+};
+
 const maxComposerHeight = 140;
+const composerActions: ComposerAction[] = [
+  { label: "Continue", text: "Continue from the current state." },
+  { label: "Summarize", text: "Summarize the current state, blockers, and next step." },
+  { label: "Review diff", text: "Review the current diff and call out risks before changing more files." },
+];
 
 export function InputComposer({ isConnected, task, send }: InputComposerProps) {
   const [value, setValue] = useState("");
@@ -31,16 +41,16 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key !== "Enter" || isComposing || event.nativeEvent.isComposing) {
+    if (!shouldSendFromEnterKey(event, isComposing)) {
       return;
     }
-    if (event.shiftKey) {
-      return;
-    }
-    if (event.metaKey || event.ctrlKey || !event.altKey) {
-      event.preventDefault();
-      sendValue();
-    }
+    event.preventDefault();
+    sendValue();
+  };
+
+  const insertQuickAction = (actionText: string) => {
+    setValue((currentValue) => (currentValue ? `${currentValue}\n${actionText}` : actionText));
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
   const sendValue = () => {
@@ -57,9 +67,13 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
   return (
     <form className="input-composer" onSubmit={handleSubmit}>
       <div className="input-composer-inner">
-        <button className="composer-plus" disabled type="button" aria-label="Attach context">
-          +
-        </button>
+        <div className="composer-actions" aria-label="Composer quick actions">
+          {composerActions.map((action) => (
+            <button disabled={!canSend} key={action.label} type="button" onClick={() => insertQuickAction(action.text)}>
+              {action.label}
+            </button>
+          ))}
+        </div>
         <textarea
           ref={textareaRef}
           autoCapitalize="off"
@@ -85,6 +99,19 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
       </div>
     </form>
   );
+}
+
+function shouldSendFromEnterKey(event: KeyboardEvent<HTMLTextAreaElement>, isComposing: boolean) {
+  if (event.key !== "Enter") {
+    return false;
+  }
+  if (isComposing || event.nativeEvent.isComposing) {
+    return false;
+  }
+  if (event.shiftKey) {
+    return false;
+  }
+  return event.metaKey || event.ctrlKey || !event.altKey;
 }
 
 function getComposerMode(task: Task | null, isConnected: boolean) {

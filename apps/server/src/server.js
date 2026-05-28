@@ -46,11 +46,20 @@ const defaultAgentProfiles = [
     description: "Local/alternative agent option",
   },
   {
-    id: "goose-container",
-    label: "Goose Container",
+    id: "goose-container-shell",
+    label: "Goose Container Shell",
     command: "docker exec -it chrome-goose-1 bash",
-    description: "Enter the existing chrome-goose-1 shell; run goose inside the container when needed",
+    description: "Enter the existing chrome-goose-1 shell; run goose manually inside the container when needed",
     diagnosticContainer: "chrome-goose-1",
+    diagnosticWorkspace: "/workspace",
+  },
+  {
+    id: "goose-container-direct",
+    label: "Goose Container direct",
+    command: "docker exec -it -w /workspace chrome-goose-1 goose",
+    description: "Run Goose directly inside the existing chrome-goose-1 container",
+    diagnosticContainer: "chrome-goose-1",
+    diagnosticWorkspace: "/workspace",
   },
   {
     id: "aider",
@@ -722,11 +731,7 @@ async function readJsonArray(filePath, label) {
 }
 
 async function loadAgentProfiles() {
-  const loadedConfig = await loadAgentProfileConfig();
-  if (loadedConfig.profiles.length > 0) {
-    return ensureCustomAgentProfile(loadedConfig.profiles);
-  }
-  return defaultAgentProfiles;
+  return ensureCustomAgentProfile((await loadAgentProfileConfig()).profiles);
 }
 
 async function getAgentProfileConfigSummary() {
@@ -739,18 +744,22 @@ async function getAgentProfileConfigSummary() {
 }
 
 async function loadAgentProfileConfig() {
+  let mergedProfiles = mergeAgentProfiles(defaultAgentProfiles);
+  const loadedSources = [];
+
   for (const configCandidate of getAgentProfileConfigCandidates()) {
     try {
       const rawContents = await fs.readFile(configCandidate.path, "utf8");
       const parsed = JSON.parse(rawContents);
       const configuredProfiles = sanitizeAgentProfiles(parsed?.agentProfiles);
       if (configuredProfiles.length > 0) {
-        return {
+        mergedProfiles = mergeAgentProfiles(mergedProfiles, configuredProfiles);
+        loadedSources.push({
           source: configCandidate.source,
           path: configCandidate.path,
-          message: `Loaded ${configuredProfiles.length} agent profiles from ${configCandidate.source}.`,
-          profiles: configuredProfiles,
-        };
+          count: configuredProfiles.length,
+        });
+        continue;
       }
       console.warn(`TaskDeck ignored ${configCandidate.path} because it did not contain valid agentProfiles.`);
     } catch (error) {
@@ -760,19 +769,49 @@ async function loadAgentProfileConfig() {
     }
   }
 
+  if (loadedSources.length === 0) {
+    return {
+      source: "built-in",
+      path: "",
+      message: `Using ${mergedProfiles.length} built-in agent profiles.`,
+      profiles: mergedProfiles,
+    };
+  }
+
   return {
-    source: "default",
-    path: "",
-    message: "Using built-in agent profiles.",
-    profiles: [],
+    source: loadedSources.map((source) => source.source).join(" + "),
+    path: loadedSources.map((source) => source.path).join(", "),
+    message: `Merged ${mergedProfiles.length} agent profiles from built-in defaults and ${loadedSources
+      .map((source) => `${source.source} (${source.count})`)
+      .join(", ")}.`,
+    profiles: mergedProfiles,
   };
+}
+
+function mergeAgentProfiles(baseProfiles, overrideProfiles = []) {
+  const mergedProfiles = baseProfiles.map((profile) => ({ ...profile }));
+  const idToIndex = new Map(mergedProfiles.map((profile, index) => [profile.id, index]));
+
+  for (const profile of overrideProfiles) {
+    if (idToIndex.has(profile.id)) {
+      mergedProfiles[idToIndex.get(profile.id)] = {
+        ...mergedProfiles[idToIndex.get(profile.id)],
+        ...profile,
+      };
+      continue;
+    }
+    idToIndex.set(profile.id, mergedProfiles.length);
+    mergedProfiles.push({ ...profile });
+  }
+
+  return mergedProfiles;
 }
 
 function getAgentProfileConfigCandidates() {
   return [
-    ...(envConfigPath ? [{ source: "TASKDECK_CONFIG", path: envConfigPath }] : []),
-    { source: "taskdeck.local.json", path: localConfigPath },
     { source: "taskdeck.config.json", path: defaultConfigPath },
+    { source: "taskdeck.local.json", path: localConfigPath },
+    ...(envConfigPath ? [{ source: "TASKDECK_CONFIG", path: envConfigPath }] : []),
   ];
 }
 
@@ -789,6 +828,7 @@ function sanitizeAgentProfiles(rawProfiles) {
     const command = String(rawProfile?.command || "").trim();
     const description = String(rawProfile?.description || "").trim();
     const diagnosticContainer = String(rawProfile?.diagnosticContainer || "").trim();
+    const diagnosticWorkspace = String(rawProfile?.diagnosticWorkspace || "").trim();
 
     if (!id || !label || seenIds.has(id)) {
       continue;
@@ -800,6 +840,7 @@ function sanitizeAgentProfiles(rawProfiles) {
       command,
       description,
       ...(diagnosticContainer ? { diagnosticContainer } : {}),
+      ...(diagnosticWorkspace ? { diagnosticWorkspace } : {}),
     });
     seenIds.add(id);
   }
@@ -825,18 +866,24 @@ function ensureCustomAgentProfile(profiles) {
 
 async function buildDiagnostics() {
   const profiles = await loadAgentProfiles();
-  const containerNames = Array.from(
-    new Set(profiles.map((profile) => profile.diagnosticContainer).filter(Boolean)),
-  );
+  const containerSpecs = getDiagnosticContainerSpecs(profiles);
   const docker = await checkDocker();
   const containers = docker.ok
-    ? await Promise.all(containerNames.map((containerName) => inspectContainer(containerName)))
-    : containerNames.map((containerName) => ({
-        name: containerName,
+    ? await Promise.all(
+        containerSpecs.map((containerSpec) => inspectContainer(containerSpec.name, containerSpec.workspaces)),
+      )
+    : containerSpecs.map((containerSpec) => ({
+        name: containerSpec.name,
         present: false,
         running: false,
         status: "unknown",
         image: "",
+        workspaces: containerSpec.workspaces.map((workspacePath) => ({
+          path: workspacePath,
+          exists: false,
+          status: "unknown",
+          error: docker.message,
+        })),
         error: docker.message,
       }));
 
@@ -848,6 +895,26 @@ async function buildDiagnostics() {
     docker,
     containers,
   };
+}
+
+function getDiagnosticContainerSpecs(profiles) {
+  const containers = new Map();
+  for (const profile of profiles) {
+    if (!profile.diagnosticContainer) {
+      continue;
+    }
+    if (!containers.has(profile.diagnosticContainer)) {
+      containers.set(profile.diagnosticContainer, new Set());
+    }
+    if (profile.diagnosticWorkspace) {
+      containers.get(profile.diagnosticContainer).add(profile.diagnosticWorkspace);
+    }
+  }
+
+  return Array.from(containers.entries()).map(([name, workspaces]) => ({
+    name,
+    workspaces: Array.from(workspaces),
+  }));
 }
 
 async function checkDocker() {
@@ -908,19 +975,21 @@ function isSafeContainerName(containerName) {
   return /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(containerName);
 }
 
-async function inspectContainer(containerName) {
+async function inspectContainer(containerName, workspacePaths = []) {
   try {
     const { stdout } = await execFileAsync("docker", ["inspect", containerName], {
       maxBuffer: 1024 * 1024,
       timeout: 3000,
     });
     const [container] = JSON.parse(stdout);
+    const running = Boolean(container?.State?.Running);
     return {
       name: containerName,
       present: true,
-      running: Boolean(container?.State?.Running),
+      running,
       status: String(container?.State?.Status || "unknown"),
       image: String(container?.Config?.Image || container?.Image || ""),
+      workspaces: await checkContainerWorkspaces(containerName, workspacePaths, running),
     };
   } catch (error) {
     return {
@@ -929,9 +998,44 @@ async function inspectContainer(containerName) {
       running: false,
       status: "missing",
       image: "",
+      workspaces: workspacePaths.map((workspacePath) => ({
+        path: workspacePath,
+        exists: false,
+        status: "missing",
+        error: error.message,
+      })),
       error: error.message,
     };
   }
+}
+
+async function checkContainerWorkspaces(containerName, workspacePaths, isRunning) {
+  return Promise.all(
+    workspacePaths.map(async (workspacePath) => {
+      if (!isRunning) {
+        return {
+          path: workspacePath,
+          exists: false,
+          status: "container_not_running",
+        };
+      }
+      try {
+        await execFileAsync("docker", ["exec", containerName, "test", "-d", workspacePath], { timeout: 3000 });
+        return {
+          path: workspacePath,
+          exists: true,
+          status: "ready",
+        };
+      } catch (error) {
+        return {
+          path: workspacePath,
+          exists: false,
+          status: "missing",
+          error: error.message,
+        };
+      }
+    }),
+  );
 }
 
 function persistTasks() {
