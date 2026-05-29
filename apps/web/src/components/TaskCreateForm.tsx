@@ -392,5 +392,19 @@ function buildTaskTitle(agentLabel: string, instruction: string, savedSession?: 
 function savedSessionLabel(session: SavedCodexSession) {
   const detectedAt = session.detectedAt || session.updatedAt;
   const date = Number.isFinite(Date.parse(detectedAt)) ? new Date(detectedAt).toLocaleString() : "saved";
-  return `${session.title} · ${session.sessionId} · ${date}`;
+  const projectName = basename(session.cwd) || "workspace";
+  const taskTitle = session.title || "Codex session";
+  const agentLabel = session.agentLabel || "Codex";
+  return `${projectName} · ${taskTitle} · ${agentLabel} · ${date} · ${compactSessionId(session.sessionId)}`;
+}
+
+function basename(value: string) {
+  return value.split(/[\\/]/).filter(Boolean).pop() ?? "";
+}
+
+function compactSessionId(sessionId: string) {
+  if (sessionId.length <= 12) {
+    return sessionId;
+  }
+  return `${sessionId.slice(0, 6)}...${sessionId.slice(-4)}`;
 }
