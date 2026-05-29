@@ -34,7 +34,7 @@ POST /api/diagnostics/containers/:containerName/start
 POST /api/validate-cwd
 GET /api/tasks
 DELETE /api/tasks
-GET /api/sessions/codex
+GET /api/agent-sessions
 GET /api/tasks/:taskId
 DELETE /api/tasks/:taskId
 GET /api/tasks/:taskId/logs
@@ -50,7 +50,7 @@ DELETE /api/presets
 
 `POST /api/validate-cwd` accepts `{ "cwd": "apps/web" }` and returns whether the cwd resolves to an existing directory, its absolute path, and git-repository status. The task form uses it to validate cwd before starting a task.
 
-`GET /api/sessions/codex` returns saved Codex sessions derived from stored task metadata. Sessions require a Codex provider, session id, and precise resume command, then deduplicate by provider plus session id.
+`GET /api/agent-sessions` returns saved Codex sessions derived from stored task metadata. Sessions require a Codex provider, session id, and precise resume command, then deduplicate by provider plus session id.
 
 The server persists tasks and logs under `.taskdeck/`, which is intentionally ignored by Git:
 

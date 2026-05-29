@@ -43,7 +43,7 @@ export function App() {
   }, [runningTaskIds]);
 
   const loadSavedCodexSessions = useCallback(() => {
-    fetch("/api/sessions/codex")
+    fetch("/api/agent-sessions")
       .then((response) => {
         if (!response.ok) {
           throw new Error("Unable to load saved Codex sessions.");

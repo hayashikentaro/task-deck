@@ -134,7 +134,7 @@ app.get("/api/tasks", (_request, response) => {
   });
 });
 
-app.get("/api/sessions/codex", (_request, response) => {
+app.get("/api/agent-sessions", (_request, response) => {
   response.json({
     sessions: listSavedCodexSessions(),
   });

@@ -158,7 +158,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
           <select value={sessionMode} onChange={(event) => setSessionMode(event.target.value as SessionMode)}>
             <option value="new">New session</option>
             <option value="resume_last">Resume last</option>
-            {savedCodexSessions.length > 0 ? <option value="saved_codex">Saved Codex session</option> : null}
+            {savedCodexSessions.length > 0 ? <option value="saved_codex">Resume saved session</option> : null}
             <option value="custom_resume">Custom resume command</option>
           </select>
         </label>
