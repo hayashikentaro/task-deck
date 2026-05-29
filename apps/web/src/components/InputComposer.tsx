@@ -18,6 +18,9 @@ type DiagnosticCommand = {
 };
 
 const maxComposerHeight = 140;
+const terminalEnter = "\r";
+const bracketedPasteStart = "\x1b[200~";
+const bracketedPasteEnd = "\x1b[201~";
 const insertActions: ComposerAction[] = [
   { label: "Continue", text: "Continue from the current state." },
   { label: "Summarize", text: "Summarize the current state, blockers, and next step." },
@@ -97,44 +100,52 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
   };
 
   const sendDiagnosticCommand = (command: string) => {
-    sendInput(command);
+    sendShellCommands(command);
   };
 
   const sendAllDiagnostics = () => {
-    sendInput(diagnosticCommands.map((diagnostic) => diagnostic.command).join("\n"));
+    sendShellCommands(diagnosticCommands.map((diagnostic) => diagnostic.command).join("\n"));
   };
 
   const sendContainerCheck = (command: string) => {
-    sendInput(command);
+    sendShellCommands(command);
   };
 
   const sendAllContainerChecks = () => {
-    sendInput([...inPtyContainerCheckCommands, ...hostDockerContainerCheckCommands].map((check) => check.command).join("\n"));
+    sendShellCommands([...inPtyContainerCheckCommands, ...hostDockerContainerCheckCommands].map((check) => check.command).join("\n"));
   };
 
   const sendAllInPtyContainerChecks = () => {
-    sendInput(inPtyContainerCheckCommands.map((check) => check.command).join("\n"));
+    sendShellCommands(inPtyContainerCheckCommands.map((check) => check.command).join("\n"));
   };
 
   const sendAllHostDockerContainerChecks = () => {
-    sendInput(hostDockerContainerCheckCommands.map((check) => check.command).join("\n"));
+    sendShellCommands(hostDockerContainerCheckCommands.map((check) => check.command).join("\n"));
   };
 
   const sendValue = () => {
     if (!value) {
       return;
     }
-    const didSend = sendInput(value);
+    const didSend = sendAgentInput(value);
     if (didSend) {
       setValue("");
     }
   };
 
-  const sendInput = (input: string) => {
+  const sendAgentInput = (input: string) => {
     if (!task || !canSend || !input) {
       return false;
     }
-    const data = input.endsWith("\n") || input.endsWith("\r") ? input : `${input}\r`;
+    const data = formatAgentInputForPty(input);
+    return send({ type: "input", taskId: task.id, data });
+  };
+
+  const sendShellCommands = (input: string) => {
+    if (!task || !canSend || !input) {
+      return false;
+    }
+    const data = formatShellCommandsForPty(input);
     return send({ type: "input", taskId: task.id, data });
   };
 
@@ -261,6 +272,23 @@ function isPlainEnter(event: KeyboardEvent<HTMLTextAreaElement>) {
 
 function isCommandEnter(event: KeyboardEvent<HTMLTextAreaElement>) {
   return event.metaKey || event.ctrlKey;
+}
+
+function formatAgentInputForPty(input: string) {
+  const text = normalizeTerminalInput(input);
+  if (text.includes("\n")) {
+    return `${bracketedPasteStart}${text}${bracketedPasteEnd}${terminalEnter}`;
+  }
+  return `${text}${terminalEnter}`;
+}
+
+function formatShellCommandsForPty(input: string) {
+  const text = normalizeTerminalInput(input);
+  return `${text.replace(/\n/g, terminalEnter)}${terminalEnter}`;
+}
+
+function normalizeTerminalInput(input: string) {
+  return input.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
 function getComposerMode(task: Task | null, isConnected: boolean) {

@@ -64,6 +64,9 @@ const tasks = new Map();
 const logs = new Map();
 let presets = [];
 const maxLogLength = 250_000;
+const terminalEnter = "\r";
+const bracketedPasteStart = "\x1b[200~";
+const bracketedPasteEnd = "\x1b[201~";
 const activePtys = new Map();
 let persistTasksQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
@@ -444,7 +447,7 @@ async function startTask({
     if (initialInstruction) {
       setTimeout(() => {
         if (activePtys.has(task.id)) {
-          terminalProcess.write(`${initialInstruction}\r`);
+          terminalProcess.write(formatAgentInputForPty(initialInstruction));
         }
       }, 350);
     }
@@ -515,6 +518,18 @@ async function validateCwd(cwd) {
       message: `cwd does not exist: ${resolvedCwd}`,
     };
   }
+}
+
+function formatAgentInputForPty(input) {
+  const text = normalizeTerminalInput(input);
+  if (text.includes("\n")) {
+    return `${bracketedPasteStart}${text}${bracketedPasteEnd}${terminalEnter}`;
+  }
+  return `${text}${terminalEnter}`;
+}
+
+function normalizeTerminalInput(input) {
+  return String(input).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
 async function cwdIsGitRepo(cwd) {
