@@ -91,6 +91,14 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
     sendInput(diagnosticCommands.map((diagnostic) => diagnostic.command).join("\n"));
   };
 
+  const sendContainerCheck = (command: string) => {
+    sendInput(command);
+  };
+
+  const sendAllContainerChecks = () => {
+    sendInput(containerCheckCommands.map((check) => check.command).join("\n"));
+  };
+
   const sendValue = () => {
     if (!value) {
       return;
