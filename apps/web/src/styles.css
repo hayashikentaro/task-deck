@@ -853,8 +853,28 @@ dd {
   align-items: end;
 }
 
-.composer-action-groups {
+.composer-quick-actions {
   grid-column: 1 / -1;
+}
+
+.composer-quick-actions summary {
+  width: fit-content;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--status-muted);
+  font-size: 12px;
+  font-weight: 700;
+  list-style: revert;
+}
+
+.composer-quick-actions summary:hover {
+  color: var(--text-secondary);
+}
+
+.composer-action-groups {
+  margin-top: 6px;
   display: grid;
   gap: 6px;
 }

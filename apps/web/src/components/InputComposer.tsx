@@ -136,49 +136,52 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
   return (
     <form className="input-composer" onSubmit={handleSubmit}>
       <div className="input-composer-inner">
-        <div className="composer-action-groups" aria-label="Composer quick actions">
-          <div className="composer-action-group">
-            <span>Insert</span>
-            <div className="composer-actions">
-              {insertActions.map((action) => (
-                <button disabled={!canSend} key={action.label} type="button" onClick={() => insertQuickAction(action.text)}>
-                  {action.label}
+        <details className="composer-quick-actions">
+          <summary>Quick actions</summary>
+          <div className="composer-action-groups" aria-label="Composer quick actions">
+            <div className="composer-action-group">
+              <span>Insert</span>
+              <div className="composer-actions">
+                {insertActions.map((action) => (
+                  <button disabled={!canSend} key={action.label} type="button" onClick={() => insertQuickAction(action.text)}>
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="composer-action-group">
+              <span>Send diagnostics</span>
+              <div className="composer-actions">
+                {diagnosticCommands.map((diagnostic) => (
+                  <button
+                    disabled={!canSend}
+                    key={diagnostic.command}
+                    type="button"
+                    onClick={() => sendDiagnosticCommand(diagnostic.command)}
+                  >
+                    {diagnostic.label}
+                  </button>
+                ))}
+                <button disabled={!canSend} type="button" onClick={sendAllDiagnostics}>
+                  all
                 </button>
-              ))}
+              </div>
+            </div>
+            <div className="composer-action-group">
+              <span>Container checks</span>
+              <div className="composer-actions">
+                {containerCheckCommands.map((check) => (
+                  <button disabled={!canSend} key={check.command} type="button" onClick={() => sendContainerCheck(check.command)}>
+                    {check.label}
+                  </button>
+                ))}
+                <button disabled={!canSend} type="button" onClick={sendAllContainerChecks}>
+                  all
+                </button>
+              </div>
             </div>
           </div>
-          <div className="composer-action-group">
-            <span>Send diagnostics</span>
-            <div className="composer-actions">
-              {diagnosticCommands.map((diagnostic) => (
-                <button
-                  disabled={!canSend}
-                  key={diagnostic.command}
-                  type="button"
-                  onClick={() => sendDiagnosticCommand(diagnostic.command)}
-                >
-                  {diagnostic.label}
-                </button>
-              ))}
-              <button disabled={!canSend} type="button" onClick={sendAllDiagnostics}>
-                all
-              </button>
-            </div>
-          </div>
-          <div className="composer-action-group">
-            <span>Container checks</span>
-            <div className="composer-actions">
-              {containerCheckCommands.map((check) => (
-                <button disabled={!canSend} key={check.command} type="button" onClick={() => sendContainerCheck(check.command)}>
-                  {check.label}
-                </button>
-              ))}
-              <button disabled={!canSend} type="button" onClick={sendAllContainerChecks}>
-                all
-              </button>
-            </div>
-          </div>
-        </div>
+        </details>
         <textarea
           ref={textareaRef}
           autoCapitalize="off"
