@@ -32,23 +32,25 @@ const diagnosticCommands: DiagnosticCommand[] = [
   { label: "codex --version", command: "codex --version" },
   { label: "goose --version", command: "goose --version" },
 ];
-const containerCheckCommands: DiagnosticCommand[] = [
+const inPtyContainerCheckCommands: DiagnosticCommand[] = [
   {
-    label: "pty pwd",
+    label: "pwd",
     command: "pwd",
   },
   {
-    label: "pty /workspace",
+    label: "/workspace",
     command: "test -d /workspace && echo 'current PTY:/workspace ready' || echo 'current PTY:/workspace missing'",
   },
   {
-    label: "pty workspace files",
+    label: "workspace files",
     command: "test -d /workspace && ls -la /workspace || echo 'current PTY:/workspace unavailable'",
   },
   {
     label: "find review/lens",
     command: "find /workspace -maxdepth 3 -iname '*review*' -o -iname '*lens*'",
   },
+];
+const hostDockerContainerCheckCommands: DiagnosticCommand[] = [
   {
     label: "docker ps",
     command: "docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'",
@@ -112,7 +114,15 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
   };
 
   const sendAllContainerChecks = () => {
-    sendInput(containerCheckCommands.map((check) => check.command).join("\n"));
+    sendInput([...inPtyContainerCheckCommands, ...hostDockerContainerCheckCommands].map((check) => check.command).join("\n"));
+  };
+
+  const sendAllInPtyContainerChecks = () => {
+    sendInput(inPtyContainerCheckCommands.map((check) => check.command).join("\n"));
+  };
+
+  const sendAllHostDockerContainerChecks = () => {
+    sendInput(hostDockerContainerCheckCommands.map((check) => check.command).join("\n"));
   };
 
   const sendValue = () => {
@@ -140,7 +150,7 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
           <summary>Quick actions</summary>
           <div className="composer-action-groups" aria-label="Composer quick actions">
             <div className="composer-action-group">
-              <span>Insert</span>
+              <span>Prompt snippets</span>
               <div className="composer-actions">
                 {insertActions.map((action) => (
                   <button disabled={!canSend} key={action.label} type="button" onClick={() => insertQuickAction(action.text)}>
@@ -150,7 +160,7 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
               </div>
             </div>
             <div className="composer-action-group">
-              <span>Send diagnostics</span>
+              <span>PTY diagnostics</span>
               <div className="composer-actions">
                 {diagnosticCommands.map((diagnostic) => (
                   <button
@@ -168,15 +178,31 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
               </div>
             </div>
             <div className="composer-action-group">
-              <span>Container checks</span>
+              <span>Current PTY</span>
               <div className="composer-actions">
-                {containerCheckCommands.map((check) => (
+                {inPtyContainerCheckCommands.map((check) => (
                   <button disabled={!canSend} key={check.command} type="button" onClick={() => sendContainerCheck(check.command)}>
                     {check.label}
                   </button>
                 ))}
-                <button disabled={!canSend} type="button" onClick={sendAllContainerChecks}>
+                <button disabled={!canSend} type="button" onClick={sendAllInPtyContainerChecks}>
                   all
+                </button>
+              </div>
+            </div>
+            <div className="composer-action-group">
+              <span>Host Docker</span>
+              <div className="composer-actions">
+                {hostDockerContainerCheckCommands.map((check) => (
+                  <button disabled={!canSend} key={check.command} type="button" onClick={() => sendContainerCheck(check.command)}>
+                    {check.label}
+                  </button>
+                ))}
+                <button disabled={!canSend} type="button" onClick={sendAllHostDockerContainerChecks}>
+                  all
+                </button>
+                <button disabled={!canSend} type="button" onClick={sendAllContainerChecks}>
+                  all checks
                 </button>
               </div>
             </div>
