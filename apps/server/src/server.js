@@ -554,12 +554,15 @@ async function buildCwdSuggestions() {
 
 function normalizeStoredTaskAgentState(task) {
   const normalizedTask = { ...task, agentState: task.agentState ?? inferAgentStateFromStatus(task) };
-  if (normalizedTask.agentSessionId && !normalizedTask.agentSessionResumeCommand && isCodexLikeTask(normalizedTask)) {
-    return {
+  if (normalizedTask.agentSessionId && isCodexLikeTask(normalizedTask)) {
+    const agentSessionResumeCommand =
+      normalizedTask.agentSessionResumeCommand || buildCodexSessionResumeCommand(normalizedTask, normalizedTask.agentSessionId);
+    const nextTask = {
       ...normalizedTask,
       agentSessionProvider: normalizedTask.agentSessionProvider || "codex",
-      agentSessionResumeCommand: buildCodexSessionResumeCommand(normalizedTask, normalizedTask.agentSessionId),
+      agentSessionResumeCommand,
     };
+    return withDetectedResumeCommand(nextTask, agentSessionResumeCommand);
   }
   return normalizedTask;
 }
@@ -574,13 +577,15 @@ function detectInitialAgentSession(command, agentProfileId, agentLabel) {
     return {};
   }
 
-  return {
+  const agentSessionResumeCommand = buildCodexSessionResumeCommand({ command, agentProfileId }, explicitResumeId);
+  return withDetectedResumeCommand({
     agentSessionId: explicitResumeId,
     agentSessionSource: "codex resume command",
     agentSessionProvider: "codex",
     agentSessionDetectedAt: new Date().toISOString(),
-    agentSessionResumeCommand: buildCodexSessionResumeCommand({ command, agentProfileId }, explicitResumeId),
-  };
+    agentSessionResumeCommand,
+    resumeCommand: "",
+  }, agentSessionResumeCommand);
 }
 
 function updateAgentSessionFromOutput(taskId, data) {
@@ -594,15 +599,16 @@ function updateAgentSessionFromOutput(taskId, data) {
     return;
   }
 
-  setTask({
+  const agentSessionResumeCommand = buildCodexSessionResumeCommand(task, sessionId);
+  setTask(withDetectedResumeCommand({
     ...task,
     agentSessionId: sessionId,
     agentSessionSource: "codex output",
     agentSessionProvider: "codex",
     agentSessionDetectedAt: new Date().toISOString(),
-    agentSessionResumeCommand: buildCodexSessionResumeCommand(task, sessionId),
+    agentSessionResumeCommand,
     updatedAt: new Date().toISOString(),
-  });
+  }, agentSessionResumeCommand));
   broadcastTasks();
 }
 
@@ -686,6 +692,21 @@ function buildCodexSessionResumeCommand(task, sessionId) {
     return `docker start taskdeck-ai-dev >/dev/null && docker exec -it -w /workspace taskdeck-ai-dev sh -lc 'codex resume ${sessionId}'`;
   }
   return `codex resume ${sessionId}`;
+}
+
+function withDetectedResumeCommand(task, agentSessionResumeCommand) {
+  if (!agentSessionResumeCommand || !canReplaceResumeCommand(task.resumeCommand)) {
+    return task;
+  }
+  return {
+    ...task,
+    resumeCommand: agentSessionResumeCommand,
+  };
+}
+
+function canReplaceResumeCommand(resumeCommand) {
+  const command = String(resumeCommand || "").trim();
+  return !command || /\bcodex\b[\s\S]*?\bresume\s+--last\b/i.test(command);
 }
 
 function normalizeDetectedSessionId(value) {
