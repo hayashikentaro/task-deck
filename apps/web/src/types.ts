@@ -12,6 +12,8 @@ export type AgentState =
 
 export type AgentStateSource = "taskdeck_event" | "tui_fallback" | "process" | "manual" | "";
 export type AgentStateConfidence = "high" | "medium" | "low" | "";
+export type AttentionStateSource = AgentStateSource;
+export type AttentionStateConfidence = AgentStateConfidence;
 export type AttentionState =
   | "none"
   | "may_need_user"
@@ -46,6 +48,8 @@ export type Task = {
   agentStateConfidence?: AgentStateConfidence;
   attentionState?: AttentionState;
   attentionStateReason?: string;
+  attentionStateSource?: AttentionStateSource;
+  attentionStateConfidence?: AttentionStateConfidence;
   risk: TaskRisk;
   createdAt: string;
   startedAt: string | null;

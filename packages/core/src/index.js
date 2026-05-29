@@ -88,6 +88,8 @@ export function createTask({
     agentStateConfidence: AgentStateConfidence.HIGH,
     attentionState: AttentionState.NONE,
     attentionStateReason: "No user attention needed yet.",
+    attentionStateSource: AgentStateSource.TASKDECK_EVENT,
+    attentionStateConfidence: AgentStateConfidence.HIGH,
     risk: assessCommandRisk(normalizedCommand),
     createdAt: now,
     startedAt: null,
@@ -111,6 +113,8 @@ export function markTaskRunning(task) {
     agentStateConfidence: task.agentStateConfidence || AgentStateConfidence.HIGH,
     attentionState: AttentionState.NONE,
     attentionStateReason: "Task is running.",
+    attentionStateSource: AgentStateSource.TASKDECK_EVENT,
+    attentionStateConfidence: AgentStateConfidence.HIGH,
     startedAt: now,
     updatedAt: now,
     endedAt: null,
@@ -128,15 +132,19 @@ export function markTaskAgentState(task, agentState, metadata = {}) {
     agentStateConfidence: metadata.confidence ?? task.agentStateConfidence ?? "",
     attentionState: metadata.attentionState ?? task.attentionState ?? AttentionState.NONE,
     attentionStateReason: metadata.attentionReason ?? task.attentionStateReason ?? "",
+    attentionStateSource: metadata.attentionSource ?? task.attentionStateSource ?? "",
+    attentionStateConfidence: metadata.attentionConfidence ?? task.attentionStateConfidence ?? "",
     updatedAt: new Date().toISOString(),
   };
 }
 
-export function markTaskAttentionState(task, attentionState, reason = "") {
+export function markTaskAttentionState(task, attentionState, metadata = {}) {
   return {
     ...task,
     attentionState,
-    attentionStateReason: reason || task.attentionStateReason || "",
+    attentionStateReason: metadata.reason ?? task.attentionStateReason ?? "",
+    attentionStateSource: metadata.source ?? task.attentionStateSource ?? "",
+    attentionStateConfidence: metadata.confidence ?? task.attentionStateConfidence ?? "",
     updatedAt: new Date().toISOString(),
   };
 }
@@ -156,6 +164,8 @@ export function markTaskExited(task, { exitCode, signal }) {
     agentStateConfidence: AgentStateConfidence.HIGH,
     attentionState,
     attentionStateReason: exitCode === 0 ? "Process completed successfully." : "Process stopped or failed.",
+    attentionStateSource: AgentStateSource.PROCESS,
+    attentionStateConfidence: AgentStateConfidence.HIGH,
     updatedAt: now,
     endedAt: now,
     exitCode,
@@ -185,6 +195,8 @@ export function serializeTask(task) {
     agentStateConfidence: task.agentStateConfidence || "",
     attentionState: task.attentionState ?? inferAttentionStateFromTask(task),
     attentionStateReason: task.attentionStateReason || "",
+    attentionStateSource: task.attentionStateSource || inferAttentionStateSourceFromTask(task),
+    attentionStateConfidence: task.attentionStateConfidence || inferAttentionStateConfidenceFromTask(task),
     risk: task.risk,
     createdAt: task.createdAt,
     startedAt: task.startedAt,
@@ -243,6 +255,20 @@ export function inferAttentionStateFromTask(task) {
   if (task.agentState === AgentState.WAITING_INPUT) return AttentionState.NEEDS_INPUT;
   if (task.agentState === AgentState.REVIEW_READY) return AttentionState.REVIEW_READY;
   return AttentionState.NONE;
+}
+
+export function inferAttentionStateSourceFromTask(task) {
+  if ((task.attentionState ?? inferAttentionStateFromTask(task)) === AttentionState.NONE) return "";
+  if (task.status === TaskStatus.FAILED || task.status === TaskStatus.INTERRUPTED) return AgentStateSource.PROCESS;
+  if (task.agentState === AgentState.FAILED || task.agentState === AgentState.STOPPED) return AgentStateSource.PROCESS;
+  return task.agentStateSource || "";
+}
+
+export function inferAttentionStateConfidenceFromTask(task) {
+  if ((task.attentionState ?? inferAttentionStateFromTask(task)) === AttentionState.NONE) return "";
+  if (task.status === TaskStatus.FAILED || task.status === TaskStatus.INTERRUPTED) return AgentStateConfidence.HIGH;
+  if (task.agentState === AgentState.FAILED || task.agentState === AgentState.STOPPED) return AgentStateConfidence.HIGH;
+  return task.agentStateConfidence || "";
 }
 
 function cryptoRandomId() {

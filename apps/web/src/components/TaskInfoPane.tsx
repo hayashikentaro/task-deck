@@ -33,6 +33,8 @@ export function TaskInfoPane({ actionError, task, onInterrupt, onRerun }: TaskIn
           <Info label="Title" value={task.title} />
           <InfoSection label="User attention" />
           <Info label="Attention state" value={attentionStateLabel(attentionState(task))} />
+          <Info label="Attention source" value={stateSourceLabel(task.attentionStateSource)} />
+          <Info label="Attention confidence" value={stateConfidenceLabel(task.attentionStateConfidence)} />
           {task.attentionStateReason ? <Info label="Attention reason" value={task.attentionStateReason} /> : null}
           <InfoSection label="Observed process" />
           <Info label="Process status" value={task.status} />

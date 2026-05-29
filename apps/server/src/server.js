@@ -73,6 +73,7 @@ const terminalEnter = "\r";
 const bracketedPasteStart = "\x1b[200~";
 const bracketedPasteEnd = "\x1b[201~";
 const codexInputHoldMs = 5000;
+const inputPromptStabilizationMs = 750;
 const ptyActivityWindowMs = 3000;
 const maxPtyActivityFrames = 40;
 const quietAttentionMs = 15000;
@@ -330,7 +331,10 @@ wss.on("connection", (socket) => {
           confidence: AgentStateConfidence.HIGH,
           attentionState: AttentionState.NONE,
           attentionReason: "User input was sent to the task.",
+          attentionSource: AgentStateSource.TASKDECK_EVENT,
+          attentionConfidence: AgentStateConfidence.HIGH,
         });
+        resetPendingInputPrompt(activePty);
         writeOrQueuePtyInput(activePty, message.data, message.source || "client");
       } else if (inputDebugEnabled) {
         console.log(`[TaskDeck input] ignored task=${message.taskId || "-"} reason=no-active-pty-or-invalid-data`);
@@ -349,6 +353,7 @@ wss.on("connection", (socket) => {
     if (message.type === "interrupt") {
       const activePty = activePtys.get(message.taskId);
       if (activePty) {
+        resetPendingInputPrompt(activePty);
         clearQueuedPtyInput(activePty);
         activePty.process.write("\x03");
       }
@@ -455,6 +460,8 @@ async function startTask({
       confidence: AgentStateConfidence.MEDIUM,
       attentionState: AttentionState.NONE,
       attentionReason: "Task has started.",
+      attentionSource: AgentStateSource.TASKDECK_EVENT,
+      attentionConfidence: AgentStateConfidence.HIGH,
     });
     send(socket, { type: "started", taskId: task.id });
 
@@ -504,6 +511,7 @@ function createActivePty(task, process) {
     inputQueue: [],
     flushTimer: null,
     activity: createPtyActivity(),
+    pendingInputPrompt: null,
   };
   scheduleQueuedPtyInputFlush(activePty);
   return activePty;
@@ -559,6 +567,7 @@ function clearQueuedPtyInput(activePty) {
 function clearActivePty(taskId) {
   const activePty = activePtys.get(taskId);
   if (activePty) {
+    resetPendingInputPrompt(activePty);
     clearQueuedPtyInput(activePty);
   }
   activePtys.delete(taskId);
@@ -768,7 +777,9 @@ function hasSameAgentStateMetadata(task, metadata) {
     (metadata.source === undefined || task.agentStateSource === metadata.source) &&
     (metadata.confidence === undefined || task.agentStateConfidence === metadata.confidence) &&
     (metadata.attentionState === undefined || task.attentionState === metadata.attentionState) &&
-    (metadata.attentionReason === undefined || task.attentionStateReason === metadata.attentionReason)
+    (metadata.attentionReason === undefined || task.attentionStateReason === metadata.attentionReason) &&
+    (metadata.attentionSource === undefined || task.attentionStateSource === metadata.attentionSource) &&
+    (metadata.attentionConfidence === undefined || task.attentionStateConfidence === metadata.attentionConfidence)
   );
 }
 
@@ -784,9 +795,11 @@ function updateAgentStateFromPtyOutput(activePty, data) {
   // TUI text is an unreliable protocol. Agent adapters keep that fallback
   // isolated so Goose/Codex behavior can evolve without broad shared guesses.
   const recentOutput = logs.get(activePty.taskId)?.slice(-8000) || data;
-  const nextSignal = adapter.infer({ recentOutput, activity, task });
+  const nextSignal = adapter.infer({ recentOutput, latestOutput: data, activity, task, activePty });
   const attentionState = nextSignal.attentionState ?? AttentionState.NONE;
   const attentionReason = nextSignal.attentionReason ?? "No user attention needed.";
+  const attentionSource = nextSignal.attentionSource ?? nextSignal.source;
+  const attentionConfidence = nextSignal.attentionConfidence ?? nextSignal.confidence;
 
   updateAgentStateFromTaskDeckEvent(activePty.taskId, nextSignal.state, {
     reason: nextSignal.reason,
@@ -794,12 +807,14 @@ function updateAgentStateFromPtyOutput(activePty, data) {
     confidence: nextSignal.confidence,
     attentionState,
     attentionReason,
+    attentionSource,
+    attentionConfidence,
   });
 }
 
 function updateQuietAttentionStates() {
   const now = Date.now();
-  let changed = false;
+  let changed = updatePendingInputAttentionStates(now);
 
   for (const activePty of activePtys.values()) {
     const task = tasks.get(activePty.taskId);
@@ -814,7 +829,11 @@ function updateQuietAttentionStates() {
 
     const reason = "Running PTY has been quiet; user attention may be needed.";
     if (task.attentionState !== AttentionState.MAY_NEED_USER || task.attentionStateReason !== reason) {
-      setTask(markTaskAttentionState(task, AttentionState.MAY_NEED_USER, reason));
+      setTask(markTaskAttentionState(task, AttentionState.MAY_NEED_USER, {
+        reason,
+        source: AgentStateSource.PROCESS,
+        confidence: AgentStateConfidence.LOW,
+      }));
       changed = true;
     }
   }
@@ -822,6 +841,48 @@ function updateQuietAttentionStates() {
   if (changed) {
     broadcastTasks();
   }
+}
+
+function updatePendingInputAttentionStates(now) {
+  let changed = false;
+
+  for (const activePty of activePtys.values()) {
+    const task = tasks.get(activePty.taskId);
+    const pendingInputPrompt = activePty.pendingInputPrompt;
+    if (!task || task.status !== TaskStatus.RUNNING || !pendingInputPrompt) {
+      continue;
+    }
+
+    if (now - pendingInputPrompt.firstSeenAt < inputPromptStabilizationMs) {
+      continue;
+    }
+
+    if (isPtyActivelyRepainting(activePty.activity, now)) {
+      continue;
+    }
+
+    const reason = "Input prompt persisted and terminal is quiet.";
+    const attentionReason = "Stable input prompt detected.";
+    if (
+      task.agentState !== AgentState.WAITING_INPUT ||
+      task.agentStateReason !== reason ||
+      task.attentionState !== AttentionState.NEEDS_INPUT ||
+      task.attentionStateReason !== attentionReason
+    ) {
+      setTask(markTaskAgentState(task, AgentState.WAITING_INPUT, {
+        reason,
+        source: AgentStateSource.TUI_FALLBACK,
+        confidence: AgentStateConfidence.MEDIUM,
+        attentionState: AttentionState.NEEDS_INPUT,
+        attentionReason,
+        attentionSource: AgentStateSource.TUI_FALLBACK,
+        attentionConfidence: AgentStateConfidence.MEDIUM,
+      }));
+      changed = true;
+    }
+  }
+
+  return changed;
 }
 
 function isStrongAttentionState(attentionState) {
@@ -841,6 +902,12 @@ function createPtyActivity() {
     recentOutputFrames: [],
     recentAnsiFrames: [],
     recentCarriageReturns: [],
+    signals: {
+      containsAnsiControl: false,
+      containsCarriageReturn: false,
+      containsCursorMovementOrLineClear: false,
+      hasVisibleTextAfterStrip: false,
+    },
   };
 }
 
@@ -849,6 +916,7 @@ function recordPtyActivity(activePty, data) {
   const signals = classifyPtyOutputChunk(data);
   const activity = activePty.activity || createPtyActivity();
 
+  activity.signals = signals;
   activity.lastOutputAt = now;
   activity.recentOutputFrames = appendRecentTimestamp(activity.recentOutputFrames, now);
 
@@ -901,27 +969,27 @@ function getAgentStateInferenceAdapter(task) {
 
 const gooseAgentStateAdapter = {
   id: "goose",
-  infer({ recentOutput, activity }) {
-    return inferWithExplicitPromptFallback(recentOutput, activity);
+  infer({ recentOutput, latestOutput, activity, activePty }) {
+    return inferWithExplicitPromptFallback({ recentOutput, latestOutput, activity, activePty, agentKind: this.id });
   },
 };
 
 const codexAgentStateAdapter = {
   id: "codex",
-  infer({ recentOutput, activity }) {
-    return inferWithExplicitPromptFallback(recentOutput, activity);
+  infer({ recentOutput, latestOutput, activity, activePty }) {
+    return inferWithExplicitPromptFallback({ recentOutput, latestOutput, activity, activePty, agentKind: this.id });
   },
 };
 
 const genericAgentStateAdapter = {
   id: "generic",
-  infer({ recentOutput, activity }) {
-    return inferWithExplicitPromptFallback(recentOutput, activity);
+  infer({ recentOutput, latestOutput, activity, activePty }) {
+    return inferWithExplicitPromptFallback({ recentOutput, latestOutput, activity, activePty, agentKind: this.id });
   },
 };
 
-function inferWithExplicitPromptFallback(recentOutput, activity) {
-  const tuiSignal = inferFromExplicitTuiPrompts(recentOutput, activity);
+function inferWithExplicitPromptFallback({ recentOutput, latestOutput, activity, activePty, agentKind }) {
+  const tuiSignal = inferFromExplicitTuiPrompts({ recentOutput, latestOutput, activity, activePty, agentKind });
   const processSignal = inferFromPtyActivity(activity);
 
   if (tuiSignal?.state) {
@@ -932,6 +1000,8 @@ function inferWithExplicitPromptFallback(recentOutput, activity) {
     ...processSignal,
     attentionState: tuiSignal?.attentionState ?? processSignal.attentionState,
     attentionReason: tuiSignal?.attentionReason ?? processSignal.attentionReason,
+    attentionSource: tuiSignal?.attentionSource ?? processSignal.attentionSource,
+    attentionConfidence: tuiSignal?.attentionConfidence ?? processSignal.attentionConfidence,
   };
 }
 
@@ -947,6 +1017,8 @@ function inferFromPtyActivity(activity) {
       confidence: AgentStateConfidence.MEDIUM,
       attentionState: AttentionState.NONE,
       attentionReason: "PTY is actively repainting.",
+      attentionSource: AgentStateSource.PROCESS,
+      attentionConfidence: AgentStateConfidence.MEDIUM,
     };
   }
 
@@ -958,6 +1030,8 @@ function inferFromPtyActivity(activity) {
       confidence: AgentStateConfidence.MEDIUM,
       attentionState: AttentionState.NONE,
       attentionReason: "PTY emitted visible output.",
+      attentionSource: AgentStateSource.PROCESS,
+      attentionConfidence: AgentStateConfidence.MEDIUM,
     };
   }
 
@@ -968,31 +1042,39 @@ function inferFromPtyActivity(activity) {
     confidence: AgentStateConfidence.LOW,
     attentionState: AttentionState.NONE,
     attentionReason: "PTY emitted terminal output.",
+    attentionSource: AgentStateSource.PROCESS,
+    attentionConfidence: AgentStateConfidence.LOW,
   };
 }
 
-function isPtyActivelyRepainting(activity) {
+function isPtyActivelyRepainting(activity, now = Date.now()) {
   const { signals } = activity;
-  const recentRepaintFrames = activity.recentAnsiFrames.length + activity.recentCarriageReturns.length;
+  const recentAnsiFrames = activity.recentAnsiFrames.filter((timestamp) => now - timestamp <= ptyActivityWindowMs).length;
+  const recentCarriageReturns = activity.recentCarriageReturns.filter((timestamp) => now - timestamp <= ptyActivityWindowMs).length;
+  const recentRepaintFrames = recentAnsiFrames + recentCarriageReturns;
+  const lastOutputIsCurrent = !activity.lastOutputAt || now - activity.lastOutputAt <= 250;
   return (
     recentRepaintFrames >= 3 ||
-    (signals.containsCarriageReturn && !signals.hasVisibleTextAfterStrip) ||
-    (signals.containsCursorMovementOrLineClear && !signals.hasVisibleTextAfterStrip)
+    (lastOutputIsCurrent && signals.containsCarriageReturn && !signals.hasVisibleTextAfterStrip) ||
+    (lastOutputIsCurrent && signals.containsCursorMovementOrLineClear && !signals.hasVisibleTextAfterStrip)
   );
 }
 
-function inferFromExplicitTuiPrompts(data, activity) {
-  const rawText = String(data);
-  const text = stripTerminalControlSequences(String(data));
+function inferFromExplicitTuiPrompts({ recentOutput, latestOutput, activity, activePty, agentKind }) {
+  const rawText = String(recentOutput);
+  const text = stripTerminalControlSequences(String(recentOutput));
+  const latestText = stripTerminalControlSequences(String(latestOutput));
   const normalizedRaw = rawText.toLowerCase();
   const normalized = text.toLowerCase();
-  const lastLine = lastMeaningfulLine(text).toLowerCase();
+  const lastLine = lastMeaningfulLine(latestText).toLowerCase();
+  const promptWindow = lastMeaningfulLines(latestText, 8).join("\n").toLowerCase();
 
   if (!normalized.trim()) {
     return null;
   }
 
   if (/(you approved|approved .* to run|✔ .*approved)/.test(normalized)) {
+    resetPendingInputPrompt(activePty);
     return {
       state: AgentState.WORKING,
       reason: "TUI output indicates an approval was accepted.",
@@ -1000,10 +1082,13 @@ function inferFromExplicitTuiPrompts(data, activity) {
       confidence: AgentStateConfidence.MEDIUM,
       attentionState: AttentionState.NONE,
       attentionReason: "Approval appears to have been accepted.",
+      attentionSource: AgentStateSource.TUI_FALLBACK,
+      attentionConfidence: AgentStateConfidence.MEDIUM,
     };
   }
 
   if (isApprovalPrompt(normalized, normalizedRaw)) {
+    resetPendingInputPrompt(activePty);
     return {
       state: AgentState.WAITING_APPROVAL,
       reason: "TUI output appears to be requesting approval.",
@@ -1011,34 +1096,44 @@ function inferFromExplicitTuiPrompts(data, activity) {
       confidence: AgentStateConfidence.MEDIUM,
       attentionState: AttentionState.NEEDS_APPROVAL,
       attentionReason: "Approval prompt detected.",
+      attentionSource: AgentStateSource.TUI_FALLBACK,
+      attentionConfidence: AgentStateConfidence.MEDIUM,
     };
   }
 
   const hasInputLikePrompt =
-    isInteractivePrompt(lastLine) || /(waiting for input|press enter|enter your|select an? |choose an? |type .*:|\?\s*$)/.test(normalized);
-
-  if (
-    !isPtyActivelyRepainting(activity) &&
-    hasInputLikePrompt
-  ) {
-    return {
-      state: AgentState.WAITING_INPUT,
-      reason: "Input prompt detected and terminal is quiet.",
-      source: AgentStateSource.TUI_FALLBACK,
-      confidence: AgentStateConfidence.MEDIUM,
-      attentionState: AttentionState.NEEDS_INPUT,
-      attentionReason: "Stable input prompt detected.",
-    };
-  }
+    isInteractivePrompt(lastLine) ||
+    /(waiting for input|press enter|enter your|select an? |choose an? |type .*:|\?\s*$)/.test(promptWindow);
 
   if (hasInputLikePrompt) {
+    const inputPromptSignal = updatePendingInputPrompt(activePty, {
+      agentKind,
+      textFingerprint: fingerprintInputPrompt(lastLine || normalized),
+    });
+
+    if (!isPtyActivelyRepainting(activity) && inputPromptSignal.isStable) {
+      return {
+        state: AgentState.WAITING_INPUT,
+        reason: "Input prompt persisted and terminal is quiet.",
+        source: AgentStateSource.TUI_FALLBACK,
+        confidence: AgentStateConfidence.MEDIUM,
+        attentionState: AttentionState.NEEDS_INPUT,
+        attentionReason: "Stable input prompt detected.",
+        attentionSource: AgentStateSource.TUI_FALLBACK,
+        attentionConfidence: AgentStateConfidence.MEDIUM,
+      };
+    }
+
     return {
       attentionState: AttentionState.MAY_NEED_USER,
-      attentionReason: "Input-like prompt is visible, but the PTY is still repainting.",
+      attentionReason: "Input-like prompt is visible but not yet stable.",
+      attentionSource: AgentStateSource.TUI_FALLBACK,
+      attentionConfidence: AgentStateConfidence.LOW,
     };
   }
 
   if (/(ready for review|review ready|please review|changes are ready|diff is ready|summary of changes|task complete|completed successfully)/.test(normalized)) {
+    resetPendingInputPrompt(activePty);
     return {
       state: AgentState.REVIEW_READY,
       reason: "TUI output indicates the work may be ready for review.",
@@ -1046,10 +1141,59 @@ function inferFromExplicitTuiPrompts(data, activity) {
       confidence: AgentStateConfidence.MEDIUM,
       attentionState: AttentionState.REVIEW_READY,
       attentionReason: "Review-ready output detected.",
+      attentionSource: AgentStateSource.TUI_FALLBACK,
+      attentionConfidence: AgentStateConfidence.MEDIUM,
     };
   }
 
+  resetPendingInputPrompt(activePty);
   return null;
+}
+
+function updatePendingInputPrompt(activePty, { agentKind, textFingerprint }) {
+  const now = Date.now();
+  const currentPrompt = activePty?.pendingInputPrompt;
+  const isSamePrompt =
+    currentPrompt &&
+    currentPrompt.agentKind === agentKind &&
+    currentPrompt.textFingerprint === textFingerprint;
+
+  if (!activePty) {
+    return { isStable: false };
+  }
+
+  if (!isSamePrompt) {
+    activePty.pendingInputPrompt = {
+      firstSeenAt: now,
+      lastSeenAt: now,
+      textFingerprint,
+      agentKind,
+    };
+    return { isStable: false };
+  }
+
+  activePty.pendingInputPrompt = {
+    ...currentPrompt,
+    lastSeenAt: now,
+  };
+
+  return {
+    isStable: now - currentPrompt.firstSeenAt >= inputPromptStabilizationMs,
+  };
+}
+
+function resetPendingInputPrompt(activePty) {
+  if (activePty) {
+    activePty.pendingInputPrompt = null;
+  }
+}
+
+function fingerprintInputPrompt(value) {
+  return String(value)
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(-240);
 }
 
 function isApprovalPrompt(normalized, normalizedRaw) {
@@ -1140,11 +1284,15 @@ function isGooseLikeTask(task) {
 }
 
 function lastMeaningfulLine(value) {
+  return lastMeaningfulLines(value, 1).at(-1) ?? "";
+}
+
+function lastMeaningfulLines(value, limit) {
   return value
     .split(/\n/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .at(-1) ?? "";
+    .slice(-limit);
 }
 
 function isInteractivePrompt(line) {

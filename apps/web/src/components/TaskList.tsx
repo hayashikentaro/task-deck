@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AgentState, AttentionState, Task } from "../types";
 
-type TaskFilter = "all" | "attention" | "active" | "review" | "done" | "failed" | "risk";
+type TaskFilter =
+  | "all"
+  | "needs_you"
+  | "maybe_needs_you"
+  | "review_ready"
+  | "running"
+  | "done"
+  | "failed"
+  | "risk";
 
 type TaskListProps = {
   actionError: string;
@@ -71,7 +79,16 @@ export function TaskList({
         </div>
       </div>
       <div className="task-filters" aria-label="Task filters">
-        {(["all", "attention", "active", "review", "done", "failed", "risk"] as TaskFilter[]).map((nextFilter) => (
+        {([
+          "all",
+          "needs_you",
+          "maybe_needs_you",
+          "review_ready",
+          "running",
+          "done",
+          "failed",
+          "risk",
+        ] as TaskFilter[]).map((nextFilter) => (
           <button
             aria-pressed={filter === nextFilter}
             data-active={filter === nextFilter}
@@ -183,6 +200,8 @@ export function TaskList({
                     <Info label="CWD" value={task.cwd} />
                     <SectionLabel label="User attention" />
                     <Info label="Attention state" value={attentionStateLabel(attentionState(task))} />
+                    <Info label="Attention source" value={stateSourceLabel(task.attentionStateSource)} />
+                    <Info label="Attention confidence" value={stateConfidenceLabel(task.attentionStateConfidence)} />
                     {task.attentionStateReason ? <Info label="Attention reason" value={task.attentionStateReason} wide /> : null}
                     <SectionLabel label="Observed process" />
                     <Info label="Process status" value={task.status} />
@@ -318,20 +337,23 @@ function SectionLabel({ label }: { label: string }) {
 }
 
 function matchesFilter(task: Task, filter: TaskFilter) {
-  if (filter === "attention") {
-    return attentionState(task) !== "none";
+  if (filter === "needs_you") {
+    return attentionState(task) === "needs_input" || attentionState(task) === "needs_approval";
   }
-  if (filter === "active") {
-    return task.agentState === "starting" || task.agentState === "thinking" || task.agentState === "working";
+  if (filter === "maybe_needs_you") {
+    return attentionState(task) === "may_need_user";
   }
-  if (filter === "review") {
+  if (filter === "review_ready") {
     return attentionState(task) === "review_ready";
   }
+  if (filter === "running") {
+    return task.status === "running" && attentionState(task) === "none";
+  }
   if (filter === "done") {
-    return task.agentState === "done";
+    return task.status === "succeeded" || task.agentState === "done";
   }
   if (filter === "failed") {
-    return attentionState(task) === "failed";
+    return task.status === "failed" || task.status === "interrupted" || attentionState(task) === "failed";
   }
   if (filter === "risk") {
     return task.risk.level === "high" || task.risk.level === "medium";
@@ -340,9 +362,10 @@ function matchesFilter(task: Task, filter: TaskFilter) {
 }
 
 function filterLabel(filter: TaskFilter) {
-  if (filter === "attention") return "Attention";
-  if (filter === "active") return "Active";
-  if (filter === "review") return "Review";
+  if (filter === "needs_you") return "Needs you";
+  if (filter === "maybe_needs_you") return "Maybe needs you";
+  if (filter === "review_ready") return "Review ready";
+  if (filter === "running") return "Running";
   if (filter === "done") return "Done";
   if (filter === "failed") return "Failed/stopped";
   if (filter === "risk") return "Risk";
