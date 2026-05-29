@@ -138,7 +138,7 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
       return false;
     }
     const data = formatAgentInputForPty(input);
-    return send({ type: "input", taskId: task.id, data });
+    return send({ type: "input", taskId: task.id, data, source: "composer-agent" });
   };
 
   const sendShellCommands = (input: string) => {
@@ -146,7 +146,7 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
       return false;
     }
     const data = formatShellCommandsForPty(input);
-    return send({ type: "input", taskId: task.id, data });
+    return send({ type: "input", taskId: task.id, data, source: "composer-shell" });
   };
 
   return (
@@ -276,10 +276,7 @@ function isCommandEnter(event: KeyboardEvent<HTMLTextAreaElement>) {
 
 function formatAgentInputForPty(input: string) {
   const text = normalizeTerminalInput(input);
-  if (text.includes("\n")) {
-    return `${bracketedPasteStart}${text}${bracketedPasteEnd}${terminalEnter}`;
-  }
-  return `${text}${terminalEnter}`;
+  return `${bracketedPasteStart}${text}${bracketedPasteEnd}${terminalEnter}`;
 }
 
 function formatShellCommandsForPty(input: string) {

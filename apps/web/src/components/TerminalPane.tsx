@@ -18,20 +18,22 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const selectedTaskIdRef = useRef<string | null>(null);
+  const directInputDebugRef = useRef(isDirectInputDebugEnabled());
   const followOutputRef = useRef(true);
   const [followOutput, setFollowOutput] = useState(true);
   const [logBuffer, setLogBuffer] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [terminalMessage, setTerminalMessage] = useState("");
 
+  const directInputDebug = directInputDebugRef.current;
   const terminalMode = getTerminalMode(task, isConnected);
   const searchMatchCount = useMemo(() => countMatches(logBuffer, searchTerm), [logBuffer, searchTerm]);
 
   useEffect(() => {
     if (terminalRef.current) {
-      terminalRef.current.options.disableStdin = true;
+      terminalRef.current.options.disableStdin = !(directInputDebug && task?.status === "running" && isConnected);
     }
-  }, []);
+  }, [directInputDebug, isConnected, task?.status]);
 
   useEffect(() => {
     followOutputRef.current = followOutput;
@@ -56,7 +58,16 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(hostRef.current);
-    terminal.options.disableStdin = true;
+    terminal.options.disableStdin = !directInputDebugRef.current;
+    terminal.onData((data) => {
+      if (!directInputDebugRef.current) {
+        return;
+      }
+      const taskId = selectedTaskIdRef.current;
+      if (taskId) {
+        send({ type: "input", taskId, data, source: "xterm" });
+      }
+    });
     fitAddon.fit();
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
@@ -181,6 +192,7 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
           <h2>Terminal</h2>
           <strong data-mode={modeTone(terminalMode)}>{terminalMode}</strong>
           <span>{task ? task.agentState.replace(/_/g, " ") : "idle"}</span>
+          {directInputDebug ? <span>direct input debug</span> : null}
         </div>
         <div className="terminal-controls">
           <button
@@ -267,4 +279,8 @@ function modeTone(mode: string) {
     return "readonly";
   }
   return "none";
+}
+
+function isDirectInputDebugEnabled() {
+  return new URLSearchParams(window.location.search).get("directInput") === "1";
 }

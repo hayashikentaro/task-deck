@@ -58,6 +58,7 @@ const wss = new WebSocketServer({ server, path: "/ws" });
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || "127.0.0.1";
 const shell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "bash");
+const inputDebugEnabled = process.env.TASKDECK_INPUT_DEBUG === "1";
 
 const clients = new Set();
 const tasks = new Map();
@@ -67,6 +68,7 @@ const maxLogLength = 250_000;
 const terminalEnter = "\r";
 const bracketedPasteStart = "\x1b[200~";
 const bracketedPasteEnd = "\x1b[201~";
+const codexInputHoldMs = 5000;
 const activePtys = new Map();
 let persistTasksQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
@@ -144,7 +146,7 @@ app.delete("/api/tasks/:taskId", async (request, response) => {
 
   const activePty = activePtys.get(taskId);
   if (activePty) {
-    activePtys.delete(taskId);
+    clearActivePty(taskId);
     try {
       activePty.process.kill();
     } catch (error) {
@@ -314,12 +316,15 @@ wss.on("connection", (socket) => {
     if (message.type === "input") {
       const activePty = activePtys.get(message.taskId);
       if (activePty && typeof message.data === "string") {
+        logInputDebug(message.taskId, message.data, message.source || "client");
         const task = tasks.get(message.taskId);
         if (task) {
           setTask(markTaskAgentState(task, AgentState.WORKING));
           broadcastTasks();
         }
-        activePty.process.write(message.data);
+        writeOrQueuePtyInput(activePty, message.data, message.source || "client");
+      } else if (inputDebugEnabled) {
+        console.log(`[TaskDeck input] ignored task=${message.taskId || "-"} reason=no-active-pty-or-invalid-data`);
       }
       return;
     }
@@ -335,6 +340,7 @@ wss.on("connection", (socket) => {
     if (message.type === "interrupt") {
       const activePty = activePtys.get(message.taskId);
       if (activePty) {
+        clearQueuedPtyInput(activePty);
         activePty.process.write("\x03");
       }
       return;
@@ -429,7 +435,8 @@ async function startTask({
       },
     });
 
-    activePtys.set(task.id, { taskId: task.id, process: terminalProcess });
+    const activePty = createActivePty(task, terminalProcess);
+    activePtys.set(task.id, activePty);
     setTask(markTaskAgentState(task, AgentState.THINKING));
     send(socket, { type: "started", taskId: task.id });
     broadcastTasks();
@@ -446,15 +453,16 @@ async function startTask({
 
     if (initialInstruction) {
       setTimeout(() => {
-        if (activePtys.has(task.id)) {
-          terminalProcess.write(formatAgentInputForPty(initialInstruction));
+        const activePty = activePtys.get(task.id);
+        if (activePty) {
+          writeOrQueuePtyInput(activePty, formatAgentInputForPty(initialInstruction), "initial-instruction");
         }
       }, 350);
     }
 
     terminalProcess.onExit(({ exitCode, signal }) => {
       const currentTask = tasks.get(task.id);
-      activePtys.delete(task.id);
+      clearActivePty(task.id);
       if (!currentTask) {
         return;
       }
@@ -467,6 +475,74 @@ async function startTask({
     broadcast({ type: "output", taskId: task.id, data: logs.get(task.id) });
     broadcastTasks();
   }
+}
+
+function createActivePty(task, process) {
+  const inputHoldUntil = isCodexLikeTask(task) ? Date.now() + codexInputHoldMs : 0;
+  const activePty = {
+    taskId: task.id,
+    process,
+    inputHoldUntil,
+    inputQueue: [],
+    flushTimer: null,
+  };
+  scheduleQueuedPtyInputFlush(activePty);
+  return activePty;
+}
+
+function writeOrQueuePtyInput(activePty, data, source) {
+  const waitMs = activePty.inputHoldUntil - Date.now();
+  if (waitMs > 0) {
+    activePty.inputQueue.push(data);
+    if (inputDebugEnabled) {
+      console.log(`[TaskDeck input] queued source=${source} task=${activePty.taskId} waitMs=${waitMs}`);
+    }
+    scheduleQueuedPtyInputFlush(activePty);
+    return;
+  }
+
+  flushQueuedPtyInput(activePty);
+  activePty.process.write(data);
+}
+
+function scheduleQueuedPtyInputFlush(activePty) {
+  const waitMs = activePty.inputHoldUntil - Date.now();
+  if (waitMs <= 0 || activePty.flushTimer) {
+    return;
+  }
+
+  activePty.flushTimer = setTimeout(() => {
+    activePty.flushTimer = null;
+    flushQueuedPtyInput(activePty);
+  }, waitMs);
+}
+
+function flushQueuedPtyInput(activePty) {
+  if (activePty.inputQueue.length === 0) {
+    return;
+  }
+
+  const queuedInput = activePty.inputQueue.splice(0).join("");
+  if (inputDebugEnabled) {
+    console.log(`[TaskDeck input] flushing task=${activePty.taskId} len=${queuedInput.length}`);
+  }
+  activePty.process.write(queuedInput);
+}
+
+function clearQueuedPtyInput(activePty) {
+  activePty.inputQueue.splice(0);
+  if (activePty.flushTimer) {
+    clearTimeout(activePty.flushTimer);
+    activePty.flushTimer = null;
+  }
+}
+
+function clearActivePty(taskId) {
+  const activePty = activePtys.get(taskId);
+  if (activePty) {
+    clearQueuedPtyInput(activePty);
+  }
+  activePtys.delete(taskId);
 }
 
 async function resolveCwd(cwd, socket) {
@@ -522,14 +598,23 @@ async function validateCwd(cwd) {
 
 function formatAgentInputForPty(input) {
   const text = normalizeTerminalInput(input);
-  if (text.includes("\n")) {
-    return `${bracketedPasteStart}${text}${bracketedPasteEnd}${terminalEnter}`;
-  }
-  return `${text}${terminalEnter}`;
+  return `${bracketedPasteStart}${text}${bracketedPasteEnd}${terminalEnter}`;
 }
 
 function normalizeTerminalInput(input) {
   return String(input).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+function logInputDebug(taskId, data, source) {
+  if (!inputDebugEnabled) {
+    return;
+  }
+
+  const tail = data.slice(-24);
+  const codes = Array.from(tail).map((character) => character.charCodeAt(0));
+  console.log(
+    `[TaskDeck input] source=${source} task=${taskId} len=${data.length} hasCR=${data.includes("\r")} hasLF=${data.includes("\n")} hasBracketedPaste=${data.includes(bracketedPasteStart)} tail=${JSON.stringify(tail)} tailCodes=${codes.join(",")}`,
+  );
 }
 
 async function cwdIsGitRepo(cwd) {
