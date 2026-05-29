@@ -10,12 +10,13 @@ type TaskCreateFormProps = {
 };
 
 const defaultAgentProfileId = "goose";
-type SessionMode = "new" | "resume_last" | "saved_codex" | "custom_resume";
+type SessionMode = "new" | "resume_last" | "resume_by_id" | "saved_codex" | "custom_resume";
 
 export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreateTask }: TaskCreateFormProps) {
   const [selectedAgentId, setSelectedAgentId] = useState(defaultAgentProfileId);
   const [customCommand, setCustomCommand] = useState("");
   const [customResumeCommand, setCustomResumeCommand] = useState("");
+  const [codexSessionId, setCodexSessionId] = useState("");
   const [selectedSavedSessionKey, setSelectedSavedSessionKey] = useState("");
   const [sessionMode, setSessionMode] = useState<SessionMode>("new");
   const [initialInstruction, setInitialInstruction] = useState("");
@@ -84,6 +85,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
     sessionMode,
     customResumeCommand,
     customCommand,
+    codexSessionId,
     selectedSavedSession,
   );
   const command = launchCommand.command;
@@ -94,6 +96,15 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
       setSelectedAgentId(findDefaultAgentProfile(agentProfiles)?.id ?? defaultAgentProfileId);
     }
   }, [agentProfiles, selectedAgentId]);
+
+  useEffect(() => {
+    if (sessionMode === "resume_by_id" && !isCodexProfile(selectedAgent)) {
+      const codexProfile = agentProfiles.find((profile) => isCodexProfile(profile));
+      if (codexProfile) {
+        setSelectedAgentId(codexProfile.id);
+      }
+    }
+  }, [agentProfiles, selectedAgent, sessionMode]);
 
   useEffect(() => {
     if (sessionMode === "saved_codex" && selectedSavedSession && cwd !== selectedSavedSession.cwd) {
@@ -122,24 +133,42 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
       return;
     }
     onCreateTask({
-      title: buildTaskTitle(
-        sessionMode === "saved_codex" ? "Resume saved" : selectedAgent.label,
-        initialInstruction,
-        selectedSavedSession,
-      ),
+      title:
+        sessionMode === "resume_by_id" && !initialInstruction.trim()
+          ? `Resume by id: ${codexSessionId.trim()}`
+          : buildTaskTitle(
+              sessionMode === "saved_codex" ? "Resume saved" : selectedAgent.label,
+              initialInstruction,
+              selectedSavedSession,
+            ),
       command,
       cwd,
       agentProfileId: sessionMode === "saved_codex" ? selectedSavedSession?.agentProfileId || "codex" : selectedAgent.id,
       agentLabel: sessionMode === "saved_codex" ? selectedSavedSession?.agentLabel || "Codex CLI" : selectedAgent.label,
       sessionMode,
       resumeCommand: launchCommand.resumeCommand || undefined,
-      agentSessionProvider: sessionMode === "saved_codex" ? selectedSavedSession?.provider : undefined,
-      agentSessionId: sessionMode === "saved_codex" ? selectedSavedSession?.sessionId : undefined,
+      agentSessionProvider:
+        sessionMode === "saved_codex" ? selectedSavedSession?.provider : sessionMode === "resume_by_id" ? "codex" : undefined,
+      agentSessionId:
+        sessionMode === "saved_codex" ? selectedSavedSession?.sessionId : sessionMode === "resume_by_id" ? codexSessionId.trim() : undefined,
       agentSessionSource:
-        sessionMode === "saved_codex" ? selectedSavedSession?.source || "saved session picker" : undefined,
+        sessionMode === "saved_codex"
+          ? selectedSavedSession?.source || "saved session picker"
+          : sessionMode === "resume_by_id"
+            ? "manual session id"
+            : undefined,
       agentSessionDetectedAt:
-        sessionMode === "saved_codex" ? selectedSavedSession?.detectedAt || selectedSavedSession?.updatedAt : undefined,
-      agentSessionResumeCommand: sessionMode === "saved_codex" ? selectedSavedSession?.resumeCommand : undefined,
+        sessionMode === "saved_codex"
+          ? selectedSavedSession?.detectedAt || selectedSavedSession?.updatedAt
+          : sessionMode === "resume_by_id"
+            ? new Date().toISOString()
+            : undefined,
+      agentSessionResumeCommand:
+        sessionMode === "saved_codex"
+          ? selectedSavedSession?.resumeCommand
+          : sessionMode === "resume_by_id"
+            ? launchCommand.resumeCommand || undefined
+            : undefined,
       initialInstruction: initialInstruction.trim(),
     });
   };
@@ -165,6 +194,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
           <select value={sessionMode} onChange={(event) => setSessionMode(event.target.value as SessionMode)}>
             <option value="new">New session</option>
             <option value="resume_last">Resume last</option>
+            <option value="resume_by_id">Resume by session id</option>
             {savedCodexSessions.length > 0 ? <option value="saved_codex">Resume saved session</option> : null}
             <option value="custom_resume">Custom resume command</option>
           </select>
@@ -212,6 +242,17 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
               </dl>
             ) : null}
           </div>
+        ) : null}
+        {sessionMode === "resume_by_id" ? (
+          <label className="codex-session-id-field">
+            <span>Codex session id</span>
+            <input
+              placeholder="Session id to resume"
+              value={codexSessionId}
+              onChange={(event) => setCodexSessionId(event.target.value)}
+            />
+            <small>Starts Codex with a precise resume command for this id.</small>
+          </label>
         ) : null}
         {sessionMode === "custom_resume" ? (
           <label className="custom-resume-field">
@@ -291,6 +332,7 @@ function buildLaunchCommand(
   sessionMode: SessionMode,
   customResumeCommand: string,
   customCommand: string,
+  codexSessionId: string,
   savedSession: SavedCodexSession | null,
 ) {
   if (sessionMode === "saved_codex") {
@@ -303,6 +345,12 @@ function buildLaunchCommand(
     return { command: resumeCommand, resumeCommand };
   }
 
+  if (sessionMode === "resume_by_id") {
+    const sessionId = codexSessionId.trim();
+    const resumeCommand = sessionId ? buildCodexResumeCommand(profile, sessionId) : "";
+    return { command: resumeCommand, resumeCommand };
+  }
+
   if (sessionMode === "resume_last" && isCodexProfile(profile)) {
     const resumeCommand = buildCodexResumeLastCommand(profile);
     return { command: resumeCommand, resumeCommand };
@@ -312,11 +360,22 @@ function buildLaunchCommand(
   return { command, resumeCommand: "" };
 }
 
+function buildCodexResumeCommand(profile: AgentProfile, sessionId: string) {
+  if (profile.id === "ai-dev-container-codex") {
+    return `docker start taskdeck-ai-dev >/dev/null && docker exec -it -w /workspace taskdeck-ai-dev sh -lc 'codex resume ${shellQuote(sessionId)}'`;
+  }
+  return `codex resume ${shellQuote(sessionId)}`;
+}
+
 function buildCodexResumeLastCommand(profile: AgentProfile) {
   if (profile.id === "ai-dev-container-codex") {
     return "docker start taskdeck-ai-dev >/dev/null && docker exec -it -w /workspace taskdeck-ai-dev sh -lc 'codex resume --last'";
   }
   return "codex resume --last";
+}
+
+function shellQuote(value: string) {
+  return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 function buildTaskTitle(agentLabel: string, instruction: string, savedSession?: SavedCodexSession | null) {
