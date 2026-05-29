@@ -21,6 +21,7 @@ type ServerMessage =
 
 export function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [savedCodexSessions, setSavedCodexSessions] = useState<SavedCodexSession[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [runningTaskIds, setRunningTaskIds] = useState<string[]>([]);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
@@ -41,6 +42,18 @@ export function App() {
     runningTaskIdsRef.current = runningTaskIds;
   }, [runningTaskIds]);
 
+  const loadSavedCodexSessions = useCallback(() => {
+    fetch("/api/sessions/codex")
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Unable to load saved Codex sessions.");
+        }
+        return response.json();
+      })
+      .then((payload: { sessions?: SavedCodexSession[] }) => setSavedCodexSessions(payload.sessions ?? []))
+      .catch(() => setSavedCodexSessions([]));
+  }, []);
+
   useEffect(() => {
     let reconnectTimer: number | undefined;
     let closedByEffect = false;
@@ -60,6 +73,7 @@ export function App() {
           const nextRunningTaskIds = getRunningTaskIdsFromMessage(message);
           setTasks(message.tasks);
           setRunningTaskIds(nextRunningTaskIds);
+          loadSavedCodexSessions();
           setSelectedTaskId((current) => {
             if (current && message.tasks.some((task) => task.id === current)) {
               return current;
@@ -126,11 +140,14 @@ export function App() {
       .catch(() => setTaskDeckContext(null));
   }, []);
 
+  useEffect(() => {
+    loadSavedCodexSessions();
+  }, [loadSavedCodexSessions]);
+
   const selectedTask = useMemo(
     () => tasks.find((task) => task.id === selectedTaskId) ?? null,
     [selectedTaskId, tasks],
   );
-  const savedCodexSessions = useMemo(() => buildSavedCodexSessions(tasks), [tasks]);
 
   useEffect(() => {
     setTaskActionError("");
@@ -243,6 +260,7 @@ export function App() {
   const applyTaskList = (nextTasks: Task[], nextRunningTaskIds: string[]) => {
     setTasks(nextTasks);
     setRunningTaskIds(nextRunningTaskIds);
+    loadSavedCodexSessions();
     setSelectedTaskId((current) => {
       if (current && nextTasks.some((task) => task.id === current)) {
         return current;
@@ -293,40 +311,6 @@ export function App() {
 
 function resumeTaskKey(taskId: string, resumeCommand: string) {
   return `${taskId}:${resumeCommand}`;
-}
-
-function buildSavedCodexSessions(tasks: Task[]): SavedCodexSession[] {
-  const sessionsByKey = new Map<string, SavedCodexSession>();
-
-  for (const task of tasks) {
-    if (task.agentSessionProvider !== "codex" || !task.agentSessionId) {
-      continue;
-    }
-    const resumeCommand = task.agentSessionResumeCommand?.trim() || task.resumeCommand?.trim() || "";
-    if (!resumeCommand) {
-      continue;
-    }
-
-    const key = `${task.agentSessionProvider}:${task.agentSessionId}`;
-    const candidate: SavedCodexSession = {
-      key,
-      provider: task.agentSessionProvider,
-      sessionId: task.agentSessionId,
-      resumeCommand,
-      title: task.title,
-      cwd: task.cwd,
-      agentProfileId: task.agentProfileId,
-      agentLabel: task.agentLabel || "Codex CLI",
-      detectedAt: task.agentSessionDetectedAt,
-      updatedAt: task.updatedAt,
-    };
-    const current = sessionsByKey.get(key);
-    if (!current || Date.parse(candidate.updatedAt) > Date.parse(current.updatedAt)) {
-      sessionsByKey.set(key, candidate);
-    }
-  }
-
-  return Array.from(sessionsByKey.values()).sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
 }
 
 function isCodexTask(task: Task) {

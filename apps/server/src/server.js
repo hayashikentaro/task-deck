@@ -134,6 +134,12 @@ app.get("/api/tasks", (_request, response) => {
   });
 });
 
+app.get("/api/sessions/codex", (_request, response) => {
+  response.json({
+    sessions: listSavedCodexSessions(),
+  });
+});
+
 app.delete("/api/tasks", async (_request, response) => {
   const runningTaskIds = getRunningTaskIds();
   const taskIdsToClear = Array.from(tasks.keys()).filter((taskId) => !activePtys.has(taskId));
@@ -745,6 +751,54 @@ function setTask(task) {
 
 function listTasks() {
   return Array.from(tasks.values()).map(serializeTask).reverse();
+}
+
+function listSavedCodexSessions() {
+  const sessionsByKey = new Map();
+
+  for (const task of tasks.values()) {
+    const session = savedCodexSessionFromTask(task);
+    if (!session) {
+      continue;
+    }
+    const current = sessionsByKey.get(session.key);
+    if (!current || timestampForSort(session.updatedAt) > timestampForSort(current.updatedAt)) {
+      sessionsByKey.set(session.key, session);
+    }
+  }
+
+  return Array.from(sessionsByKey.values()).sort((left, right) => timestampForSort(right.updatedAt) - timestampForSort(left.updatedAt));
+}
+
+function savedCodexSessionFromTask(task) {
+  if (task.agentSessionProvider !== "codex" || !String(task.agentSessionId || "").trim()) {
+    return null;
+  }
+
+  const resumeCommand = String(task.agentSessionResumeCommand || task.resumeCommand || "").trim();
+  if (!resumeCommand) {
+    return null;
+  }
+
+  const provider = String(task.agentSessionProvider).trim();
+  const sessionId = String(task.agentSessionId).trim();
+  return {
+    key: `${provider}:${sessionId}`,
+    provider,
+    sessionId,
+    resumeCommand,
+    title: String(task.title || "Codex session"),
+    cwd: String(task.cwd || repoRoot),
+    agentProfileId: String(task.agentProfileId || "codex"),
+    agentLabel: String(task.agentLabel || "Codex CLI"),
+    detectedAt: String(task.agentSessionDetectedAt || ""),
+    updatedAt: String(task.updatedAt || task.agentSessionDetectedAt || task.createdAt || ""),
+  };
+}
+
+function timestampForSort(value) {
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
 function appendLog(taskId, data) {

@@ -34,6 +34,7 @@ POST /api/diagnostics/containers/:containerName/start
 POST /api/validate-cwd
 GET /api/tasks
 DELETE /api/tasks
+GET /api/sessions/codex
 GET /api/tasks/:taskId
 DELETE /api/tasks/:taskId
 GET /api/tasks/:taskId/logs
@@ -48,6 +49,8 @@ DELETE /api/presets
 `GET /api/diagnostics` returns Docker reachability, merged agent-profile config sources, configured agent-container status, and configured container workspace checks. The right-rail Agent Diagnostics panel surfaces this server diagnostics API in the UI. `POST /api/diagnostics/containers/:containerName/start` starts a configured diagnostic container when it exists but is stopped.
 
 `POST /api/validate-cwd` accepts `{ "cwd": "apps/web" }` and returns whether the cwd resolves to an existing directory, its absolute path, and git-repository status. The task form uses it to validate cwd before starting a task.
+
+`GET /api/sessions/codex` returns saved Codex sessions derived from stored task metadata. Sessions require a Codex provider, session id, and precise resume command, then deduplicate by provider plus session id.
 
 The server persists tasks and logs under `.taskdeck/`, which is intentionally ignored by Git:
 
