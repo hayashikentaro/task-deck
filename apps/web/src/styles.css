@@ -221,12 +221,14 @@ dd {
 }
 
 .agent-picker select,
-.session-mode-field select {
+.session-mode-field select,
+.saved-session-field select {
   height: 40px;
   padding: 0 10px;
 }
 
 .session-mode-field,
+.saved-session-field,
 .custom-resume-field,
 .custom-command-field {
   min-width: 0;

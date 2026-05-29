@@ -1,20 +1,22 @@
 import { FormEvent, useEffect, useState } from "react";
 import { defaultAgentProfiles } from "../agentProfiles";
-import type { AgentProfile, CreateTaskInput, CwdValidation, TaskDeckContext } from "../types";
+import type { AgentProfile, CreateTaskInput, CwdValidation, SavedCodexSession, TaskDeckContext } from "../types";
 
 type TaskCreateFormProps = {
   context: TaskDeckContext | null;
   disabled: boolean;
+  savedCodexSessions: SavedCodexSession[];
   onCreateTask: (input: CreateTaskInput) => void;
 };
 
 const defaultAgentProfileId = "goose";
-type SessionMode = "new" | "resume_last" | "custom_resume";
+type SessionMode = "new" | "resume_last" | "saved_codex" | "custom_resume";
 
-export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFormProps) {
+export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreateTask }: TaskCreateFormProps) {
   const [selectedAgentId, setSelectedAgentId] = useState(defaultAgentProfileId);
   const [customCommand, setCustomCommand] = useState("");
   const [customResumeCommand, setCustomResumeCommand] = useState("");
+  const [selectedSavedSessionKey, setSelectedSavedSessionKey] = useState("");
   const [sessionMode, setSessionMode] = useState<SessionMode>("new");
   const [initialInstruction, setInitialInstruction] = useState("");
   const [cwd, setCwd] = useState("");
@@ -74,8 +76,16 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
     agentProfiles.find((profile) => profile.id === selectedAgentId) ??
     findDefaultAgentProfile(agentProfiles) ??
     defaultAgentProfiles[0];
+  const selectedSavedSession =
+    savedCodexSessions.find((session) => session.key === selectedSavedSessionKey) ?? savedCodexSessions[0] ?? null;
   const cwdIsValid = cwdValidation?.ok ?? false;
-  const launchCommand = buildLaunchCommand(selectedAgent, sessionMode, customResumeCommand, customCommand);
+  const launchCommand = buildLaunchCommand(
+    selectedAgent,
+    sessionMode,
+    customResumeCommand,
+    customCommand,
+    selectedSavedSession,
+  );
   const command = launchCommand.command;
   const canStart = !disabled && cwdIsValid && !isValidatingCwd && Boolean(command);
 
@@ -85,17 +95,42 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
     }
   }, [agentProfiles, selectedAgentId]);
 
+  useEffect(() => {
+    if (sessionMode === "saved_codex" && selectedSavedSession && cwd !== selectedSavedSession.cwd) {
+      setCwd(selectedSavedSession.cwd);
+    }
+  }, [cwd, selectedSavedSession, sessionMode]);
+
+  useEffect(() => {
+    if (sessionMode === "saved_codex" && savedCodexSessions.length === 0) {
+      setSessionMode("new");
+      setSelectedSavedSessionKey("");
+      return;
+    }
+    if (
+      sessionMode === "saved_codex" &&
+      selectedSavedSessionKey &&
+      !savedCodexSessions.some((session) => session.key === selectedSavedSessionKey)
+    ) {
+      setSelectedSavedSessionKey(savedCodexSessions[0]?.key ?? "");
+    }
+  }, [savedCodexSessions, selectedSavedSessionKey, sessionMode]);
+
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
     if (!canStart) {
       return;
     }
     onCreateTask({
-      title: buildTaskTitle(selectedAgent.label, initialInstruction),
+      title: buildTaskTitle(
+        sessionMode === "saved_codex" ? "Resume saved" : selectedAgent.label,
+        initialInstruction,
+        selectedSavedSession,
+      ),
       command,
       cwd,
-      agentProfileId: selectedAgent.id,
-      agentLabel: selectedAgent.label,
+      agentProfileId: sessionMode === "saved_codex" ? selectedSavedSession?.agentProfileId || "codex" : selectedAgent.id,
+      agentLabel: sessionMode === "saved_codex" ? selectedSavedSession?.agentLabel || "Codex CLI" : selectedAgent.label,
       sessionMode,
       resumeCommand: launchCommand.resumeCommand || undefined,
       initialInstruction: initialInstruction.trim(),
@@ -123,9 +158,25 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
           <select value={sessionMode} onChange={(event) => setSessionMode(event.target.value as SessionMode)}>
             <option value="new">New session</option>
             <option value="resume_last">Resume last</option>
+            {savedCodexSessions.length > 0 ? <option value="saved_codex">Saved Codex session</option> : null}
             <option value="custom_resume">Custom resume command</option>
           </select>
         </label>
+        {sessionMode === "saved_codex" ? (
+          <label className="saved-session-field">
+            <span>Saved session</span>
+            <select
+              value={selectedSavedSession?.key ?? ""}
+              onChange={(event) => setSelectedSavedSessionKey(event.target.value)}
+            >
+              {savedCodexSessions.map((session) => (
+                <option key={session.key} value={session.key}>
+                  {savedSessionLabel(session)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         {sessionMode === "custom_resume" ? (
           <label className="custom-resume-field">
             <span>Custom resume command</span>
@@ -204,7 +255,13 @@ function buildLaunchCommand(
   sessionMode: SessionMode,
   customResumeCommand: string,
   customCommand: string,
+  savedSession: SavedCodexSession | null,
 ) {
+  if (sessionMode === "saved_codex") {
+    const resumeCommand = savedSession?.resumeCommand.trim() || "";
+    return { command: resumeCommand, resumeCommand };
+  }
+
   if (sessionMode === "custom_resume") {
     const resumeCommand = customResumeCommand.trim();
     return { command: resumeCommand, resumeCommand };
@@ -226,10 +283,19 @@ function buildCodexResumeLastCommand(profile: AgentProfile) {
   return "codex resume --last";
 }
 
-function buildTaskTitle(agentLabel: string, instruction: string) {
+function buildTaskTitle(agentLabel: string, instruction: string, savedSession?: SavedCodexSession | null) {
   const firstLine = instruction.trim().split(/\r?\n/).find(Boolean);
   if (!firstLine) {
+    if (savedSession) {
+      return `Resume saved: ${savedSession.title}`;
+    }
     return `${agentLabel} session`;
   }
   return firstLine.length > 72 ? `${firstLine.slice(0, 69)}...` : firstLine;
+}
+
+function savedSessionLabel(session: SavedCodexSession) {
+  const detectedAt = session.detectedAt || session.updatedAt;
+  const date = Number.isFinite(Date.parse(detectedAt)) ? new Date(detectedAt).toLocaleString() : "saved";
+  return `${session.title} · ${session.sessionId} · ${date}`;
 }

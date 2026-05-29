@@ -41,6 +41,19 @@ export type Task = {
   initialInstruction?: string;
 };
 
+export type SavedCodexSession = {
+  key: string;
+  provider: string;
+  sessionId: string;
+  resumeCommand: string;
+  title: string;
+  cwd: string;
+  agentProfileId?: string;
+  agentLabel?: string;
+  detectedAt?: string;
+  updatedAt: string;
+};
+
 export type OutputEvent = {
   seq: number;
   taskId: string;

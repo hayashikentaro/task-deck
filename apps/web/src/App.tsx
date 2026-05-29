@@ -3,7 +3,7 @@ import { DiagnosticsPane } from "./components/DiagnosticsPane";
 import { TaskCreateForm } from "./components/TaskCreateForm";
 import { TaskList } from "./components/TaskList";
 import { TerminalPane } from "./components/TerminalPane";
-import type { CreateTaskInput, OutputEvent, Task, TaskDeckContext } from "./types";
+import type { CreateTaskInput, OutputEvent, SavedCodexSession, Task, TaskDeckContext } from "./types";
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
 
@@ -130,6 +130,7 @@ export function App() {
     () => tasks.find((task) => task.id === selectedTaskId) ?? null,
     [selectedTaskId, tasks],
   );
+  const savedCodexSessions = useMemo(() => buildSavedCodexSessions(tasks), [tasks]);
 
   useEffect(() => {
     setTaskActionError("");
@@ -280,6 +281,7 @@ export function App() {
           <TaskCreateForm
             context={taskDeckContext}
             disabled={connectionState !== "connected"}
+            savedCodexSessions={savedCodexSessions}
             onCreateTask={createTask}
           />
           <DiagnosticsPane isConnected={connectionState === "connected"} />
@@ -291,6 +293,40 @@ export function App() {
 
 function resumeTaskKey(taskId: string, resumeCommand: string) {
   return `${taskId}:${resumeCommand}`;
+}
+
+function buildSavedCodexSessions(tasks: Task[]): SavedCodexSession[] {
+  const sessionsByKey = new Map<string, SavedCodexSession>();
+
+  for (const task of tasks) {
+    if (task.agentSessionProvider !== "codex" || !task.agentSessionId) {
+      continue;
+    }
+    const resumeCommand = task.agentSessionResumeCommand?.trim() || task.resumeCommand?.trim() || "";
+    if (!resumeCommand) {
+      continue;
+    }
+
+    const key = `${task.agentSessionProvider}:${task.agentSessionId}`;
+    const candidate: SavedCodexSession = {
+      key,
+      provider: task.agentSessionProvider,
+      sessionId: task.agentSessionId,
+      resumeCommand,
+      title: task.title,
+      cwd: task.cwd,
+      agentProfileId: task.agentProfileId,
+      agentLabel: task.agentLabel || "Codex CLI",
+      detectedAt: task.agentSessionDetectedAt,
+      updatedAt: task.updatedAt,
+    };
+    const current = sessionsByKey.get(key);
+    if (!current || Date.parse(candidate.updatedAt) > Date.parse(current.updatedAt)) {
+      sessionsByKey.set(key, candidate);
+    }
+  }
+
+  return Array.from(sessionsByKey.values()).sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
 }
 
 function isCodexTask(task: Task) {
