@@ -908,9 +908,9 @@ function inferAgentStateFromTuiFallback(data, activity) {
   ) {
     return {
       state: AgentState.WAITING_INPUT,
-      reason: "TUI output appears to be requesting user input and the PTY is not actively repainting.",
+      reason: "Input prompt detected and terminal is quiet.",
       source: AgentStateSource.TUI_FALLBACK,
-      confidence: AgentStateConfidence.LOW,
+      confidence: AgentStateConfidence.MEDIUM,
     };
   }
 
