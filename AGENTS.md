@@ -91,6 +91,7 @@ Keep state, risk, diffs, review, and agent supervision central. Terminal/PTY int
 - WebSocket task updates should keep task lists, selected task behavior, terminal output, and session metadata in sync.
 - Agent session metadata is best-effort and should not assume every agent exposes stable ids.
 - `GET /api/agent-sessions` lists saved Codex sessions derived from TaskDeck task metadata.
+- When documenting `/api/agent-sessions`, use the current response shape from the implementation, not older proposed names.
 - `Resume last` is imprecise; `Resume saved` and the saved session picker should use precise stored resume commands when available.
 - Agent profile config should merge with built-in profiles rather than replace them wholesale.
 
