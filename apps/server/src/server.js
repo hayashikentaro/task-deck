@@ -406,6 +406,7 @@ async function startTask({
     sessionMode,
     resumeCommand,
     initialInstruction,
+    ...detectInitialAgentSession(command, agentProfileId, agentLabel),
   }));
   tasks.set(task.id, task);
   logs.set(task.id, "");
@@ -439,6 +440,7 @@ async function startTask({
         return;
       }
       appendLog(task.id, data);
+      updateAgentSessionFromOutput(task.id, logs.get(task.id) || data);
       updateAgentStateFromOutput(task.id, data);
       broadcast({ type: "output", taskId: task.id, data });
     });
@@ -554,6 +556,42 @@ function normalizeStoredTaskAgentState(task) {
   return { ...task, agentState: task.agentState ?? inferAgentStateFromStatus(task) };
 }
 
+function detectInitialAgentSession(command, agentProfileId, agentLabel) {
+  if (!isCodexLikeTask({ command, agentProfileId, agentLabel })) {
+    return {};
+  }
+
+  const explicitResumeId = extractCodexResumeId(command);
+  if (!explicitResumeId) {
+    return {};
+  }
+
+  return {
+    agentSessionId: explicitResumeId,
+    agentSessionSource: "codex resume command",
+  };
+}
+
+function updateAgentSessionFromOutput(taskId, data) {
+  const task = tasks.get(taskId);
+  if (!task || task.agentSessionId || !isCodexLikeTask(task)) {
+    return;
+  }
+
+  const sessionId = extractCodexSessionIdFromOutput(data);
+  if (!sessionId) {
+    return;
+  }
+
+  setTask({
+    ...task,
+    agentSessionId: sessionId,
+    agentSessionSource: "codex output",
+    updatedAt: new Date().toISOString(),
+  });
+  broadcastTasks();
+}
+
 function updateAgentStateFromOutput(taskId, data) {
   const task = tasks.get(taskId);
   if (!task || task.status !== TaskStatus.RUNNING) {
@@ -602,6 +640,43 @@ function stripTerminalControlSequences(value) {
     .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "")
     .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
     .replace(/\r/g, "\n");
+}
+
+function extractCodexSessionIdFromOutput(data) {
+  const text = stripTerminalControlSequences(String(data));
+  const patterns = [
+    /\b(?:codex\s+)?session(?:\s+id)?\s*[:=]\s*([A-Za-z0-9][A-Za-z0-9_.:-]{5,})/i,
+    /\bconversation(?:\s+id)?\s*[:=]\s*([A-Za-z0-9][A-Za-z0-9_.:-]{5,})/i,
+    /\bresume\s+([A-Za-z0-9][A-Za-z0-9_.:-]{5,})\b/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    const sessionId = normalizeDetectedSessionId(match?.[1]);
+    if (sessionId) {
+      return sessionId;
+    }
+  }
+
+  return "";
+}
+
+function extractCodexResumeId(command) {
+  const match = String(command).match(/\bcodex\b[\s\S]*?\bresume\s+([^\s"';&|()]+)/i);
+  return normalizeDetectedSessionId(match?.[1]);
+}
+
+function normalizeDetectedSessionId(value) {
+  const sessionId = String(value || "").trim().replace(/[),.;\]]+$/, "");
+  if (!sessionId || sessionId.startsWith("-") || sessionId.toLowerCase() === "last") {
+    return "";
+  }
+  return sessionId;
+}
+
+function isCodexLikeTask(task) {
+  const haystack = `${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command || ""}`.toLowerCase();
+  return /\bcodex\b/.test(haystack);
 }
 
 function lastMeaningfulLine(value) {

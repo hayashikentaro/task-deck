@@ -160,6 +160,8 @@ export function TaskList({
                   <dl className="task-detail-grid">
                     <Info label="Agent" value={task.agentLabel || agentOrCommandLabel(task.command)} />
                     <Info label="Session mode" value={sessionModeLabel(task.sessionMode)} />
+                    {task.agentSessionId ? <Info label="Session id" value={task.agentSessionId} /> : null}
+                    {task.agentSessionSource ? <Info label="Session source" value={task.agentSessionSource} /> : null}
                     {task.resumeCommand ? <Info label="Resume command" value={task.resumeCommand} wide /> : null}
                     <Info label="Command" value={task.command} />
                     <Info label="CWD" value={task.cwd} />
