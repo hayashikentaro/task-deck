@@ -69,6 +69,7 @@ const terminalEnter = "\r";
 const bracketedPasteStart = "\x1b[200~";
 const bracketedPasteEnd = "\x1b[201~";
 const codexInputHoldMs = 5000;
+const outputActivityWorkingMs = 4000;
 const activePtys = new Map();
 let persistTasksQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
@@ -367,6 +368,9 @@ server.listen(port, host, () => {
   console.log(`TaskDeck listening on http://${host}:${port}`);
 });
 
+const taskActivityTimer = setInterval(updateQuietRunningTaskStates, 1000);
+taskActivityTimer.unref?.();
+
 async function startTask({
   title,
   command,
@@ -445,6 +449,7 @@ async function startTask({
       if (!tasks.has(task.id)) {
         return;
       }
+      activePty.lastOutputAt = Date.now();
       appendLog(task.id, data);
       updateAgentSessionFromOutput(task.id, data);
       updateAgentStateFromOutput(task.id, data);
@@ -483,6 +488,7 @@ function createActivePty(task, process) {
     taskId: task.id,
     process,
     inputHoldUntil,
+    lastOutputAt: 0,
     inputQueue: [],
     flushTimer: null,
   };
@@ -735,7 +741,8 @@ function updateAgentStateFromOutput(taskId, data) {
   }
 
   const recentOutput = logs.get(taskId)?.slice(-8000) || data;
-  const nextAgentState = inferAgentStateFromOutput(recentOutput);
+  const explicitAgentState = inferExplicitAgentStateFromOutput(recentOutput);
+  const nextAgentState = explicitAgentState || AgentState.WORKING;
   if (!nextAgentState || task.agentState === nextAgentState) {
     return;
   }
@@ -744,7 +751,41 @@ function updateAgentStateFromOutput(taskId, data) {
   broadcastTasks();
 }
 
-function inferAgentStateFromOutput(data) {
+function updateQuietRunningTaskStates() {
+  const now = Date.now();
+  let changed = false;
+
+  for (const activePty of activePtys.values()) {
+    const task = tasks.get(activePty.taskId);
+    if (!task || task.status !== TaskStatus.RUNNING || isExplicitUserActionState(task.agentState)) {
+      continue;
+    }
+
+    const lastOutputAt = activePty.lastOutputAt || 0;
+    if (lastOutputAt && now - lastOutputAt <= outputActivityWorkingMs) {
+      continue;
+    }
+
+    if (task.agentState !== AgentState.THINKING) {
+      setTask(markTaskAgentState(task, AgentState.THINKING));
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    broadcastTasks();
+  }
+}
+
+function isExplicitUserActionState(agentState) {
+  return (
+    agentState === AgentState.WAITING_APPROVAL ||
+    agentState === AgentState.WAITING_INPUT ||
+    agentState === AgentState.REVIEW_READY
+  );
+}
+
+function inferExplicitAgentStateFromOutput(data) {
   const rawText = String(data);
   const text = stripTerminalControlSequences(String(data));
   const normalizedRaw = rawText.toLowerCase();
@@ -771,11 +812,7 @@ function inferAgentStateFromOutput(data) {
     return AgentState.REVIEW_READY;
   }
 
-  if (/(thinking|reasoning|analyzing|planning|inspecting|checking|reading|searching|optimizing outcomes|weaving wisdom)/.test(normalized)) {
-    return AgentState.THINKING;
-  }
-
-  return AgentState.WORKING;
+  return null;
 }
 
 function isApprovalPrompt(normalized, normalizedRaw) {
