@@ -271,6 +271,11 @@ dd {
   white-space: nowrap;
 }
 
+.saved-session-empty {
+  color: var(--status-muted);
+  font-size: 12px;
+}
+
 .instruction-field {
   min-width: 0;
 }

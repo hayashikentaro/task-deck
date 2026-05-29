@@ -168,6 +168,9 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
             {savedCodexSessions.length > 0 ? <option value="saved_codex">Resume saved session</option> : null}
             <option value="custom_resume">Custom resume command</option>
           </select>
+          {savedCodexSessions.length === 0 ? (
+            <small className="saved-session-empty">Saved sessions appear after TaskDeck detects a Codex session id.</small>
+          ) : null}
         </label>
         {sessionMode === "saved_codex" ? (
           <div className="saved-session-field">
@@ -197,6 +200,10 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
                 <div>
                   <dt>Command</dt>
                   <dd>{selectedSavedSession.resumeCommand}</dd>
+                </div>
+                <div>
+                  <dt>Workspace</dt>
+                  <dd>{selectedSavedSession.cwd}</dd>
                 </div>
               </dl>
             ) : null}
