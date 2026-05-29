@@ -118,8 +118,11 @@ export function TaskList({
                   <span className="task-updated">{formatTime(task.updatedAt)}</span>
                 </span>
                 <span className="task-badge-row">
-                  <span className="task-badge" data-kind={`agent-${task.agentState}`}>
+                  <span className="task-badge" data-kind={`agent-${task.agentState}`} title={stateMetadataTitle(task)}>
                     {agentStateLabel(task.agentState)}
+                  </span>
+                  <span className="task-badge" data-kind={`confidence-${task.agentStateConfidence || "unknown"}`}>
+                    {stateConfidenceLabel(task.agentStateConfidence)}
                   </span>
                   <span className="task-badge" data-kind={`risk-${task.risk.level}`}>
                     {task.risk.level}
@@ -364,6 +367,13 @@ function stateSourceLabel(source?: string) {
 
 function stateConfidenceLabel(confidence?: string) {
   return confidence || "-";
+}
+
+function stateMetadataTitle(task: Task) {
+  const source = stateSourceLabel(task.agentStateSource);
+  const confidence = stateConfidenceLabel(task.agentStateConfidence);
+  const reason = task.agentStateReason || "No state reason recorded.";
+  return `Source: ${source}\nConfidence: ${confidence}\nReason: ${reason}`;
 }
 
 function sessionModeLabel(sessionMode: string | undefined) {

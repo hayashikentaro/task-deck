@@ -689,6 +689,22 @@ dd {
   color: var(--text-secondary);
 }
 
+.task-badge[data-kind="confidence-high"] {
+  border-color: var(--status-done);
+  color: var(--status-done);
+}
+
+.task-badge[data-kind="confidence-medium"] {
+  border-color: var(--status-review-ready);
+  color: var(--status-review-ready);
+}
+
+.task-badge[data-kind="confidence-low"],
+.task-badge[data-kind="confidence-unknown"] {
+  border-color: var(--status-muted);
+  color: var(--status-muted);
+}
+
 .terminal-pane {
   min-height: 0;
   display: grid;
