@@ -137,7 +137,8 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
       agentSessionId: sessionMode === "saved_codex" ? selectedSavedSession?.sessionId : undefined,
       agentSessionSource:
         sessionMode === "saved_codex" ? selectedSavedSession?.source || "saved session picker" : undefined,
-      agentSessionDetectedAt: sessionMode === "saved_codex" ? selectedSavedSession?.detectedAt : undefined,
+      agentSessionDetectedAt:
+        sessionMode === "saved_codex" ? selectedSavedSession?.detectedAt || selectedSavedSession?.updatedAt : undefined,
       agentSessionResumeCommand: sessionMode === "saved_codex" ? selectedSavedSession?.resumeCommand : undefined,
       initialInstruction: initialInstruction.trim(),
     });
