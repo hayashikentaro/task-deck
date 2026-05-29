@@ -118,11 +118,14 @@ export function TaskList({
                   <span className="task-updated">{formatTime(task.updatedAt)}</span>
                 </span>
                 <span className="task-badge-row">
+                  <span className="task-badge" data-kind={`process-${task.status}`}>
+                    observed {task.status}
+                  </span>
                   <span className="task-badge" data-kind={`agent-${task.agentState}`} title={stateMetadataTitle(task)}>
-                    {agentStateLabel(task.agentState)}
+                    signal {agentStateLabel(task.agentState)}
                   </span>
                   <span className="task-badge" data-kind={`confidence-${task.agentStateConfidence || "unknown"}`}>
-                    {stateConfidenceLabel(task.agentStateConfidence)}
+                    {stateConfidenceLabel(task.agentStateConfidence)} confidence
                   </span>
                   <span className="task-badge" data-kind={`risk-${task.risk.level}`}>
                     {task.risk.level}
@@ -175,13 +178,16 @@ export function TaskList({
                     {task.resumeCommand ? <Info label="Resume command" value={task.resumeCommand} wide /> : null}
                     <Info label="Command" value={task.command} />
                     <Info label="CWD" value={task.cwd} />
-                    <Info label="Process" value={task.status} />
-                    <Info label="State source" value={stateSourceLabel(task.agentStateSource)} />
-                    <Info label="State confidence" value={stateConfidenceLabel(task.agentStateConfidence)} />
-                    {task.agentStateReason ? <Info label="State reason" value={task.agentStateReason} wide /> : null}
+                    <SectionLabel label="Observed process" />
+                    <Info label="Process status" value={task.status} />
                     <Info label="Exit" value={task.exitCode === null ? "-" : String(task.exitCode)} />
                     <Info label="Started" value={formatDate(task.startedAt)} />
                     <Info label="Updated" value={formatDate(task.updatedAt)} />
+                    <SectionLabel label="Agent signal" />
+                    <Info label="Agent state" value={agentStateLabel(task.agentState)} />
+                    <Info label="Signal source" value={stateSourceLabel(task.agentStateSource)} />
+                    <Info label="Signal confidence" value={stateConfidenceLabel(task.agentStateConfidence)} />
+                    {task.agentStateReason ? <Info label="Signal reason" value={task.agentStateReason} wide /> : null}
                     {task.initialInstruction ? (
                       <Info label="Initial instruction" value={task.initialInstruction} wide />
                     ) : null}
@@ -293,6 +299,14 @@ function Info({ label, value, wide = false }: { label: string; value: string; wi
     <div className="task-detail-item" data-wide={wide}>
       <dt>{label}</dt>
       <dd>{value}</dd>
+    </div>
+  );
+}
+
+function SectionLabel({ label }: { label: string }) {
+  return (
+    <div className="task-detail-section-label">
+      <span>{label}</span>
     </div>
   );
 }

@@ -630,6 +630,11 @@ dd {
   color: var(--status-muted);
 }
 
+.task-badge[data-kind^="process-"] {
+  border-color: var(--status-muted);
+  color: var(--text-primary);
+}
+
 .task-badge[data-kind="agent-starting"] {
   border-color: var(--status-starting);
   color: var(--status-starting);
@@ -857,6 +862,20 @@ dd {
   gap: 14px;
   margin: 0;
   padding: 14px;
+}
+
+.info-section-label {
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.info-section-label:first-child {
+  padding-top: 0;
+  border-top: 0;
 }
 
 .task-action-error {
@@ -1321,6 +1340,21 @@ dd {
 
 .task-detail-item[data-wide="true"] {
   grid-column: 1 / -1;
+}
+
+.task-detail-section-label {
+  grid-column: 1 / -1;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.task-detail-section-label:first-child {
+  padding-top: 0;
+  border-top: 0;
 }
 
 .task-detail-item dd {

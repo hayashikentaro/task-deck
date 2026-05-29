@@ -31,13 +31,15 @@ export function TaskInfoPane({ actionError, task, onInterrupt, onRerun }: TaskIn
       ) : (
         <dl className="info-grid">
           <Info label="Title" value={task.title} />
-          <Info label="Agent state" value={agentStateLabel(task.agentState)} />
-          <Info label="State source" value={stateSourceLabel(task.agentStateSource)} />
-          <Info label="State confidence" value={stateConfidenceLabel(task.agentStateConfidence)} />
-          {task.agentStateReason ? <Info label="State reason" value={task.agentStateReason} /> : null}
-          <Info label="Process" value={task.status} />
-          <Info label="Risk" value={task.risk.level} />
+          <InfoSection label="Observed process" />
+          <Info label="Process status" value={task.status} />
           <Info label="Exit" value={task.exitCode === null ? "-" : String(task.exitCode)} />
+          <InfoSection label="Agent signal" />
+          <Info label="Agent state" value={agentStateLabel(task.agentState)} />
+          <Info label="Signal source" value={stateSourceLabel(task.agentStateSource)} />
+          <Info label="Signal confidence" value={stateConfidenceLabel(task.agentStateConfidence)} />
+          {task.agentStateReason ? <Info label="Signal reason" value={task.agentStateReason} /> : null}
+          <Info label="Risk" value={task.risk.level} />
           <Info label="CWD" value={task.cwd} />
           <Info label="Command" value={task.command} />
           <Info label="Started" value={formatDate(task.startedAt)} />
@@ -53,6 +55,14 @@ function Info({ label, value }: { label: string; value: string }) {
     <div>
       <dt>{label}</dt>
       <dd>{value}</dd>
+    </div>
+  );
+}
+
+function InfoSection({ label }: { label: string }) {
+  return (
+    <div className="info-section-label">
+      <span>{label}</span>
     </div>
   );
 }
