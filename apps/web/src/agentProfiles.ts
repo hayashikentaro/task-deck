@@ -4,17 +4,17 @@ export const defaultAgentProfiles: AgentProfile[] = [
   {
     id: "codex",
     label: "Codex CLI",
-    command: "docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-codex-1 codex",
+    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex'",
     description: "Run Codex CLI inside the AI agent sandbox container",
-    diagnosticContainer: "ai-agent-sandbox-codex-1",
+    diagnosticContainer: "ai-agent-sandbox-agent-1",
     diagnosticWorkspace: "/workspace",
   },
   {
     id: "goose",
     label: "Goose",
-    command: "docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-codex-1 goose",
+    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 goose",
     description: "Run Goose inside the AI agent sandbox container",
-    diagnosticContainer: "ai-agent-sandbox-codex-1",
+    diagnosticContainer: "ai-agent-sandbox-agent-1",
     diagnosticWorkspace: "/workspace",
   },
 ];

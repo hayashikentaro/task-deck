@@ -36,17 +36,17 @@ const defaultAgentProfiles = [
   {
     id: "codex",
     label: "Codex CLI",
-    command: "docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-codex-1 codex",
+    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex'",
     description: "Run Codex CLI inside the AI agent sandbox container",
-    diagnosticContainer: "ai-agent-sandbox-codex-1",
+    diagnosticContainer: "ai-agent-sandbox-agent-1",
     diagnosticWorkspace: "/workspace",
   },
   {
     id: "goose",
     label: "Goose",
-    command: "docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-codex-1 goose",
+    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 goose",
     description: "Run Goose inside the AI agent sandbox container",
-    diagnosticContainer: "ai-agent-sandbox-codex-1",
+    diagnosticContainer: "ai-agent-sandbox-agent-1",
     diagnosticWorkspace: "/workspace",
   },
 ];
@@ -704,8 +704,11 @@ function extractCodexResumeId(command) {
 
 function buildCodexSessionResumeCommand(task, sessionId) {
   const command = String(task.command || "");
-  if (task.agentProfileId === "ai-dev-container-codex" || /\bdocker\b[\s\S]*\bai-agent-sandbox-codex-1\b/.test(command)) {
-    return `docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-codex-1 sh -lc 'codex resume ${sessionId}'`;
+  if (task.agentProfileId === "ai-dev-container-codex" || /\bdocker\b[\s\S]*\bai-agent-sandbox-agent-1\b/.test(command)) {
+    return `docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex resume ${sessionId}'`;
+  }
+  if (/\bdocker\b[\s\S]*\bai-agent-sandbox-codex-1\b/.test(command)) {
+    return `docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-codex-1 sh -lc 'TERM=xterm-256color codex resume ${sessionId}'`;
   }
   return `codex resume ${sessionId}`;
 }
@@ -829,7 +832,11 @@ function codexCommandEnvironment(task) {
   const command = String(task.command || task.agentSessionResumeCommand || task.resumeCommand || "").toLowerCase();
   const agentProfileId = String(task.agentProfileId || "").toLowerCase();
 
-  if (agentProfileId === "ai-dev-container-codex" || /\bdocker\b[\s\S]*\bai-agent-sandbox-codex-1\b/.test(command)) {
+  if (agentProfileId === "ai-dev-container-codex" || /\bdocker\b[\s\S]*\bai-agent-sandbox-agent-1\b/.test(command)) {
+    return "ai-agent-sandbox-agent-1";
+  }
+
+  if (/\bdocker\b[\s\S]*\bai-agent-sandbox-codex-1\b/.test(command)) {
     return "ai-agent-sandbox-codex-1";
   }
 

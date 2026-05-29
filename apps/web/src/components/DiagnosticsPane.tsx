@@ -106,7 +106,7 @@ export function DiagnosticsPane({ isConnected }: DiagnosticsPaneProps) {
           </div>
         ))}
         <p className="diagnostic-note">
-          Agent sessions run inside <code>ai-agent-sandbox-codex-1</code> with <code>/workspace</code> as the
+          Agent sessions run inside <code>ai-agent-sandbox-agent-1</code> with <code>/workspace</code> as the
           container workspace. Server diagnostics are shown here and documented in README.
         </p>
       </div>

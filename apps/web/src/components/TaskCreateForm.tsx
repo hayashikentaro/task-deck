@@ -300,8 +300,11 @@ function buildLaunchCommand(
 }
 
 function buildCodexResumeLastCommand(profile: AgentProfile) {
+  if (agentCommandEnvironment(profile) === "ai-agent-sandbox-agent-1") {
+    return "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex resume --last'";
+  }
   if (agentCommandEnvironment(profile) === "ai-agent-sandbox-codex-1") {
-    return "docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-codex-1 sh -lc 'codex resume --last'";
+    return "docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-codex-1 sh -lc 'TERM=xterm-256color codex resume --last'";
   }
   return "codex resume --last";
 }
@@ -351,6 +354,9 @@ function agentCommandEnvironment(agent: AgentProfile) {
 
 function commandEnvironmentFromCommand(command: string) {
   const normalizedCommand = command.toLowerCase();
+  if (/\bdocker\b[\s\S]*\bai-agent-sandbox-agent-1\b/.test(normalizedCommand)) {
+    return "ai-agent-sandbox-agent-1";
+  }
   if (/\bdocker\b[\s\S]*\bai-agent-sandbox-codex-1\b/.test(normalizedCommand)) {
     return "ai-agent-sandbox-codex-1";
   }

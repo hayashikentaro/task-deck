@@ -58,7 +58,7 @@ const hostDockerContainerCheckCommands: DiagnosticCommand[] = [
   {
     label: "codex workspace",
     command:
-      "docker exec ai-agent-sandbox-codex-1 test -d /workspace && echo 'ai-agent-sandbox-codex-1:/workspace ready' || echo 'ai-agent-sandbox-codex-1:/workspace missing'",
+      "docker exec ai-agent-sandbox-agent-1 test -d /workspace && echo 'ai-agent-sandbox-agent-1:/workspace ready' || echo 'ai-agent-sandbox-agent-1:/workspace missing'",
   },
 ];
 
