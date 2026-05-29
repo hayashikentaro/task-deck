@@ -106,8 +106,8 @@ export function DiagnosticsPane({ isConnected }: DiagnosticsPaneProps) {
           </div>
         ))}
         <p className="diagnostic-note">
-          Goose Container Shell opens bash in <code>chrome-goose-1</code>. Goose Container runs <code>goose</code>
-          through <code>bash -lc</code> in <code>/workspace</code>. Server diagnostics are shown here and documented in README.
+          Agent sessions run inside <code>ai-agent-sandbox-codex-1</code> with <code>/workspace</code> as the
+          container workspace. Server diagnostics are shown here and documented in README.
         </p>
       </div>
     </section>

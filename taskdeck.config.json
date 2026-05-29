@@ -1,54 +1,20 @@
 {
   "agentProfiles": [
     {
-      "id": "ai-dev-container-codex",
-      "label": "Codex CLI (AI dev container)",
+      "id": "codex",
+      "label": "Codex CLI",
       "command": "docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-codex-1 codex",
-      "description": "Run Codex CLI inside the chrome AI development container",
+      "description": "Run Codex CLI inside the AI agent sandbox container",
       "diagnosticContainer": "ai-agent-sandbox-codex-1",
       "diagnosticWorkspace": "/workspace"
     },
     {
-      "id": "ai-dev-container-goose",
-      "label": "Goose (AI dev container)",
+      "id": "goose",
+      "label": "Goose",
       "command": "docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-codex-1 goose",
-      "description": "Run Goose inside the chrome AI development container",
+      "description": "Run Goose inside the AI agent sandbox container",
       "diagnosticContainer": "ai-agent-sandbox-codex-1",
       "diagnosticWorkspace": "/workspace"
-    },
-    {
-      "id": "goose-container-shell",
-      "label": "Goose Container Shell",
-      "command": "docker exec -it chrome-goose-1 bash",
-      "description": "Enter the existing chrome-goose-1 shell; run goose manually inside the container when needed",
-      "diagnosticContainer": "chrome-goose-1",
-      "diagnosticWorkspace": "/workspace"
-    },
-    {
-      "id": "goose-container-direct",
-      "label": "Goose Container",
-      "command": "docker exec -it -w /workspace chrome-goose-1 bash -lc 'goose'",
-      "description": "Run Goose directly in the existing chrome-goose-1 container workspace",
-      "diagnosticContainer": "chrome-goose-1",
-      "diagnosticWorkspace": "/workspace"
-    },
-    {
-      "id": "aider",
-      "label": "aider",
-      "command": "aider",
-      "description": "Git-aware coding assistant"
-    },
-    {
-      "id": "shell-zsh",
-      "label": "zsh",
-      "command": "zsh",
-      "description": "Interactive shell fallback"
-    },
-    {
-      "id": "custom",
-      "label": "Custom command",
-      "command": "",
-      "description": "Run a custom PTY command"
     }
   ]
 }

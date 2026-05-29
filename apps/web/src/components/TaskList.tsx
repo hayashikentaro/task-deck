@@ -358,7 +358,7 @@ function agentStateLabel(agentState: AgentState) {
 function sessionModeLabel(sessionMode: string | undefined) {
   if (sessionMode === "resume_last") return "Resume last";
   if (sessionMode === "saved_codex") return "Resume saved session";
-  if (sessionMode === "custom_resume") return "Custom resume command";
+  if (sessionMode === "custom_resume") return "Legacy custom resume";
   if (sessionMode === "new") return "New session";
   return "-";
 }

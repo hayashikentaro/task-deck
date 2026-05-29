@@ -60,11 +60,6 @@ const hostDockerContainerCheckCommands: DiagnosticCommand[] = [
     command:
       "docker exec ai-agent-sandbox-codex-1 test -d /workspace && echo 'ai-agent-sandbox-codex-1:/workspace ready' || echo 'ai-agent-sandbox-codex-1:/workspace missing'",
   },
-  {
-    label: "goose workspace",
-    command:
-      "docker exec chrome-goose-1 test -d /workspace && echo 'chrome-goose-1:/workspace ready' || echo 'chrome-goose-1:/workspace missing'",
-  },
 ];
 
 export function InputComposer({ isConnected, task, send }: InputComposerProps) {

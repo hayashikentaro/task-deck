@@ -9,13 +9,11 @@ type TaskCreateFormProps = {
   onCreateTask: (input: CreateTaskInput) => void;
 };
 
-const defaultAgentProfileId = "goose";
-type SessionMode = "new" | "resume_last" | "saved_codex" | "custom_resume";
+const defaultAgentProfileId = "codex";
+type SessionMode = "new" | "resume_last" | "saved_codex";
 
 export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreateTask }: TaskCreateFormProps) {
   const [selectedAgentId, setSelectedAgentId] = useState(defaultAgentProfileId);
-  const [customCommand, setCustomCommand] = useState("");
-  const [customResumeCommand, setCustomResumeCommand] = useState("");
   const [selectedSavedSessionKey, setSelectedSavedSessionKey] = useState("");
   const [sessionMode, setSessionMode] = useState<SessionMode>("new");
   const [initialInstruction, setInitialInstruction] = useState("");
@@ -91,8 +89,6 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
   const launchCommand = buildLaunchCommand(
     selectedAgent,
     sessionMode,
-    customResumeCommand,
-    customCommand,
     selectedSavedSession,
   );
   const command = launchCommand.command;
@@ -199,11 +195,8 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
             {selectedAgentIsCodex ? (
               <optgroup label="Fallback">
                 <option value="resume_last">Resume last</option>
-                <option value="custom_resume">Custom resume command</option>
               </optgroup>
-            ) : (
-              <option value="custom_resume">Custom resume command</option>
-            )}
+            ) : null}
           </select>
           {selectedAgentIsCodex && matchingSavedCodexSessions.length === 0 ? (
             <small className="saved-session-empty">Saved sessions for this Codex profile appear after TaskDeck detects a session id.</small>
@@ -241,16 +234,6 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
             ) : null}
           </div>
         ) : null}
-        {sessionMode === "custom_resume" ? (
-          <label className="custom-resume-field">
-            <span>Custom resume command</span>
-            <input
-              placeholder="Command that resumes the external agent session"
-              value={customResumeCommand}
-              onChange={(event) => setCustomResumeCommand(event.target.value)}
-            />
-          </label>
-        ) : null}
         <label className="workspace-field">
           <span>Workspace</span>
           <input
@@ -263,16 +246,6 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
             {isValidatingCwd ? "Checking workspace..." : cwdValidation?.message || "Workspace is required."}
           </small>
         </label>
-        {selectedAgent.id === "custom" ? (
-          <label className="custom-command-field">
-            <span>Custom command</span>
-            <input
-              placeholder="Command to run in a PTY"
-              value={customCommand}
-              onChange={(event) => setCustomCommand(event.target.value)}
-            />
-          </label>
-        ) : null}
         <label className="instruction-field">
           <span>Initial instruction</span>
           <textarea
@@ -292,17 +265,10 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
 
 function findDefaultAgentProfile(agentProfiles: AgentProfile[]) {
   return (
-    agentProfiles.find((profile) => isGooseProfile(profile)) ??
+    agentProfiles.find((profile) => profile.id === defaultAgentProfileId) ??
+    agentProfiles.find((profile) => isCodexProfile(profile)) ??
     agentProfiles[0] ??
     null
-  );
-}
-
-function isGooseProfile(profile: AgentProfile) {
-  return (
-    profile.id.includes("goose") ||
-    profile.label.toLowerCase().includes("goose") ||
-    /\bgoose\b/.test(profile.command)
   );
 }
 
@@ -317,17 +283,10 @@ function isCodexProfile(profile: AgentProfile) {
 function buildLaunchCommand(
   profile: AgentProfile,
   sessionMode: SessionMode,
-  customResumeCommand: string,
-  customCommand: string,
   savedSession: SavedCodexSession | null,
 ) {
   if (sessionMode === "saved_codex") {
     const resumeCommand = savedSession?.resumeCommand.trim() || "";
-    return { command: resumeCommand, resumeCommand };
-  }
-
-  if (sessionMode === "custom_resume") {
-    const resumeCommand = customResumeCommand.trim();
     return { command: resumeCommand, resumeCommand };
   }
 
@@ -336,12 +295,12 @@ function buildLaunchCommand(
     return { command: resumeCommand, resumeCommand };
   }
 
-  const command = profile.id === "custom" ? customCommand.trim() : profile.command.trim();
+  const command = profile.command.trim();
   return { command, resumeCommand: "" };
 }
 
 function buildCodexResumeLastCommand(profile: AgentProfile) {
-  if (profile.id === "ai-dev-container-codex") {
+  if (agentCommandEnvironment(profile) === "ai-agent-sandbox-codex-1") {
     return "docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-codex-1 sh -lc 'codex resume --last'";
   }
   return "codex resume --last";
@@ -394,9 +353,6 @@ function commandEnvironmentFromCommand(command: string) {
   const normalizedCommand = command.toLowerCase();
   if (/\bdocker\b[\s\S]*\bai-agent-sandbox-codex-1\b/.test(normalizedCommand)) {
     return "ai-agent-sandbox-codex-1";
-  }
-  if (/\bdocker\b[\s\S]*\bchrome-goose-1\b/.test(normalizedCommand)) {
-    return "chrome-goose-1";
   }
   return "local";
 }

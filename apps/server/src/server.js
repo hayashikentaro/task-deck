@@ -36,48 +36,18 @@ const defaultAgentProfiles = [
   {
     id: "codex",
     label: "Codex CLI",
-    command: "codex",
-    description: "High-quality cloud coding agent",
+    command: "docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-codex-1 codex",
+    description: "Run Codex CLI inside the AI agent sandbox container",
+    diagnosticContainer: "ai-agent-sandbox-codex-1",
+    diagnosticWorkspace: "/workspace",
   },
   {
     id: "goose",
     label: "Goose",
-    command: "goose",
-    description: "Local/alternative agent option",
-  },
-  {
-    id: "goose-container-shell",
-    label: "Goose Container Shell",
-    command: "docker exec -it chrome-goose-1 bash",
-    description: "Enter the existing chrome-goose-1 shell; run goose manually inside the container when needed",
-    diagnosticContainer: "chrome-goose-1",
+    command: "docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-codex-1 goose",
+    description: "Run Goose inside the AI agent sandbox container",
+    diagnosticContainer: "ai-agent-sandbox-codex-1",
     diagnosticWorkspace: "/workspace",
-  },
-  {
-    id: "goose-container-direct",
-    label: "Goose Container",
-    command: "docker exec -it -w /workspace chrome-goose-1 bash -lc 'goose'",
-    description: "Run Goose directly in the existing chrome-goose-1 container workspace",
-    diagnosticContainer: "chrome-goose-1",
-    diagnosticWorkspace: "/workspace",
-  },
-  {
-    id: "aider",
-    label: "aider",
-    command: "aider",
-    description: "Git-aware coding assistant",
-  },
-  {
-    id: "shell-zsh",
-    label: "zsh",
-    command: "zsh",
-    description: "Interactive shell fallback",
-  },
-  {
-    id: "custom",
-    label: "Custom command",
-    command: "",
-    description: "Run a custom PTY command",
   },
 ];
 
@@ -863,10 +833,6 @@ function codexCommandEnvironment(task) {
     return "ai-agent-sandbox-codex-1";
   }
 
-  if (/\bdocker\b[\s\S]*\bchrome-goose-1\b/.test(command)) {
-    return "chrome-goose-1";
-  }
-
   return "local";
 }
 
@@ -977,15 +943,16 @@ async function readJsonArray(filePath, label) {
 }
 
 async function loadAgentProfiles() {
-  return ensureCustomAgentProfile((await loadAgentProfileConfig()).profiles);
+  return filterContainerAgentProfiles((await loadAgentProfileConfig()).profiles);
 }
 
 async function getAgentProfileConfigSummary() {
   const loadedConfig = await loadAgentProfileConfig();
+  const exposedCount = filterContainerAgentProfiles(loadedConfig.profiles).length;
   return {
     source: loadedConfig.source,
     path: loadedConfig.path,
-    message: loadedConfig.message,
+    message: `${loadedConfig.message} Exposing ${exposedCount} container-backed agent profiles.`,
   };
 }
 
@@ -1094,20 +1061,11 @@ function sanitizeAgentProfiles(rawProfiles) {
   return profiles;
 }
 
-function ensureCustomAgentProfile(profiles) {
-  if (profiles.some((profile) => profile.id === "custom")) {
-    return profiles;
-  }
-
-  return [
-    ...profiles,
-    {
-      id: "custom",
-      label: "Custom command",
-      command: "",
-      description: "Run a custom PTY command",
-    },
-  ];
+function filterContainerAgentProfiles(profiles) {
+  return profiles.filter((profile) => {
+    const command = String(profile.command || "");
+    return Boolean(profile.diagnosticContainer) && /\bdocker\b[\s\S]*\b(exec|start)\b/.test(command);
+  });
 }
 
 async function buildDiagnostics() {
