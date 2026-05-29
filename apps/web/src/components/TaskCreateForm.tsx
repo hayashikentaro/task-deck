@@ -78,6 +78,9 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
     defaultAgentProfiles[0];
   const selectedSavedSession =
     savedCodexSessions.find((session) => session.key === selectedSavedSessionKey) ?? savedCodexSessions[0] ?? null;
+  const selectedAgentIsCodex = isCodexProfile(selectedAgent);
+  const sessionSelectValue =
+    sessionMode === "saved_codex" && selectedSavedSession ? savedSessionOptionValue(selectedSavedSession.key) : sessionMode;
   const cwdIsValid = cwdValidation?.ok ?? false;
   const launchCommand = buildLaunchCommand(
     selectedAgent,
@@ -96,13 +99,18 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
   }, [agentProfiles, selectedAgentId]);
 
   useEffect(() => {
+    if (!selectedAgentIsCodex && (sessionMode === "saved_codex" || sessionMode === "resume_last")) {
+      setSessionMode("new");
+      setSelectedSavedSessionKey("");
+      return;
+    }
     if (sessionMode === "saved_codex" && selectedSavedSession && cwd !== selectedSavedSession.cwd) {
       setCwd(selectedSavedSession.cwd);
     }
-  }, [cwd, selectedSavedSession, sessionMode]);
+  }, [cwd, selectedAgentIsCodex, selectedSavedSession, sessionMode]);
 
   useEffect(() => {
-    if (sessionMode === "saved_codex" && savedCodexSessions.length === 0) {
+    if (sessionMode === "saved_codex" && (!selectedAgentIsCodex || savedCodexSessions.length === 0)) {
       setSessionMode("new");
       setSelectedSavedSessionKey("");
       return;
@@ -114,7 +122,16 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
     ) {
       setSelectedSavedSessionKey(savedCodexSessions[0]?.key ?? "");
     }
-  }, [savedCodexSessions, selectedSavedSessionKey, sessionMode]);
+  }, [savedCodexSessions, selectedAgentIsCodex, selectedSavedSessionKey, sessionMode]);
+
+  const handleSessionChange = (value: string) => {
+    if (value.startsWith("saved:")) {
+      setSessionMode("saved_codex");
+      setSelectedSavedSessionKey(value.slice("saved:".length));
+      return;
+    }
+    setSessionMode(value as SessionMode);
+  };
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -162,31 +179,32 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
         </div>
         <label className="session-mode-field">
           <span>Session</span>
-          <select value={sessionMode} onChange={(event) => setSessionMode(event.target.value as SessionMode)}>
+          <select value={sessionSelectValue} onChange={(event) => handleSessionChange(event.target.value)}>
             <option value="new">New session</option>
-            {savedCodexSessions.length > 0 ? <option value="saved_codex">Resume saved session</option> : null}
-            <option value="resume_last">Resume last</option>
-            <option value="custom_resume">Custom resume command</option>
+            {selectedAgentIsCodex && savedCodexSessions.length > 0 ? (
+              <optgroup label="Recent saved sessions">
+                {savedCodexSessions.map((session) => (
+                  <option key={session.key} value={savedSessionOptionValue(session.key)}>
+                    {savedSessionLabel(session)}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            {selectedAgentIsCodex ? (
+              <optgroup label="Fallback">
+                <option value="resume_last">Resume last</option>
+                <option value="custom_resume">Custom resume command</option>
+              </optgroup>
+            ) : (
+              <option value="custom_resume">Custom resume command</option>
+            )}
           </select>
-          {savedCodexSessions.length === 0 ? (
+          {selectedAgentIsCodex && savedCodexSessions.length === 0 ? (
             <small className="saved-session-empty">Saved sessions appear after TaskDeck detects a Codex session id.</small>
           ) : null}
         </label>
         {sessionMode === "saved_codex" ? (
           <div className="saved-session-field">
-            <label>
-              <span>Saved session</span>
-              <select
-                value={selectedSavedSession?.key ?? ""}
-                onChange={(event) => setSelectedSavedSessionKey(event.target.value)}
-              >
-                {savedCodexSessions.map((session) => (
-                  <option key={session.key} value={session.key}>
-                    {savedSessionLabel(session)}
-                  </option>
-                ))}
-              </select>
-            </label>
             {selectedSavedSession ? (
               <dl className="saved-session-preview">
                 <div>
@@ -337,6 +355,10 @@ function savedSessionLabel(session: SavedCodexSession) {
   const taskTitle = session.title || "Codex session";
   const agentLabel = session.agentLabel || "Codex";
   return `${projectName} · ${taskTitle} · ${agentLabel} · ${date} · ${compactSessionId(session.sessionId)}`;
+}
+
+function savedSessionOptionValue(sessionKey: string) {
+  return `saved:${sessionKey}`;
 }
 
 function basename(value: string) {
