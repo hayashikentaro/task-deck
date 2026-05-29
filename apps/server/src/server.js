@@ -326,6 +326,11 @@ wss.on("connection", (socket) => {
           agentLabel: String(message.agentLabel || "").trim(),
           sessionMode: String(message.sessionMode || "").trim(),
           resumeCommand: String(message.resumeCommand || "").trim(),
+          agentSessionProvider: String(message.agentSessionProvider || "").trim(),
+          agentSessionId: String(message.agentSessionId || "").trim(),
+          agentSessionSource: String(message.agentSessionSource || "").trim(),
+          agentSessionDetectedAt: String(message.agentSessionDetectedAt || "").trim(),
+          agentSessionResumeCommand: String(message.agentSessionResumeCommand || "").trim(),
           initialInstruction: String(message.initialInstruction || "").trim(),
         },
         socket,
@@ -391,6 +396,11 @@ async function startTask({
   agentLabel,
   sessionMode,
   resumeCommand,
+  agentSessionProvider,
+  agentSessionId,
+  agentSessionSource,
+  agentSessionDetectedAt,
+  agentSessionResumeCommand,
   initialInstruction,
 }, socket) {
   if (!command) {
@@ -403,6 +413,15 @@ async function startTask({
     return;
   }
 
+  const detectedAgentSession = detectInitialAgentSession(command, agentProfileId, agentLabel);
+  const explicitAgentSession = normalizeExplicitAgentSession({
+    agentSessionProvider,
+    agentSessionId,
+    agentSessionSource,
+    agentSessionDetectedAt,
+    agentSessionResumeCommand,
+  });
+
   const task = markTaskRunning(createTask({
     title,
     command,
@@ -412,7 +431,8 @@ async function startTask({
     sessionMode,
     resumeCommand,
     initialInstruction,
-    ...detectInitialAgentSession(command, agentProfileId, agentLabel),
+    ...detectedAgentSession,
+    ...explicitAgentSession,
   }));
   tasks.set(task.id, task);
   logs.set(task.id, "");
@@ -591,6 +611,26 @@ function detectInitialAgentSession(command, agentProfileId, agentLabel) {
     agentSessionDetectedAt: new Date().toISOString(),
     agentSessionResumeCommand,
     resumeCommand: "",
+  }, agentSessionResumeCommand);
+}
+
+function normalizeExplicitAgentSession({
+  agentSessionProvider,
+  agentSessionId,
+  agentSessionSource,
+  agentSessionDetectedAt,
+  agentSessionResumeCommand,
+}) {
+  if (!agentSessionProvider && !agentSessionId && !agentSessionResumeCommand) {
+    return {};
+  }
+
+  return withDetectedResumeCommand({
+    agentSessionProvider,
+    agentSessionId,
+    agentSessionSource,
+    agentSessionDetectedAt,
+    agentSessionResumeCommand,
   }, agentSessionResumeCommand);
 }
 
@@ -786,6 +826,7 @@ function savedCodexSessionFromTask(task) {
     key: `${provider}:${sessionId}`,
     provider,
     sessionId,
+    source: String(task.agentSessionSource || ""),
     resumeCommand,
     title: String(task.title || "Codex session"),
     cwd: String(task.cwd || repoRoot),

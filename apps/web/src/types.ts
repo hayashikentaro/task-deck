@@ -45,6 +45,7 @@ export type SavedCodexSession = {
   key: string;
   provider: string;
   sessionId: string;
+  source?: string;
   resumeCommand: string;
   title: string;
   cwd: string;
@@ -68,6 +69,11 @@ export type CreateTaskInput = {
   agentLabel?: string;
   sessionMode?: string;
   resumeCommand?: string;
+  agentSessionProvider?: string;
+  agentSessionId?: string;
+  agentSessionSource?: string;
+  agentSessionDetectedAt?: string;
+  agentSessionResumeCommand?: string;
   initialInstruction?: string;
 };
 

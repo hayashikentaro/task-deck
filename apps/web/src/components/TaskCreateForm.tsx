@@ -133,6 +133,12 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
       agentLabel: sessionMode === "saved_codex" ? selectedSavedSession?.agentLabel || "Codex CLI" : selectedAgent.label,
       sessionMode,
       resumeCommand: launchCommand.resumeCommand || undefined,
+      agentSessionProvider: sessionMode === "saved_codex" ? selectedSavedSession?.provider : undefined,
+      agentSessionId: sessionMode === "saved_codex" ? selectedSavedSession?.sessionId : undefined,
+      agentSessionSource:
+        sessionMode === "saved_codex" ? selectedSavedSession?.source || "saved session picker" : undefined,
+      agentSessionDetectedAt: sessionMode === "saved_codex" ? selectedSavedSession?.detectedAt : undefined,
+      agentSessionResumeCommand: sessionMode === "saved_codex" ? selectedSavedSession?.resumeCommand : undefined,
       initialInstruction: initialInstruction.trim(),
     });
   };
