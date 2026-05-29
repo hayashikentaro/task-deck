@@ -34,6 +34,18 @@ const diagnosticCommands: DiagnosticCommand[] = [
 ];
 const containerCheckCommands: DiagnosticCommand[] = [
   {
+    label: "pty pwd",
+    command: "pwd",
+  },
+  {
+    label: "pty /workspace",
+    command: "test -d /workspace && echo 'current PTY:/workspace ready' || echo 'current PTY:/workspace missing'",
+  },
+  {
+    label: "pty workspace files",
+    command: "test -d /workspace && ls -la /workspace || echo 'current PTY:/workspace unavailable'",
+  },
+  {
     label: "docker ps",
     command: "docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'",
   },
