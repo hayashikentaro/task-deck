@@ -89,6 +89,9 @@ Keep state, risk, diffs, review, and agent supervision central. Terminal/PTY int
 - Logs can grow; avoid moving terminal output into unbounded React state.
 - PTY process lifecycle, interrupts, server restarts, and task clearing should remain predictable.
 - WebSocket task updates should keep task lists, selected task behavior, terminal output, and session metadata in sync.
+- Agent state should be driven primarily by TaskDeck events such as start, input, PTY output activity, quiet periods, and exit. Treat TUI text matching as a fallback for explicit user-action prompts only.
+- Prefer machine-readable or non-TUI agent modes when an agent supports them, but keep PTY compatibility until those modes are proven.
+- Approval should eventually become a TaskDeck-side permission boundary instead of a scraped TUI state.
 - Agent session metadata is best-effort and should not assume every agent exposes stable ids.
 - `GET /api/agent-sessions` lists saved Codex sessions derived from TaskDeck task metadata.
 - When documenting `/api/agent-sessions`, use the current response shape from the implementation, not older proposed names.

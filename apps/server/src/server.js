@@ -318,11 +318,7 @@ wss.on("connection", (socket) => {
       const activePty = activePtys.get(message.taskId);
       if (activePty && typeof message.data === "string") {
         logInputDebug(message.taskId, message.data, message.source || "client");
-        const task = tasks.get(message.taskId);
-        if (task) {
-          setTask(markTaskAgentState(task, AgentState.WORKING));
-          broadcastTasks();
-        }
+        updateAgentStateFromTaskDeckEvent(message.taskId, AgentState.WORKING);
         writeOrQueuePtyInput(activePty, message.data, message.source || "client");
       } else if (inputDebugEnabled) {
         console.log(`[TaskDeck input] ignored task=${message.taskId || "-"} reason=no-active-pty-or-invalid-data`);
@@ -441,9 +437,8 @@ async function startTask({
 
     const activePty = createActivePty(task, terminalProcess);
     activePtys.set(task.id, activePty);
-    setTask(markTaskAgentState(task, AgentState.THINKING));
+    updateAgentStateFromTaskDeckEvent(task.id, AgentState.THINKING);
     send(socket, { type: "started", taskId: task.id });
-    broadcastTasks();
 
     terminalProcess.onData((data) => {
       if (!tasks.has(task.id)) {
@@ -452,7 +447,7 @@ async function startTask({
       activePty.lastOutputAt = Date.now();
       appendLog(task.id, data);
       updateAgentSessionFromOutput(task.id, data);
-      updateAgentStateFromOutput(task.id, data);
+      updateAgentStateFromPtyOutput(task.id, data);
       broadcast({ type: "output", taskId: task.id, data });
     });
 
@@ -734,26 +729,37 @@ function updateAgentSessionFromOutput(taskId, data) {
   broadcastTasks();
 }
 
-function updateAgentStateFromOutput(taskId, data) {
+function updateAgentStateFromTaskDeckEvent(taskId, agentState) {
+  const task = tasks.get(taskId);
+  if (!task || task.status !== TaskStatus.RUNNING) {
+    return false;
+  }
+
+  if (task.agentState === agentState) {
+    return false;
+  }
+
+  setTask(markTaskAgentState(task, agentState));
+  broadcastTasks();
+  return true;
+}
+
+function updateAgentStateFromPtyOutput(taskId, data) {
   const task = tasks.get(taskId);
   if (!task || task.status !== TaskStatus.RUNNING) {
     return;
   }
 
+  // TUI text is an unreliable protocol. Use it only as a fallback for explicit
+  // user-action prompts until TaskDeck owns approval/input boundaries directly.
   const recentOutput = logs.get(taskId)?.slice(-8000) || data;
-  const explicitAgentState = inferExplicitAgentStateFromOutput(recentOutput);
-  const nextAgentState = explicitAgentState || AgentState.WORKING;
-  if (!nextAgentState || task.agentState === nextAgentState) {
-    return;
-  }
+  const nextAgentState = inferAgentStateFromTuiFallback(recentOutput) || AgentState.WORKING;
 
-  setTask(markTaskAgentState(task, nextAgentState));
-  broadcastTasks();
+  updateAgentStateFromTaskDeckEvent(taskId, nextAgentState);
 }
 
 function updateQuietRunningTaskStates() {
   const now = Date.now();
-  let changed = false;
 
   for (const activePty of activePtys.values()) {
     const task = tasks.get(activePty.taskId);
@@ -767,13 +773,8 @@ function updateQuietRunningTaskStates() {
     }
 
     if (task.agentState !== AgentState.THINKING) {
-      setTask(markTaskAgentState(task, AgentState.THINKING));
-      changed = true;
+      updateAgentStateFromTaskDeckEvent(task.id, AgentState.THINKING);
     }
-  }
-
-  if (changed) {
-    broadcastTasks();
   }
 }
 
@@ -785,7 +786,7 @@ function isExplicitUserActionState(agentState) {
   );
 }
 
-function inferExplicitAgentStateFromOutput(data) {
+function inferAgentStateFromTuiFallback(data) {
   const rawText = String(data);
   const text = stripTerminalControlSequences(String(data));
   const normalizedRaw = rawText.toLowerCase();
