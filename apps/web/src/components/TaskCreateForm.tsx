@@ -170,19 +170,37 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
           </select>
         </label>
         {sessionMode === "saved_codex" ? (
-          <label className="saved-session-field">
-            <span>Saved session</span>
-            <select
-              value={selectedSavedSession?.key ?? ""}
-              onChange={(event) => setSelectedSavedSessionKey(event.target.value)}
-            >
-              {savedCodexSessions.map((session) => (
-                <option key={session.key} value={session.key}>
-                  {savedSessionLabel(session)}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="saved-session-field">
+            <label>
+              <span>Saved session</span>
+              <select
+                value={selectedSavedSession?.key ?? ""}
+                onChange={(event) => setSelectedSavedSessionKey(event.target.value)}
+              >
+                {savedCodexSessions.map((session) => (
+                  <option key={session.key} value={session.key}>
+                    {savedSessionLabel(session)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {selectedSavedSession ? (
+              <dl className="saved-session-preview">
+                <div>
+                  <dt>Session</dt>
+                  <dd>{selectedSavedSession.sessionId}</dd>
+                </div>
+                <div>
+                  <dt>Source</dt>
+                  <dd>{selectedSavedSession.title}</dd>
+                </div>
+                <div>
+                  <dt>Command</dt>
+                  <dd>{selectedSavedSession.resumeCommand}</dd>
+                </div>
+              </dl>
+            ) : null}
+          </div>
         ) : null}
         {sessionMode === "custom_resume" ? (
           <label className="custom-resume-field">
