@@ -198,6 +198,10 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
                   <dd>{selectedSavedSession.title}</dd>
                 </div>
                 <div>
+                  <dt>Detected</dt>
+                  <dd>{selectedSavedSession.detectedAt || selectedSavedSession.updatedAt}</dd>
+                </div>
+                <div>
                   <dt>Command</dt>
                   <dd>{selectedSavedSession.resumeCommand}</dd>
                 </div>
