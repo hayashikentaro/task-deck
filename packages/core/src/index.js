@@ -31,6 +31,15 @@ export const AgentStateConfidence = Object.freeze({
   LOW: "low",
 });
 
+export const AttentionState = Object.freeze({
+  NONE: "none",
+  MAY_NEED_USER: "may_need_user",
+  NEEDS_INPUT: "needs_input",
+  NEEDS_APPROVAL: "needs_approval",
+  REVIEW_READY: "review_ready",
+  FAILED: "failed",
+});
+
 const dangerousPatterns = [
   /\brm\s+-rf\b/,
   /\bsudo\b/,
@@ -77,6 +86,8 @@ export function createTask({
     agentStateReason: "Task created.",
     agentStateSource: AgentStateSource.TASKDECK_EVENT,
     agentStateConfidence: AgentStateConfidence.HIGH,
+    attentionState: AttentionState.NONE,
+    attentionStateReason: "No user attention needed yet.",
     risk: assessCommandRisk(normalizedCommand),
     createdAt: now,
     startedAt: null,
@@ -98,6 +109,8 @@ export function markTaskRunning(task) {
     agentStateReason: task.agentStateReason || "Process started.",
     agentStateSource: task.agentStateSource || AgentStateSource.PROCESS,
     agentStateConfidence: task.agentStateConfidence || AgentStateConfidence.HIGH,
+    attentionState: AttentionState.NONE,
+    attentionStateReason: "Task is running.",
     startedAt: now,
     updatedAt: now,
     endedAt: null,
@@ -113,6 +126,17 @@ export function markTaskAgentState(task, agentState, metadata = {}) {
     agentStateReason: metadata.reason ?? task.agentStateReason ?? "",
     agentStateSource: metadata.source ?? task.agentStateSource ?? "",
     agentStateConfidence: metadata.confidence ?? task.agentStateConfidence ?? "",
+    attentionState: metadata.attentionState ?? task.attentionState ?? AttentionState.NONE,
+    attentionStateReason: metadata.attentionReason ?? task.attentionStateReason ?? "",
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function markTaskAttentionState(task, attentionState, reason = "") {
+  return {
+    ...task,
+    attentionState,
+    attentionStateReason: reason || task.attentionStateReason || "",
     updatedAt: new Date().toISOString(),
   };
 }
@@ -121,6 +145,7 @@ export function markTaskExited(task, { exitCode, signal }) {
   const now = new Date().toISOString();
   const status = exitCode === 0 ? TaskStatus.SUCCEEDED : signal ? TaskStatus.INTERRUPTED : TaskStatus.FAILED;
   const agentState = exitCode === 0 ? AgentState.DONE : signal ? AgentState.STOPPED : AgentState.FAILED;
+  const attentionState = exitCode === 0 ? AttentionState.NONE : AttentionState.FAILED;
 
   return {
     ...task,
@@ -129,6 +154,8 @@ export function markTaskExited(task, { exitCode, signal }) {
     agentStateReason: signal ? `Process interrupted by signal ${signal}.` : `Process exited with code ${exitCode}.`,
     agentStateSource: AgentStateSource.PROCESS,
     agentStateConfidence: AgentStateConfidence.HIGH,
+    attentionState,
+    attentionStateReason: exitCode === 0 ? "Process completed successfully." : "Process stopped or failed.",
     updatedAt: now,
     endedAt: now,
     exitCode,
@@ -156,6 +183,8 @@ export function serializeTask(task) {
     agentStateReason: task.agentStateReason || "",
     agentStateSource: task.agentStateSource || "",
     agentStateConfidence: task.agentStateConfidence || "",
+    attentionState: task.attentionState ?? inferAttentionStateFromTask(task),
+    attentionStateReason: task.attentionStateReason || "",
     risk: task.risk,
     createdAt: task.createdAt,
     startedAt: task.startedAt,
@@ -205,6 +234,15 @@ export function inferAgentStateFromStatus(task) {
   if (task.status === TaskStatus.INTERRUPTED) return AgentState.STOPPED;
   if (task.status === TaskStatus.FAILED) return AgentState.FAILED;
   return AgentState.STARTING;
+}
+
+export function inferAttentionStateFromTask(task) {
+  if (task.status === TaskStatus.FAILED || task.status === TaskStatus.INTERRUPTED) return AttentionState.FAILED;
+  if (task.agentState === AgentState.FAILED || task.agentState === AgentState.STOPPED) return AttentionState.FAILED;
+  if (task.agentState === AgentState.WAITING_APPROVAL) return AttentionState.NEEDS_APPROVAL;
+  if (task.agentState === AgentState.WAITING_INPUT) return AttentionState.NEEDS_INPUT;
+  if (task.agentState === AgentState.REVIEW_READY) return AttentionState.REVIEW_READY;
+  return AttentionState.NONE;
 }
 
 function cryptoRandomId() {

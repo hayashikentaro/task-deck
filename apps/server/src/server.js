@@ -12,7 +12,9 @@ import {
   AgentState,
   AgentStateConfidence,
   AgentStateSource,
+  AttentionState,
   createTask,
+  markTaskAttentionState,
   markTaskAgentState,
   markTaskExited,
   markTaskRunning,
@@ -73,6 +75,7 @@ const bracketedPasteEnd = "\x1b[201~";
 const codexInputHoldMs = 5000;
 const ptyActivityWindowMs = 3000;
 const maxPtyActivityFrames = 40;
+const quietAttentionMs = 15000;
 const activePtys = new Map();
 let persistTasksQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
@@ -325,6 +328,8 @@ wss.on("connection", (socket) => {
           reason: "User input was sent to the PTY.",
           source: AgentStateSource.TASKDECK_EVENT,
           confidence: AgentStateConfidence.HIGH,
+          attentionState: AttentionState.NONE,
+          attentionReason: "User input was sent to the task.",
         });
         writeOrQueuePtyInput(activePty, message.data, message.source || "client");
       } else if (inputDebugEnabled) {
@@ -370,6 +375,9 @@ server.on("error", (error) => {
 server.listen(port, host, () => {
   console.log(`TaskDeck listening on http://${host}:${port}`);
 });
+
+const attentionTimer = setInterval(updateQuietAttentionStates, 1000);
+attentionTimer.unref?.();
 
 async function startTask({
   title,
@@ -445,6 +453,8 @@ async function startTask({
       reason: "PTY process started; waiting for agent output.",
       source: AgentStateSource.TASKDECK_EVENT,
       confidence: AgentStateConfidence.MEDIUM,
+      attentionState: AttentionState.NONE,
+      attentionReason: "Task has started.",
     });
     send(socket, { type: "started", taskId: task.id });
 
@@ -489,6 +499,7 @@ function createActivePty(task, process) {
   const activePty = {
     taskId: task.id,
     process,
+    createdAt: Date.now(),
     inputHoldUntil,
     inputQueue: [],
     flushTimer: null,
@@ -755,7 +766,9 @@ function hasSameAgentStateMetadata(task, metadata) {
   return (
     (metadata.reason === undefined || task.agentStateReason === metadata.reason) &&
     (metadata.source === undefined || task.agentStateSource === metadata.source) &&
-    (metadata.confidence === undefined || task.agentStateConfidence === metadata.confidence)
+    (metadata.confidence === undefined || task.agentStateConfidence === metadata.confidence) &&
+    (metadata.attentionState === undefined || task.attentionState === metadata.attentionState) &&
+    (metadata.attentionReason === undefined || task.attentionStateReason === metadata.attentionReason)
   );
 }
 
@@ -770,13 +783,55 @@ function updateAgentStateFromPtyOutput(activePty, data) {
   // TUI text is an unreliable protocol. Use it only as a fallback for explicit
   // user-action prompts until TaskDeck owns approval/input boundaries directly.
   const recentOutput = logs.get(activePty.taskId)?.slice(-8000) || data;
-  const nextAgentState = inferAgentStateFromTuiFallback(recentOutput, activity) || inferAgentStateFromPtyActivity(activity);
+  const tuiSignal = inferAgentStateFromTuiFallback(recentOutput, activity);
+  const processSignal = inferAgentStateFromPtyActivity(activity);
+  const nextAgentState = tuiSignal?.state ? tuiSignal : processSignal;
+  const attentionState = tuiSignal?.attentionState ?? nextAgentState.attentionState ?? AttentionState.NONE;
+  const attentionReason = tuiSignal?.attentionReason ?? nextAgentState.attentionReason ?? "No user attention needed.";
 
   updateAgentStateFromTaskDeckEvent(activePty.taskId, nextAgentState.state, {
     reason: nextAgentState.reason,
     source: nextAgentState.source,
     confidence: nextAgentState.confidence,
+    attentionState,
+    attentionReason,
   });
+}
+
+function updateQuietAttentionStates() {
+  const now = Date.now();
+  let changed = false;
+
+  for (const activePty of activePtys.values()) {
+    const task = tasks.get(activePty.taskId);
+    if (!task || task.status !== TaskStatus.RUNNING || isStrongAttentionState(task.attentionState)) {
+      continue;
+    }
+
+    const lastActivityAt = activePty.activity?.lastOutputAt || activePty.createdAt || now;
+    if (now - lastActivityAt < quietAttentionMs) {
+      continue;
+    }
+
+    const reason = "Running PTY has been quiet; user attention may be needed.";
+    if (task.attentionState !== AttentionState.MAY_NEED_USER || task.attentionStateReason !== reason) {
+      setTask(markTaskAttentionState(task, AttentionState.MAY_NEED_USER, reason));
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    broadcastTasks();
+  }
+}
+
+function isStrongAttentionState(attentionState) {
+  return (
+    attentionState === AttentionState.NEEDS_APPROVAL ||
+    attentionState === AttentionState.NEEDS_INPUT ||
+    attentionState === AttentionState.REVIEW_READY ||
+    attentionState === AttentionState.FAILED
+  );
 }
 
 function createPtyActivity() {
@@ -843,6 +898,8 @@ function inferAgentStateFromPtyActivity(activity) {
       reason: "PTY is actively repainting terminal frames; TaskDeck infers the agent may be active.",
       source: AgentStateSource.PROCESS,
       confidence: AgentStateConfidence.MEDIUM,
+      attentionState: AttentionState.NONE,
+      attentionReason: "PTY is actively repainting.",
     };
   }
 
@@ -852,6 +909,8 @@ function inferAgentStateFromPtyActivity(activity) {
       reason: "PTY emitted visible output; TaskDeck infers the agent may be active.",
       source: AgentStateSource.PROCESS,
       confidence: AgentStateConfidence.MEDIUM,
+      attentionState: AttentionState.NONE,
+      attentionReason: "PTY emitted visible output.",
     };
   }
 
@@ -860,6 +919,8 @@ function inferAgentStateFromPtyActivity(activity) {
     reason: "PTY emitted terminal output; TaskDeck infers the agent may be active.",
     source: AgentStateSource.PROCESS,
     confidence: AgentStateConfidence.LOW,
+    attentionState: AttentionState.NONE,
+    attentionReason: "PTY emitted terminal output.",
   };
 }
 
@@ -890,6 +951,8 @@ function inferAgentStateFromTuiFallback(data, activity) {
       reason: "TUI output indicates an approval was accepted.",
       source: AgentStateSource.TUI_FALLBACK,
       confidence: AgentStateConfidence.MEDIUM,
+      attentionState: AttentionState.NONE,
+      attentionReason: "Approval appears to have been accepted.",
     };
   }
 
@@ -899,18 +962,32 @@ function inferAgentStateFromTuiFallback(data, activity) {
       reason: "TUI output appears to be requesting approval.",
       source: AgentStateSource.TUI_FALLBACK,
       confidence: AgentStateConfidence.MEDIUM,
+      attentionState: AttentionState.NEEDS_APPROVAL,
+      attentionReason: "Approval prompt detected.",
     };
   }
 
+  const hasInputLikePrompt =
+    isInteractivePrompt(lastLine) || /(waiting for input|press enter|enter your|select an? |choose an? |type .*:|\?\s*$)/.test(normalized);
+
   if (
     !isPtyActivelyRepainting(activity) &&
-    (isInteractivePrompt(lastLine) || /(waiting for input|press enter|enter your|select an? |choose an? |type .*:|\?\s*$)/.test(normalized))
+    hasInputLikePrompt
   ) {
     return {
       state: AgentState.WAITING_INPUT,
       reason: "Input prompt detected and terminal is quiet.",
       source: AgentStateSource.TUI_FALLBACK,
       confidence: AgentStateConfidence.MEDIUM,
+      attentionState: AttentionState.NEEDS_INPUT,
+      attentionReason: "Stable input prompt detected.",
+    };
+  }
+
+  if (hasInputLikePrompt) {
+    return {
+      attentionState: AttentionState.MAY_NEED_USER,
+      attentionReason: "Input-like prompt is visible, but the PTY is still repainting.",
     };
   }
 
@@ -920,6 +997,8 @@ function inferAgentStateFromTuiFallback(data, activity) {
       reason: "TUI output indicates the work may be ready for review.",
       source: AgentStateSource.TUI_FALLBACK,
       confidence: AgentStateConfidence.MEDIUM,
+      attentionState: AttentionState.REVIEW_READY,
+      attentionReason: "Review-ready output detected.",
     };
   }
 

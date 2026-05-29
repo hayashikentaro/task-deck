@@ -635,6 +635,32 @@ dd {
   color: var(--text-primary);
 }
 
+.task-badge[data-kind="attention-none"] {
+  border-color: var(--status-muted);
+  color: var(--status-muted);
+}
+
+.task-badge[data-kind="attention-may_need_user"],
+.task-badge[data-kind="attention-needs_input"] {
+  border-color: var(--status-needs-input);
+  color: var(--status-needs-input);
+}
+
+.task-badge[data-kind="attention-needs_approval"] {
+  border-color: var(--status-needs-approval);
+  color: var(--status-needs-approval);
+}
+
+.task-badge[data-kind="attention-review_ready"] {
+  border-color: var(--status-review-ready);
+  color: var(--status-review-ready);
+}
+
+.task-badge[data-kind="attention-failed"] {
+  border-color: var(--status-failed);
+  color: var(--status-failed);
+}
+
 .task-badge[data-kind="agent-starting"] {
   border-color: var(--status-starting);
   color: var(--status-starting);

@@ -1,4 +1,4 @@
-import type { AgentState, Task } from "../types";
+import type { AgentState, AttentionState, Task } from "../types";
 
 type TaskInfoPaneProps = {
   actionError: string;
@@ -31,6 +31,9 @@ export function TaskInfoPane({ actionError, task, onInterrupt, onRerun }: TaskIn
       ) : (
         <dl className="info-grid">
           <Info label="Title" value={task.title} />
+          <InfoSection label="User attention" />
+          <Info label="Attention state" value={attentionStateLabel(attentionState(task))} />
+          {task.attentionStateReason ? <Info label="Attention reason" value={task.attentionStateReason} /> : null}
           <InfoSection label="Observed process" />
           <Info label="Process status" value={task.status} />
           <Info label="Exit" value={task.exitCode === null ? "-" : String(task.exitCode)} />
@@ -76,6 +79,14 @@ function formatDate(value: string | null) {
 
 function agentStateLabel(agentState: AgentState) {
   return agentState.replace(/_/g, " ");
+}
+
+function attentionState(task: Task): AttentionState {
+  return task.attentionState || "none";
+}
+
+function attentionStateLabel(nextAttentionState: AttentionState) {
+  return nextAttentionState.replace(/_/g, " ");
 }
 
 function stateSourceLabel(source?: string) {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import type { AgentState, Task } from "../types";
+import type { AgentState, AttentionState, Task } from "../types";
 
-type TaskFilter = "all" | "active" | "needs_input" | "review" | "done" | "failed" | "risk";
+type TaskFilter = "all" | "attention" | "active" | "review" | "done" | "failed" | "risk";
 
 type TaskListProps = {
   actionError: string;
@@ -71,7 +71,7 @@ export function TaskList({
         </div>
       </div>
       <div className="task-filters" aria-label="Task filters">
-        {(["all", "active", "needs_input", "review", "done", "failed", "risk"] as TaskFilter[]).map((nextFilter) => (
+        {(["all", "attention", "active", "review", "done", "failed", "risk"] as TaskFilter[]).map((nextFilter) => (
           <button
             aria-pressed={filter === nextFilter}
             data-active={filter === nextFilter}
@@ -118,6 +118,9 @@ export function TaskList({
                   <span className="task-updated">{formatTime(task.updatedAt)}</span>
                 </span>
                 <span className="task-badge-row">
+                  <span className="task-badge" data-kind={`attention-${attentionState(task)}`} title={attentionTitle(task)}>
+                    attention {attentionStateLabel(attentionState(task))}
+                  </span>
                   <span className="task-badge" data-kind={`process-${task.status}`}>
                     observed {task.status}
                   </span>
@@ -178,6 +181,9 @@ export function TaskList({
                     {task.resumeCommand ? <Info label="Resume command" value={task.resumeCommand} wide /> : null}
                     <Info label="Command" value={task.command} />
                     <Info label="CWD" value={task.cwd} />
+                    <SectionLabel label="User attention" />
+                    <Info label="Attention state" value={attentionStateLabel(attentionState(task))} />
+                    {task.attentionStateReason ? <Info label="Attention reason" value={task.attentionStateReason} wide /> : null}
                     <SectionLabel label="Observed process" />
                     <Info label="Process status" value={task.status} />
                     <Info label="Exit" value={task.exitCode === null ? "-" : String(task.exitCode)} />
@@ -312,20 +318,20 @@ function SectionLabel({ label }: { label: string }) {
 }
 
 function matchesFilter(task: Task, filter: TaskFilter) {
+  if (filter === "attention") {
+    return attentionState(task) !== "none";
+  }
   if (filter === "active") {
     return task.agentState === "starting" || task.agentState === "thinking" || task.agentState === "working";
   }
-  if (filter === "needs_input") {
-    return task.agentState === "waiting_input" || task.agentState === "waiting_approval";
-  }
   if (filter === "review") {
-    return task.agentState === "review_ready";
+    return attentionState(task) === "review_ready";
   }
   if (filter === "done") {
     return task.agentState === "done";
   }
   if (filter === "failed") {
-    return task.agentState === "failed" || task.agentState === "stopped";
+    return attentionState(task) === "failed";
   }
   if (filter === "risk") {
     return task.risk.level === "high" || task.risk.level === "medium";
@@ -334,8 +340,8 @@ function matchesFilter(task: Task, filter: TaskFilter) {
 }
 
 function filterLabel(filter: TaskFilter) {
+  if (filter === "attention") return "Attention";
   if (filter === "active") return "Active";
-  if (filter === "needs_input") return "Needs input";
   if (filter === "review") return "Review";
   if (filter === "done") return "Done";
   if (filter === "failed") return "Failed/stopped";
@@ -344,15 +350,18 @@ function filterLabel(filter: TaskFilter) {
 }
 
 function taskTone(task: Task, runningTaskIds: Set<string>) {
-  if (task.agentState === "failed" || task.agentState === "stopped") {
-    return task.agentState;
+  const nextAttentionState = attentionState(task);
+  if (nextAttentionState === "failed") {
+    return "failed";
   }
-  if (
-    task.agentState === "waiting_input" ||
-    task.agentState === "waiting_approval" ||
-    task.agentState === "review_ready"
-  ) {
-    return task.agentState;
+  if (nextAttentionState === "may_need_user" || nextAttentionState === "needs_input") {
+    return "waiting_input";
+  }
+  if (nextAttentionState === "needs_approval") {
+    return "waiting_approval";
+  }
+  if (nextAttentionState === "review_ready") {
+    return "review_ready";
   }
   if (
     runningTaskIds.has(task.id) ||
@@ -373,6 +382,18 @@ function taskTone(task: Task, runningTaskIds: Set<string>) {
 
 function agentStateLabel(agentState: AgentState) {
   return agentState.replace(/_/g, " ");
+}
+
+function attentionState(task: Task): AttentionState {
+  return task.attentionState || "none";
+}
+
+function attentionStateLabel(nextAttentionState: AttentionState) {
+  return nextAttentionState.replace(/_/g, " ");
+}
+
+function attentionTitle(task: Task) {
+  return task.attentionStateReason || "No user attention needed.";
 }
 
 function stateSourceLabel(source?: string) {
