@@ -784,9 +784,9 @@ function createPtyActivity() {
     lastOutputAt: 0,
     lastTextOutputAt: 0,
     lastAnsiFrameAt: 0,
-    outputFrameTimestamps: [],
-    ansiFrameTimestamps: [],
-    carriageReturnTimestamps: [],
+    recentOutputFrames: [],
+    recentAnsiFrames: [],
+    recentCarriageReturns: [],
   };
 }
 
@@ -796,7 +796,7 @@ function recordPtyActivity(activePty, data) {
   const activity = activePty.activity || createPtyActivity();
 
   activity.lastOutputAt = now;
-  activity.outputFrameTimestamps = appendRecentTimestamp(activity.outputFrameTimestamps, now);
+  activity.recentOutputFrames = appendRecentTimestamp(activity.recentOutputFrames, now);
 
   if (signals.hasVisibleTextAfterStrip) {
     activity.lastTextOutputAt = now;
@@ -804,11 +804,11 @@ function recordPtyActivity(activePty, data) {
 
   if (signals.containsAnsiControl || signals.containsCursorMovementOrLineClear) {
     activity.lastAnsiFrameAt = now;
-    activity.ansiFrameTimestamps = appendRecentTimestamp(activity.ansiFrameTimestamps, now);
+    activity.recentAnsiFrames = appendRecentTimestamp(activity.recentAnsiFrames, now);
   }
 
   if (signals.containsCarriageReturn) {
-    activity.carriageReturnTimestamps = appendRecentTimestamp(activity.carriageReturnTimestamps, now);
+    activity.recentCarriageReturns = appendRecentTimestamp(activity.recentCarriageReturns, now);
   }
 
   activePty.activity = activity;
@@ -835,7 +835,7 @@ function classifyPtyOutputChunk(data) {
 
 function inferAgentStateFromPtyActivity(activity) {
   const { signals } = activity;
-  const recentRepaintFrames = activity.ansiFrameTimestamps.length + activity.carriageReturnTimestamps.length;
+  const recentRepaintFrames = activity.recentAnsiFrames.length + activity.recentCarriageReturns.length;
   const isAnimationLikeOutput =
     recentRepaintFrames >= 3 ||
     (signals.containsCarriageReturn && !signals.hasVisibleTextAfterStrip) ||
