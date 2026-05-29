@@ -32,6 +32,9 @@ export function TaskInfoPane({ actionError, task, onInterrupt, onRerun }: TaskIn
         <dl className="info-grid">
           <Info label="Title" value={task.title} />
           <Info label="Agent state" value={agentStateLabel(task.agentState)} />
+          <Info label="State source" value={stateSourceLabel(task.agentStateSource)} />
+          <Info label="State confidence" value={stateConfidenceLabel(task.agentStateConfidence)} />
+          {task.agentStateReason ? <Info label="State reason" value={task.agentStateReason} /> : null}
           <Info label="Process" value={task.status} />
           <Info label="Risk" value={task.risk.level} />
           <Info label="Exit" value={task.exitCode === null ? "-" : String(task.exitCode)} />
@@ -63,4 +66,12 @@ function formatDate(value: string | null) {
 
 function agentStateLabel(agentState: AgentState) {
   return agentState.replace(/_/g, " ");
+}
+
+function stateSourceLabel(source?: string) {
+  return source ? source.replace(/_/g, " ") : "-";
+}
+
+function stateConfidenceLabel(confidence?: string) {
+  return confidence || "-";
 }

@@ -10,6 +10,8 @@ import { WebSocketServer } from "ws";
 import pty from "node-pty";
 import {
   AgentState,
+  AgentStateConfidence,
+  AgentStateSource,
   createTask,
   markTaskAgentState,
   markTaskExited,
@@ -317,7 +319,11 @@ wss.on("connection", (socket) => {
       const activePty = activePtys.get(message.taskId);
       if (activePty && typeof message.data === "string") {
         logInputDebug(message.taskId, message.data, message.source || "client");
-        updateAgentStateFromTaskDeckEvent(message.taskId, AgentState.WORKING);
+        updateAgentStateFromTaskDeckEvent(message.taskId, AgentState.WORKING, {
+          reason: "User input was sent to the PTY.",
+          source: AgentStateSource.TASKDECK_EVENT,
+          confidence: AgentStateConfidence.HIGH,
+        });
         writeOrQueuePtyInput(activePty, message.data, message.source || "client");
       } else if (inputDebugEnabled) {
         console.log(`[TaskDeck input] ignored task=${message.taskId || "-"} reason=no-active-pty-or-invalid-data`);
@@ -433,7 +439,11 @@ async function startTask({
 
     const activePty = createActivePty(task, terminalProcess);
     activePtys.set(task.id, activePty);
-    updateAgentStateFromTaskDeckEvent(task.id, AgentState.THINKING);
+    updateAgentStateFromTaskDeckEvent(task.id, AgentState.THINKING, {
+      reason: "PTY process started; waiting for agent output.",
+      source: AgentStateSource.TASKDECK_EVENT,
+      confidence: AgentStateConfidence.MEDIUM,
+    });
     send(socket, { type: "started", taskId: task.id });
 
     terminalProcess.onData((data) => {
@@ -723,19 +733,27 @@ function updateAgentSessionFromOutput(taskId, data) {
   broadcastTasks();
 }
 
-function updateAgentStateFromTaskDeckEvent(taskId, agentState) {
+function updateAgentStateFromTaskDeckEvent(taskId, agentState, metadata = {}) {
   const task = tasks.get(taskId);
   if (!task || task.status !== TaskStatus.RUNNING) {
     return false;
   }
 
-  if (task.agentState === agentState) {
+  if (task.agentState === agentState && hasSameAgentStateMetadata(task, metadata)) {
     return false;
   }
 
-  setTask(markTaskAgentState(task, agentState));
+  setTask(markTaskAgentState(task, agentState, metadata));
   broadcastTasks();
   return true;
+}
+
+function hasSameAgentStateMetadata(task, metadata) {
+  return (
+    (metadata.reason === undefined || task.agentStateReason === metadata.reason) &&
+    (metadata.source === undefined || task.agentStateSource === metadata.source) &&
+    (metadata.confidence === undefined || task.agentStateConfidence === metadata.confidence)
+  );
 }
 
 function updateAgentStateFromPtyOutput(taskId, data) {
@@ -747,9 +765,18 @@ function updateAgentStateFromPtyOutput(taskId, data) {
   // TUI text is an unreliable protocol. Use it only as a fallback for explicit
   // user-action prompts until TaskDeck owns approval/input boundaries directly.
   const recentOutput = logs.get(taskId)?.slice(-8000) || data;
-  const nextAgentState = inferAgentStateFromTuiFallback(recentOutput) || AgentState.WORKING;
+  const nextAgentState = inferAgentStateFromTuiFallback(recentOutput) || {
+    state: AgentState.WORKING,
+    reason: "PTY emitted output.",
+    source: AgentStateSource.TASKDECK_EVENT,
+    confidence: AgentStateConfidence.HIGH,
+  };
 
-  updateAgentStateFromTaskDeckEvent(taskId, nextAgentState);
+  updateAgentStateFromTaskDeckEvent(taskId, nextAgentState.state, {
+    reason: nextAgentState.reason,
+    source: nextAgentState.source,
+    confidence: nextAgentState.confidence,
+  });
 }
 
 function inferAgentStateFromTuiFallback(data) {
@@ -764,19 +791,39 @@ function inferAgentStateFromTuiFallback(data) {
   }
 
   if (/(you approved|approved .* to run|✔ .*approved)/.test(normalized)) {
-    return AgentState.WORKING;
+    return {
+      state: AgentState.WORKING,
+      reason: "TUI output indicates an approval was accepted.",
+      source: AgentStateSource.TUI_FALLBACK,
+      confidence: AgentStateConfidence.MEDIUM,
+    };
   }
 
   if (isApprovalPrompt(normalized, normalizedRaw)) {
-    return AgentState.WAITING_APPROVAL;
+    return {
+      state: AgentState.WAITING_APPROVAL,
+      reason: "TUI output appears to be requesting approval.",
+      source: AgentStateSource.TUI_FALLBACK,
+      confidence: AgentStateConfidence.MEDIUM,
+    };
   }
 
   if (isInteractivePrompt(lastLine) || /(waiting for input|press enter|enter your|select an? |choose an? |type .*:|\?\s*$)/.test(normalized)) {
-    return AgentState.WAITING_INPUT;
+    return {
+      state: AgentState.WAITING_INPUT,
+      reason: "TUI output appears to be requesting user input.",
+      source: AgentStateSource.TUI_FALLBACK,
+      confidence: AgentStateConfidence.LOW,
+    };
   }
 
   if (/(ready for review|review ready|please review|changes are ready|diff is ready|summary of changes|task complete|completed successfully)/.test(normalized)) {
-    return AgentState.REVIEW_READY;
+    return {
+      state: AgentState.REVIEW_READY,
+      reason: "TUI output indicates the work may be ready for review.",
+      source: AgentStateSource.TUI_FALLBACK,
+      confidence: AgentStateConfidence.MEDIUM,
+    };
   }
 
   return null;

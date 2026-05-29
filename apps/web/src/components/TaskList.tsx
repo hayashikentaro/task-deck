@@ -173,6 +173,9 @@ export function TaskList({
                     <Info label="Command" value={task.command} />
                     <Info label="CWD" value={task.cwd} />
                     <Info label="Process" value={task.status} />
+                    <Info label="State source" value={stateSourceLabel(task.agentStateSource)} />
+                    <Info label="State confidence" value={stateConfidenceLabel(task.agentStateConfidence)} />
+                    {task.agentStateReason ? <Info label="State reason" value={task.agentStateReason} wide /> : null}
                     <Info label="Exit" value={task.exitCode === null ? "-" : String(task.exitCode)} />
                     <Info label="Started" value={formatDate(task.startedAt)} />
                     <Info label="Updated" value={formatDate(task.updatedAt)} />
@@ -353,6 +356,14 @@ function taskTone(task: Task, runningTaskIds: Set<string>) {
 
 function agentStateLabel(agentState: AgentState) {
   return agentState.replace(/_/g, " ");
+}
+
+function stateSourceLabel(source?: string) {
+  return source ? source.replace(/_/g, " ") : "-";
+}
+
+function stateConfidenceLabel(confidence?: string) {
+  return confidence || "-";
 }
 
 function sessionModeLabel(sessionMode: string | undefined) {

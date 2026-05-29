@@ -18,6 +18,19 @@ export const AgentState = Object.freeze({
   STOPPED: "stopped",
 });
 
+export const AgentStateSource = Object.freeze({
+  TASKDECK_EVENT: "taskdeck_event",
+  TUI_FALLBACK: "tui_fallback",
+  PROCESS: "process",
+  MANUAL: "manual",
+});
+
+export const AgentStateConfidence = Object.freeze({
+  HIGH: "high",
+  MEDIUM: "medium",
+  LOW: "low",
+});
+
 const dangerousPatterns = [
   /\brm\s+-rf\b/,
   /\bsudo\b/,
@@ -61,6 +74,9 @@ export function createTask({
     agentSessionResumeCommand,
     status: TaskStatus.IDLE,
     agentState: AgentState.STARTING,
+    agentStateReason: "Task created.",
+    agentStateSource: AgentStateSource.TASKDECK_EVENT,
+    agentStateConfidence: AgentStateConfidence.HIGH,
     risk: assessCommandRisk(normalizedCommand),
     createdAt: now,
     startedAt: null,
@@ -79,6 +95,9 @@ export function markTaskRunning(task) {
     ...task,
     status: TaskStatus.RUNNING,
     agentState: task.agentState ?? AgentState.STARTING,
+    agentStateReason: task.agentStateReason || "Process started.",
+    agentStateSource: task.agentStateSource || AgentStateSource.PROCESS,
+    agentStateConfidence: task.agentStateConfidence || AgentStateConfidence.HIGH,
     startedAt: now,
     updatedAt: now,
     endedAt: null,
@@ -87,10 +106,13 @@ export function markTaskRunning(task) {
   };
 }
 
-export function markTaskAgentState(task, agentState) {
+export function markTaskAgentState(task, agentState, metadata = {}) {
   return {
     ...task,
     agentState,
+    agentStateReason: metadata.reason ?? task.agentStateReason ?? "",
+    agentStateSource: metadata.source ?? task.agentStateSource ?? "",
+    agentStateConfidence: metadata.confidence ?? task.agentStateConfidence ?? "",
     updatedAt: new Date().toISOString(),
   };
 }
@@ -104,6 +126,9 @@ export function markTaskExited(task, { exitCode, signal }) {
     ...task,
     status,
     agentState,
+    agentStateReason: signal ? `Process interrupted by signal ${signal}.` : `Process exited with code ${exitCode}.`,
+    agentStateSource: AgentStateSource.PROCESS,
+    agentStateConfidence: AgentStateConfidence.HIGH,
     updatedAt: now,
     endedAt: now,
     exitCode,
@@ -128,6 +153,9 @@ export function serializeTask(task) {
     agentSessionResumeCommand: task.agentSessionResumeCommand || "",
     status: task.status,
     agentState: task.agentState ?? inferAgentStateFromStatus(task),
+    agentStateReason: task.agentStateReason || "",
+    agentStateSource: task.agentStateSource || "",
+    agentStateConfidence: task.agentStateConfidence || "",
     risk: task.risk,
     createdAt: task.createdAt,
     startedAt: task.startedAt,

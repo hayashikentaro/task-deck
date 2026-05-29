@@ -10,6 +10,9 @@ export type AgentState =
   | "failed"
   | "stopped";
 
+export type AgentStateSource = "taskdeck_event" | "tui_fallback" | "process" | "manual" | "";
+export type AgentStateConfidence = "high" | "medium" | "low" | "";
+
 export type TaskRisk = {
   level: "unknown" | "low" | "medium" | "high";
   reasons: string[];
@@ -31,6 +34,9 @@ export type Task = {
   agentSessionResumeCommand?: string;
   status: TaskStatus;
   agentState: AgentState;
+  agentStateReason?: string;
+  agentStateSource?: AgentStateSource;
+  agentStateConfidence?: AgentStateConfidence;
   risk: TaskRisk;
   createdAt: string;
   startedAt: string | null;
