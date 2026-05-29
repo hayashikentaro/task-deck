@@ -46,6 +46,10 @@ const containerCheckCommands: DiagnosticCommand[] = [
     command: "test -d /workspace && ls -la /workspace || echo 'current PTY:/workspace unavailable'",
   },
   {
+    label: "find review/lens",
+    command: "find /workspace -maxdepth 3 -iname '*review*' -o -iname '*lens*'",
+  },
+  {
     label: "docker ps",
     command: "docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'",
   },
