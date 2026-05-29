@@ -72,7 +72,7 @@ The UI is organized around a supervision-first workspace: the left rail is an ex
 
 Process and task lifecycle states are the reliable base layer: process start, user input sent through TaskDeck, PTY output observed from the child process, and process exit. User input is a TaskDeck-owned event, and process exit is a process-owned event.
 
-TUI text is not a stable protocol. TUI fallback should only detect explicit user-action prompts such as approval requested, input requested, or review-ready hints. Decorative spinner or status text from Goose, Codex, or other agents should not be added as permanent detection rules.
+TUI text is not a stable protocol. TUI fallback should only detect explicit user-action prompts such as approval requested, input requested, or review-ready hints. Approval prompts win immediately, but input prompts are only stabilized when the PTY is not actively repainting. Decorative spinner or status text from Goose, Codex, or other agents should not be added as permanent detection rules.
 
 Generic PTY output is classified as process-sourced, medium-confidence `working`: the output is real, but the interpretation is still an inference. While a PTY is active, TaskDeck also tracks in-memory activity signals such as recent output frames, visible text, ANSI/cursor-control frames, and carriage returns so animated terminal repainting can be distinguished from plain text output. True `thinking` is not directly observable from TUI text.
 

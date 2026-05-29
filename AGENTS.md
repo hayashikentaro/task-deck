@@ -91,6 +91,7 @@ Keep state, risk, diffs, review, and agent supervision central. Terminal/PTY int
 - WebSocket task updates should keep task lists, selected task behavior, terminal output, and session metadata in sync.
 - Agent state should be driven primarily by TaskDeck events such as start, input, PTY output activity, and exit. Do not infer thinking from silence; quiet running PTYs should keep their last known supervisor state until a stronger signal arrives. Treat TUI text matching as a fallback for explicit user-action prompts only.
 - Do not add one-off Goose/Codex spinner phrases to infer thinking. Prefer TaskDeck-owned events, process observations, or explicit action prompts. If TUI fallback is used, include reason/source/confidence metadata.
+- Approval prompts may override immediately, but input-prompt fallback should be gated by PTY activity so animated/repainting TUIs are not classified as waiting for input too early.
 - PTY activity signals such as visible text, ANSI/cursor-control frames, and carriage returns should remain in-memory process observations, not persisted task metadata.
 - Prefer machine-readable or non-TUI agent modes when an agent supports them, but keep PTY compatibility until those modes are proven.
 - Approval should eventually become a TaskDeck-side permission boundary instead of a scraped TUI state.

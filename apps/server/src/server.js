@@ -770,7 +770,7 @@ function updateAgentStateFromPtyOutput(activePty, data) {
   // TUI text is an unreliable protocol. Use it only as a fallback for explicit
   // user-action prompts until TaskDeck owns approval/input boundaries directly.
   const recentOutput = logs.get(activePty.taskId)?.slice(-8000) || data;
-  const nextAgentState = inferAgentStateFromTuiFallback(recentOutput) || inferAgentStateFromPtyActivity(activity);
+  const nextAgentState = inferAgentStateFromTuiFallback(recentOutput, activity) || inferAgentStateFromPtyActivity(activity);
 
   updateAgentStateFromTaskDeckEvent(activePty.taskId, nextAgentState.state, {
     reason: nextAgentState.reason,
@@ -835,11 +835,7 @@ function classifyPtyOutputChunk(data) {
 
 function inferAgentStateFromPtyActivity(activity) {
   const { signals } = activity;
-  const recentRepaintFrames = activity.recentAnsiFrames.length + activity.recentCarriageReturns.length;
-  const isAnimationLikeOutput =
-    recentRepaintFrames >= 3 ||
-    (signals.containsCarriageReturn && !signals.hasVisibleTextAfterStrip) ||
-    (signals.containsCursorMovementOrLineClear && !signals.hasVisibleTextAfterStrip);
+  const isAnimationLikeOutput = isPtyActivelyRepainting(activity);
 
   if (isAnimationLikeOutput) {
     return {
@@ -867,7 +863,17 @@ function inferAgentStateFromPtyActivity(activity) {
   };
 }
 
-function inferAgentStateFromTuiFallback(data) {
+function isPtyActivelyRepainting(activity) {
+  const { signals } = activity;
+  const recentRepaintFrames = activity.recentAnsiFrames.length + activity.recentCarriageReturns.length;
+  return (
+    recentRepaintFrames >= 3 ||
+    (signals.containsCarriageReturn && !signals.hasVisibleTextAfterStrip) ||
+    (signals.containsCursorMovementOrLineClear && !signals.hasVisibleTextAfterStrip)
+  );
+}
+
+function inferAgentStateFromTuiFallback(data, activity) {
   const rawText = String(data);
   const text = stripTerminalControlSequences(String(data));
   const normalizedRaw = rawText.toLowerCase();
@@ -896,10 +902,13 @@ function inferAgentStateFromTuiFallback(data) {
     };
   }
 
-  if (isInteractivePrompt(lastLine) || /(waiting for input|press enter|enter your|select an? |choose an? |type .*:|\?\s*$)/.test(normalized)) {
+  if (
+    !isPtyActivelyRepainting(activity) &&
+    (isInteractivePrompt(lastLine) || /(waiting for input|press enter|enter your|select an? |choose an? |type .*:|\?\s*$)/.test(normalized))
+  ) {
     return {
       state: AgentState.WAITING_INPUT,
-      reason: "TUI output appears to be requesting user input.",
+      reason: "TUI output appears to be requesting user input and the PTY is not actively repainting.",
       source: AgentStateSource.TUI_FALLBACK,
       confidence: AgentStateConfidence.LOW,
     };
