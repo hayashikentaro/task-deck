@@ -71,6 +71,8 @@ const terminalEnter = "\r";
 const bracketedPasteStart = "\x1b[200~";
 const bracketedPasteEnd = "\x1b[201~";
 const codexInputHoldMs = 5000;
+const ptyActivityWindowMs = 3000;
+const maxPtyActivityFrames = 40;
 const activePtys = new Map();
 let persistTasksQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
@@ -452,7 +454,7 @@ async function startTask({
       }
       appendLog(task.id, data);
       updateAgentSessionFromOutput(task.id, data);
-      updateAgentStateFromPtyOutput(task.id, data);
+      updateAgentStateFromPtyOutput(activePty, data);
       broadcast({ type: "output", taskId: task.id, data });
     });
 
@@ -490,6 +492,7 @@ function createActivePty(task, process) {
     inputHoldUntil,
     inputQueue: [],
     flushTimer: null,
+    activity: createPtyActivity(),
   };
   scheduleQueuedPtyInputFlush(activePty);
   return activePty;
@@ -756,27 +759,112 @@ function hasSameAgentStateMetadata(task, metadata) {
   );
 }
 
-function updateAgentStateFromPtyOutput(taskId, data) {
-  const task = tasks.get(taskId);
+function updateAgentStateFromPtyOutput(activePty, data) {
+  const task = tasks.get(activePty.taskId);
   if (!task || task.status !== TaskStatus.RUNNING) {
     return;
   }
 
+  const activity = recordPtyActivity(activePty, data);
+
   // TUI text is an unreliable protocol. Use it only as a fallback for explicit
   // user-action prompts until TaskDeck owns approval/input boundaries directly.
-  const recentOutput = logs.get(taskId)?.slice(-8000) || data;
-  const nextAgentState = inferAgentStateFromTuiFallback(recentOutput) || {
-    state: AgentState.WORKING,
-    reason: "PTY emitted output; TaskDeck infers the agent may be active.",
-    source: AgentStateSource.PROCESS,
-    confidence: AgentStateConfidence.MEDIUM,
-  };
+  const recentOutput = logs.get(activePty.taskId)?.slice(-8000) || data;
+  const nextAgentState = inferAgentStateFromTuiFallback(recentOutput) || inferAgentStateFromPtyActivity(activity);
 
-  updateAgentStateFromTaskDeckEvent(taskId, nextAgentState.state, {
+  updateAgentStateFromTaskDeckEvent(activePty.taskId, nextAgentState.state, {
     reason: nextAgentState.reason,
     source: nextAgentState.source,
     confidence: nextAgentState.confidence,
   });
+}
+
+function createPtyActivity() {
+  return {
+    lastOutputAt: 0,
+    lastTextOutputAt: 0,
+    lastAnsiFrameAt: 0,
+    outputFrameTimestamps: [],
+    ansiFrameTimestamps: [],
+    carriageReturnTimestamps: [],
+  };
+}
+
+function recordPtyActivity(activePty, data) {
+  const now = Date.now();
+  const signals = classifyPtyOutputChunk(data);
+  const activity = activePty.activity || createPtyActivity();
+
+  activity.lastOutputAt = now;
+  activity.outputFrameTimestamps = appendRecentTimestamp(activity.outputFrameTimestamps, now);
+
+  if (signals.hasVisibleTextAfterStrip) {
+    activity.lastTextOutputAt = now;
+  }
+
+  if (signals.containsAnsiControl || signals.containsCursorMovementOrLineClear) {
+    activity.lastAnsiFrameAt = now;
+    activity.ansiFrameTimestamps = appendRecentTimestamp(activity.ansiFrameTimestamps, now);
+  }
+
+  if (signals.containsCarriageReturn) {
+    activity.carriageReturnTimestamps = appendRecentTimestamp(activity.carriageReturnTimestamps, now);
+  }
+
+  activePty.activity = activity;
+  return { ...activity, signals };
+}
+
+function appendRecentTimestamp(timestamps, timestamp) {
+  return [...timestamps, timestamp]
+    .filter((candidate) => timestamp - candidate <= ptyActivityWindowMs)
+    .slice(-maxPtyActivityFrames);
+}
+
+function classifyPtyOutputChunk(data) {
+  const value = String(data);
+  const visibleText = stripTerminalControlSequences(value).replace(/\s+/g, "");
+
+  return {
+    containsAnsiControl: /\x1b(?:\][^\x07]*(?:\x07|\x1b\\)|\[[0-?]*[ -/]*[@-~])/.test(value),
+    containsCarriageReturn: /\r/.test(value),
+    containsCursorMovementOrLineClear: /\x1b\[[0-?]*[ -/]*(?:[ABCDEFGHJKSTfhl])/.test(value),
+    hasVisibleTextAfterStrip: visibleText.length > 0,
+  };
+}
+
+function inferAgentStateFromPtyActivity(activity) {
+  const { signals } = activity;
+  const recentRepaintFrames = activity.ansiFrameTimestamps.length + activity.carriageReturnTimestamps.length;
+  const isAnimationLikeOutput =
+    recentRepaintFrames >= 3 ||
+    (signals.containsCarriageReturn && !signals.hasVisibleTextAfterStrip) ||
+    (signals.containsCursorMovementOrLineClear && !signals.hasVisibleTextAfterStrip);
+
+  if (isAnimationLikeOutput) {
+    return {
+      state: AgentState.WORKING,
+      reason: "PTY is actively repainting terminal frames; TaskDeck infers the agent may be active.",
+      source: AgentStateSource.PROCESS,
+      confidence: AgentStateConfidence.MEDIUM,
+    };
+  }
+
+  if (signals.hasVisibleTextAfterStrip) {
+    return {
+      state: AgentState.WORKING,
+      reason: "PTY emitted visible output; TaskDeck infers the agent may be active.",
+      source: AgentStateSource.PROCESS,
+      confidence: AgentStateConfidence.MEDIUM,
+    };
+  }
+
+  return {
+    state: AgentState.WORKING,
+    reason: "PTY emitted terminal output; TaskDeck infers the agent may be active.",
+    source: AgentStateSource.PROCESS,
+    confidence: AgentStateConfidence.LOW,
+  };
 }
 
 function inferAgentStateFromTuiFallback(data) {

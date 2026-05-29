@@ -74,7 +74,7 @@ Process and task lifecycle states are the reliable base layer: process start, us
 
 TUI text is not a stable protocol. TUI fallback should only detect explicit user-action prompts such as approval requested, input requested, or review-ready hints. Decorative spinner or status text from Goose, Codex, or other agents should not be added as permanent detection rules.
 
-Generic PTY output is classified as process-sourced, medium-confidence `working`: the output is real, but the interpretation is still an inference. True `thinking` is not directly observable from TUI text.
+Generic PTY output is classified as process-sourced, medium-confidence `working`: the output is real, but the interpretation is still an inference. While a PTY is active, TaskDeck also tracks in-memory activity signals such as recent output frames, visible text, ANSI/cursor-control frames, and carriage returns so animated terminal repainting can be distinguished from plain text output. True `thinking` is not directly observable from TUI text.
 
 Expanded task cards show command, cwd, process status, exit code, timing, initial instruction when available, and compact diff status. The former top summary strip and right-side task-state panel are intentionally folded into the card model.
 
