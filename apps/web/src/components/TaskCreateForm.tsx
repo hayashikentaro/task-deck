@@ -342,7 +342,7 @@ function buildLaunchCommand(
 
 function buildCodexResumeLastCommand(profile: AgentProfile) {
   if (profile.id === "ai-dev-container-codex") {
-    return "docker start taskdeck-ai-dev >/dev/null && docker exec -it -w /workspace taskdeck-ai-dev sh -lc 'codex resume --last'";
+    return "docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-codex-1 sh -lc 'codex resume --last'";
   }
   return "codex resume --last";
 }
@@ -392,8 +392,8 @@ function agentCommandEnvironment(agent: AgentProfile) {
 
 function commandEnvironmentFromCommand(command: string) {
   const normalizedCommand = command.toLowerCase();
-  if (/\bdocker\b[\s\S]*\btaskdeck-ai-dev\b/.test(normalizedCommand)) {
-    return "taskdeck-ai-dev";
+  if (/\bdocker\b[\s\S]*\bai-agent-sandbox-codex-1\b/.test(normalizedCommand)) {
+    return "ai-agent-sandbox-codex-1";
   }
   if (/\bdocker\b[\s\S]*\bchrome-goose-1\b/.test(normalizedCommand)) {
     return "chrome-goose-1";

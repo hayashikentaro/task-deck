@@ -56,9 +56,9 @@ const hostDockerContainerCheckCommands: DiagnosticCommand[] = [
     command: "docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'",
   },
   {
-    label: "taskdeck workspace",
+    label: "codex workspace",
     command:
-      "docker exec taskdeck-ai-dev test -d /workspace && echo 'taskdeck-ai-dev:/workspace ready' || echo 'taskdeck-ai-dev:/workspace missing'",
+      "docker exec ai-agent-sandbox-codex-1 test -d /workspace && echo 'ai-agent-sandbox-codex-1:/workspace ready' || echo 'ai-agent-sandbox-codex-1:/workspace missing'",
   },
   {
     label: "goose workspace",

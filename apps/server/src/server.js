@@ -734,8 +734,8 @@ function extractCodexResumeId(command) {
 
 function buildCodexSessionResumeCommand(task, sessionId) {
   const command = String(task.command || "");
-  if (task.agentProfileId === "ai-dev-container-codex" || /\bdocker\b[\s\S]*\btaskdeck-ai-dev\b/.test(command)) {
-    return `docker start taskdeck-ai-dev >/dev/null && docker exec -it -w /workspace taskdeck-ai-dev sh -lc 'codex resume ${sessionId}'`;
+  if (task.agentProfileId === "ai-dev-container-codex" || /\bdocker\b[\s\S]*\bai-agent-sandbox-codex-1\b/.test(command)) {
+    return `docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-codex-1 sh -lc 'codex resume ${sessionId}'`;
   }
   return `codex resume ${sessionId}`;
 }
@@ -859,8 +859,8 @@ function codexCommandEnvironment(task) {
   const command = String(task.command || task.agentSessionResumeCommand || task.resumeCommand || "").toLowerCase();
   const agentProfileId = String(task.agentProfileId || "").toLowerCase();
 
-  if (agentProfileId === "ai-dev-container-codex" || /\bdocker\b[\s\S]*\btaskdeck-ai-dev\b/.test(command)) {
-    return "taskdeck-ai-dev";
+  if (agentProfileId === "ai-dev-container-codex" || /\bdocker\b[\s\S]*\bai-agent-sandbox-codex-1\b/.test(command)) {
+    return "ai-agent-sandbox-codex-1";
   }
 
   if (/\bdocker\b[\s\S]*\bchrome-goose-1\b/.test(command)) {

@@ -3,17 +3,17 @@
     {
       "id": "ai-dev-container-codex",
       "label": "Codex CLI (AI dev container)",
-      "command": "docker start taskdeck-ai-dev >/dev/null && docker exec -it -w /workspace taskdeck-ai-dev codex",
+      "command": "docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-codex-1 codex",
       "description": "Run Codex CLI inside the chrome AI development container",
-      "diagnosticContainer": "taskdeck-ai-dev",
+      "diagnosticContainer": "ai-agent-sandbox-codex-1",
       "diagnosticWorkspace": "/workspace"
     },
     {
       "id": "ai-dev-container-goose",
       "label": "Goose (AI dev container)",
-      "command": "docker start taskdeck-ai-dev >/dev/null && docker exec -it -w /workspace taskdeck-ai-dev goose",
+      "command": "docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-codex-1 goose",
       "description": "Run Goose inside the chrome AI development container",
-      "diagnosticContainer": "taskdeck-ai-dev",
+      "diagnosticContainer": "ai-agent-sandbox-codex-1",
       "diagnosticWorkspace": "/workspace"
     },
     {
