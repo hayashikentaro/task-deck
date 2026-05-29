@@ -768,7 +768,7 @@ function updateAgentStateFromPtyOutput(taskId, data) {
   const nextAgentState = inferAgentStateFromTuiFallback(recentOutput) || {
     state: AgentState.WORKING,
     reason: "PTY emitted output; TaskDeck infers the agent may be active.",
-    source: AgentStateSource.TASKDECK_EVENT,
+    source: AgentStateSource.PROCESS,
     confidence: AgentStateConfidence.MEDIUM,
   };
 
