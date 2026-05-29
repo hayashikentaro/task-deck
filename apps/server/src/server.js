@@ -771,7 +771,7 @@ function inferAgentStateFromOutput(data) {
     return AgentState.REVIEW_READY;
   }
 
-  if (/(thinking|reasoning|analyzing|planning|inspecting|checking|reading|searching)/.test(normalized)) {
+  if (/(thinking|reasoning|analyzing|planning|inspecting|checking|reading|searching|optimizing outcomes)/.test(normalized)) {
     return AgentState.THINKING;
   }
 
