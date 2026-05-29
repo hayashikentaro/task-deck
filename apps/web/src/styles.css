@@ -407,7 +407,7 @@ dd {
 .workspace-grid {
   min-height: 0;
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr) 360px;
+  grid-template-columns: 340px minmax(0, 1fr) 340px;
   gap: 14px;
   overflow: hidden;
   padding: 14px 14px 8px;
@@ -1065,7 +1065,7 @@ dd {
 }
 
 .workspace-grid {
-  grid-template-columns: minmax(360px, 0.95fr) minmax(0, 1.8fr) minmax(280px, 0.75fr);
+  grid-template-columns: minmax(320px, 0.85fr) minmax(0, 1.8fr) minmax(320px, 0.85fr);
   padding: 14px;
 }
 
