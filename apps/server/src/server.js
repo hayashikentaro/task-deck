@@ -822,7 +822,7 @@ function savedCodexSessionFromTask(task) {
 
   const provider = String(task.agentSessionProvider).trim();
   const sessionId = String(task.agentSessionId).trim();
-  if (isLikelySyntheticSessionId(sessionId)) {
+  if (isLikelySyntheticSession(task, sessionId)) {
     return null;
   }
 
@@ -845,8 +845,9 @@ function savedCodexSessionFromTask(task) {
   };
 }
 
-function isLikelySyntheticSessionId(sessionId) {
-  return /(e2e|smoke|fake|test|fixture|example|mock)/i.test(sessionId);
+function isLikelySyntheticSession(task, sessionId) {
+  const source = String(task.agentSessionSource || "");
+  return /(e2e|smoke|fake|test|fixture|example|mock|manual-codex)/i.test(sessionId) || source === "manual session id";
 }
 
 function codexCommandEnvironment(task) {
