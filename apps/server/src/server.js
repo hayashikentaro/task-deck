@@ -822,19 +822,46 @@ function savedCodexSessionFromTask(task) {
 
   const provider = String(task.agentSessionProvider).trim();
   const sessionId = String(task.agentSessionId).trim();
+  if (isLikelySyntheticSessionId(sessionId)) {
+    return null;
+  }
+
+  const agentProfileId = String(task.agentProfileId || "codex");
+  const agentLabel = String(task.agentLabel || "Codex CLI");
+  const commandEnvironment = codexCommandEnvironment(task);
   return {
-    key: `${provider}:${sessionId}`,
+    key: `${provider}:${agentProfileId}:${commandEnvironment}:${sessionId}`,
     provider,
     sessionId,
     source: String(task.agentSessionSource || ""),
     resumeCommand,
     title: String(task.title || "Codex session"),
     cwd: String(task.cwd || repoRoot),
-    agentProfileId: String(task.agentProfileId || "codex"),
-    agentLabel: String(task.agentLabel || "Codex CLI"),
+    agentProfileId,
+    agentLabel,
+    commandEnvironment,
     detectedAt: String(task.agentSessionDetectedAt || ""),
     updatedAt: String(task.updatedAt || task.agentSessionDetectedAt || task.createdAt || ""),
   };
+}
+
+function isLikelySyntheticSessionId(sessionId) {
+  return /(e2e|smoke|fake|test|fixture|example|mock)/i.test(sessionId);
+}
+
+function codexCommandEnvironment(task) {
+  const command = String(task.command || task.agentSessionResumeCommand || task.resumeCommand || "").toLowerCase();
+  const agentProfileId = String(task.agentProfileId || "").toLowerCase();
+
+  if (agentProfileId === "ai-dev-container-codex" || /\bdocker\b[\s\S]*\btaskdeck-ai-dev\b/.test(command)) {
+    return "taskdeck-ai-dev";
+  }
+
+  if (/\bdocker\b[\s\S]*\bchrome-goose-1\b/.test(command)) {
+    return "chrome-goose-1";
+  }
+
+  return "local";
 }
 
 function timestampForSort(value) {

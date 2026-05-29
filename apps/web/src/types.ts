@@ -51,6 +51,7 @@ export type SavedCodexSession = {
   cwd: string;
   agentProfileId?: string;
   agentLabel?: string;
+  commandEnvironment?: string;
   detectedAt?: string;
   updatedAt: string;
 };

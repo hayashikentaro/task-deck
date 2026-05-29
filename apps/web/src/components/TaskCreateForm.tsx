@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { defaultAgentProfiles } from "../agentProfiles";
 import type { AgentProfile, CreateTaskInput, CwdValidation, SavedCodexSession, TaskDeckContext } from "../types";
 
@@ -76,9 +76,15 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
     agentProfiles.find((profile) => profile.id === selectedAgentId) ??
     findDefaultAgentProfile(agentProfiles) ??
     defaultAgentProfiles[0];
-  const selectedSavedSession =
-    savedCodexSessions.find((session) => session.key === selectedSavedSessionKey) ?? savedCodexSessions[0] ?? null;
   const selectedAgentIsCodex = isCodexProfile(selectedAgent);
+  const matchingSavedCodexSessions = useMemo(
+    () => (selectedAgentIsCodex ? savedCodexSessions.filter((session) => savedSessionMatchesAgent(session, selectedAgent)) : []),
+    [savedCodexSessions, selectedAgent, selectedAgentIsCodex],
+  );
+  const selectedSavedSession =
+    matchingSavedCodexSessions.find((session) => session.key === selectedSavedSessionKey) ??
+    matchingSavedCodexSessions[0] ??
+    null;
   const sessionSelectValue =
     sessionMode === "saved_codex" && selectedSavedSession ? savedSessionOptionValue(selectedSavedSession.key) : sessionMode;
   const cwdIsValid = cwdValidation?.ok ?? false;
@@ -110,7 +116,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
   }, [cwd, selectedAgentIsCodex, selectedSavedSession, sessionMode]);
 
   useEffect(() => {
-    if (sessionMode === "saved_codex" && (!selectedAgentIsCodex || savedCodexSessions.length === 0)) {
+    if (sessionMode === "saved_codex" && (!selectedAgentIsCodex || matchingSavedCodexSessions.length === 0)) {
       setSessionMode("new");
       setSelectedSavedSessionKey("");
       return;
@@ -118,11 +124,11 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
     if (
       sessionMode === "saved_codex" &&
       selectedSavedSessionKey &&
-      !savedCodexSessions.some((session) => session.key === selectedSavedSessionKey)
+      !matchingSavedCodexSessions.some((session) => session.key === selectedSavedSessionKey)
     ) {
-      setSelectedSavedSessionKey(savedCodexSessions[0]?.key ?? "");
+      setSelectedSavedSessionKey(matchingSavedCodexSessions[0]?.key ?? "");
     }
-  }, [savedCodexSessions, selectedAgentIsCodex, selectedSavedSessionKey, sessionMode]);
+  }, [matchingSavedCodexSessions, selectedAgentIsCodex, selectedSavedSessionKey, sessionMode]);
 
   const handleSessionChange = (value: string) => {
     if (value.startsWith("saved:")) {
@@ -181,9 +187,9 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
           <span>Session</span>
           <select value={sessionSelectValue} onChange={(event) => handleSessionChange(event.target.value)}>
             <option value="new">New session</option>
-            {selectedAgentIsCodex && savedCodexSessions.length > 0 ? (
+            {selectedAgentIsCodex && matchingSavedCodexSessions.length > 0 ? (
               <optgroup label="Recent saved sessions">
-                {savedCodexSessions.map((session) => (
+                {matchingSavedCodexSessions.map((session) => (
                   <option key={session.key} value={savedSessionOptionValue(session.key)}>
                     {savedSessionLabel(session)}
                   </option>
@@ -199,8 +205,8 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
               <option value="custom_resume">Custom resume command</option>
             )}
           </select>
-          {selectedAgentIsCodex && savedCodexSessions.length === 0 ? (
-            <small className="saved-session-empty">Saved sessions appear after TaskDeck detects a Codex session id.</small>
+          {selectedAgentIsCodex && matchingSavedCodexSessions.length === 0 ? (
+            <small className="saved-session-empty">Saved sessions for this Codex profile appear after TaskDeck detects a session id.</small>
           ) : null}
         </label>
         {sessionMode === "saved_codex" ? (
@@ -222,6 +228,10 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
                 <div>
                   <dt>Command</dt>
                   <dd>{selectedSavedSession.resumeCommand}</dd>
+                </div>
+                <div>
+                  <dt>Environment</dt>
+                  <dd>{sessionEnvironmentLabel(selectedSavedSession)}</dd>
                 </div>
                 <div>
                   <dt>Workspace</dt>
@@ -354,7 +364,41 @@ function savedSessionLabel(session: SavedCodexSession) {
   const projectName = basename(session.cwd) || "workspace";
   const taskTitle = session.title || "Codex session";
   const agentLabel = session.agentLabel || "Codex";
-  return `${projectName} · ${taskTitle} · ${agentLabel} · ${date} · ${compactSessionId(session.sessionId)}`;
+  return `${projectName} · ${taskTitle} · ${agentLabel} · ${sessionEnvironmentLabel(session)} · ${date} · ${compactSessionId(session.sessionId)}`;
+}
+
+function savedSessionMatchesAgent(session: SavedCodexSession, agent: AgentProfile) {
+  if (session.agentProfileId) {
+    return session.agentProfileId === agent.id;
+  }
+  return sessionEnvironment(session) === agentCommandEnvironment(agent);
+}
+
+function sessionEnvironmentLabel(session: SavedCodexSession) {
+  const environment = sessionEnvironment(session);
+  if (environment === "local") {
+    return "Local";
+  }
+  return environment;
+}
+
+function sessionEnvironment(session: SavedCodexSession) {
+  return session.commandEnvironment || commandEnvironmentFromCommand(session.resumeCommand);
+}
+
+function agentCommandEnvironment(agent: AgentProfile) {
+  return commandEnvironmentFromCommand(agent.command);
+}
+
+function commandEnvironmentFromCommand(command: string) {
+  const normalizedCommand = command.toLowerCase();
+  if (/\bdocker\b[\s\S]*\btaskdeck-ai-dev\b/.test(normalizedCommand)) {
+    return "taskdeck-ai-dev";
+  }
+  if (/\bdocker\b[\s\S]*\bchrome-goose-1\b/.test(normalizedCommand)) {
+    return "chrome-goose-1";
+  }
+  return "local";
 }
 
 function savedSessionOptionValue(sessionKey: string) {
