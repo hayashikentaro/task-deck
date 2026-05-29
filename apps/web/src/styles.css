@@ -234,7 +234,6 @@ dd {
 
 .session-mode-field,
 .saved-session-field,
-.codex-session-id-field,
 .custom-resume-field,
 .custom-command-field {
   min-width: 0;
@@ -273,11 +272,6 @@ dd {
 }
 
 .saved-session-empty {
-  color: var(--status-muted);
-  font-size: 12px;
-}
-
-.codex-session-id-field small {
   color: var(--status-muted);
   font-size: 12px;
 }
