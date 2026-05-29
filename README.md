@@ -74,7 +74,7 @@ Expanded task cards can also resume agent sessions. Tasks with a saved `resumeCo
 
 The terminal pane keeps xterm.js as the renderer while adding operator controls for follow mode, clearing the current view, reloading persisted logs, copying the bounded visible log buffer, and counting simple search matches.
 
-Terminal input is sent through the fixed bottom composer. It targets the selected running PTY and stays disabled for read-only logs, disconnected sessions, or no selected task. The composer supports multi-line instructions, insert quick actions, and PTY diagnostics quick actions. Enter sends, Shift+Enter inserts a newline, Cmd/Ctrl+Enter sends, and IME composition is preserved for Japanese input. PTY diagnostics can send `pwd`, `ls`, `git status`, `which codex`, `which goose`, `codex --version`, and `goose --version` to the selected running session.
+Terminal input is sent through the fixed bottom composer. It targets the selected running PTY and stays disabled for read-only logs, disconnected sessions, or no selected task. The composer supports multi-line instructions, insert quick actions, PTY diagnostics quick actions, and container checks quick actions. Enter sends, Shift+Enter inserts a newline, Cmd/Ctrl+Enter sends, and IME composition is preserved for Japanese input. PTY diagnostics can send `pwd`, `ls`, `git status`, `which codex`, `which goose`, `codex --version`, and `goose --version` to the selected running session. Container checks can send `docker ps` and `/workspace` checks for `taskdeck-ai-dev` and `chrome-goose-1`.
 
 TaskDeck also stores the 10 most recent task presets by `command` and `cwd` so common task shapes can be restarted quickly.
 

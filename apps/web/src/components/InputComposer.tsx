@@ -32,6 +32,22 @@ const diagnosticCommands: DiagnosticCommand[] = [
   { label: "codex --version", command: "codex --version" },
   { label: "goose --version", command: "goose --version" },
 ];
+const containerCheckCommands: DiagnosticCommand[] = [
+  {
+    label: "docker ps",
+    command: "docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'",
+  },
+  {
+    label: "taskdeck workspace",
+    command:
+      "docker exec taskdeck-ai-dev test -d /workspace && echo 'taskdeck-ai-dev:/workspace ready' || echo 'taskdeck-ai-dev:/workspace missing'",
+  },
+  {
+    label: "goose workspace",
+    command:
+      "docker exec chrome-goose-1 test -d /workspace && echo 'chrome-goose-1:/workspace ready' || echo 'chrome-goose-1:/workspace missing'",
+  },
+];
 
 export function InputComposer({ isConnected, task, send }: InputComposerProps) {
   const [value, setValue] = useState("");
@@ -121,6 +137,19 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
                 </button>
               ))}
               <button disabled={!canSend} type="button" onClick={sendAllDiagnostics}>
+                all
+              </button>
+            </div>
+          </div>
+          <div className="composer-action-group">
+            <span>Container checks</span>
+            <div className="composer-actions">
+              {containerCheckCommands.map((check) => (
+                <button disabled={!canSend} key={check.command} type="button" onClick={() => sendContainerCheck(check.command)}>
+                  {check.label}
+                </button>
+              ))}
+              <button disabled={!canSend} type="button" onClick={sendAllContainerChecks}>
                 all
               </button>
             </div>
