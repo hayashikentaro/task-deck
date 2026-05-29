@@ -779,20 +779,19 @@ function updateAgentStateFromPtyOutput(activePty, data) {
   }
 
   const activity = recordPtyActivity(activePty, data);
+  const adapter = getAgentStateInferenceAdapter(task);
 
-  // TUI text is an unreliable protocol. Use it only as a fallback for explicit
-  // user-action prompts until TaskDeck owns approval/input boundaries directly.
+  // TUI text is an unreliable protocol. Agent adapters keep that fallback
+  // isolated so Goose/Codex behavior can evolve without broad shared guesses.
   const recentOutput = logs.get(activePty.taskId)?.slice(-8000) || data;
-  const tuiSignal = inferAgentStateFromTuiFallback(recentOutput, activity);
-  const processSignal = inferAgentStateFromPtyActivity(activity);
-  const nextAgentState = tuiSignal?.state ? tuiSignal : processSignal;
-  const attentionState = tuiSignal?.attentionState ?? nextAgentState.attentionState ?? AttentionState.NONE;
-  const attentionReason = tuiSignal?.attentionReason ?? nextAgentState.attentionReason ?? "No user attention needed.";
+  const nextSignal = adapter.infer({ recentOutput, activity, task });
+  const attentionState = nextSignal.attentionState ?? AttentionState.NONE;
+  const attentionReason = nextSignal.attentionReason ?? "No user attention needed.";
 
-  updateAgentStateFromTaskDeckEvent(activePty.taskId, nextAgentState.state, {
-    reason: nextAgentState.reason,
-    source: nextAgentState.source,
-    confidence: nextAgentState.confidence,
+  updateAgentStateFromTaskDeckEvent(activePty.taskId, nextSignal.state, {
+    reason: nextSignal.reason,
+    source: nextSignal.source,
+    confidence: nextSignal.confidence,
     attentionState,
     attentionReason,
   });
@@ -888,7 +887,55 @@ function classifyPtyOutputChunk(data) {
   };
 }
 
-function inferAgentStateFromPtyActivity(activity) {
+function getAgentStateInferenceAdapter(task) {
+  if (isGooseLikeTask(task)) {
+    return gooseAgentStateAdapter;
+  }
+
+  if (isCodexLikeTask(task)) {
+    return codexAgentStateAdapter;
+  }
+
+  return genericAgentStateAdapter;
+}
+
+const gooseAgentStateAdapter = {
+  id: "goose",
+  infer({ recentOutput, activity }) {
+    return inferWithExplicitPromptFallback(recentOutput, activity);
+  },
+};
+
+const codexAgentStateAdapter = {
+  id: "codex",
+  infer({ recentOutput, activity }) {
+    return inferWithExplicitPromptFallback(recentOutput, activity);
+  },
+};
+
+const genericAgentStateAdapter = {
+  id: "generic",
+  infer({ recentOutput, activity }) {
+    return inferWithExplicitPromptFallback(recentOutput, activity);
+  },
+};
+
+function inferWithExplicitPromptFallback(recentOutput, activity) {
+  const tuiSignal = inferFromExplicitTuiPrompts(recentOutput, activity);
+  const processSignal = inferFromPtyActivity(activity);
+
+  if (tuiSignal?.state) {
+    return tuiSignal;
+  }
+
+  return {
+    ...processSignal,
+    attentionState: tuiSignal?.attentionState ?? processSignal.attentionState,
+    attentionReason: tuiSignal?.attentionReason ?? processSignal.attentionReason,
+  };
+}
+
+function inferFromPtyActivity(activity) {
   const { signals } = activity;
   const isAnimationLikeOutput = isPtyActivelyRepainting(activity);
 
@@ -934,7 +981,7 @@ function isPtyActivelyRepainting(activity) {
   );
 }
 
-function inferAgentStateFromTuiFallback(data, activity) {
+function inferFromExplicitTuiPrompts(data, activity) {
   const rawText = String(data);
   const text = stripTerminalControlSequences(String(data));
   const normalizedRaw = rawText.toLowerCase();
@@ -1085,6 +1132,11 @@ function normalizeDetectedSessionId(value) {
 function isCodexLikeTask(task) {
   const haystack = `${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command || ""}`.toLowerCase();
   return /\bcodex\b/.test(haystack);
+}
+
+function isGooseLikeTask(task) {
+  const haystack = `${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command || ""}`.toLowerCase();
+  return /\bgoose\b/.test(haystack);
 }
 
 function lastMeaningfulLine(value) {
