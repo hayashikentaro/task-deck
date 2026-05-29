@@ -440,7 +440,7 @@ async function startTask({
         return;
       }
       appendLog(task.id, data);
-      updateAgentSessionFromOutput(task.id, logs.get(task.id) || data);
+      updateAgentSessionFromOutput(task.id, data);
       updateAgentStateFromOutput(task.id, data);
       broadcast({ type: "output", taskId: task.id, data });
     });
