@@ -734,7 +734,8 @@ function updateAgentStateFromOutput(taskId, data) {
     return;
   }
 
-  const nextAgentState = inferAgentStateFromOutput(data);
+  const recentOutput = logs.get(taskId)?.slice(-8000) || data;
+  const nextAgentState = inferAgentStateFromOutput(recentOutput);
   if (!nextAgentState || task.agentState === nextAgentState) {
     return;
   }
@@ -744,7 +745,9 @@ function updateAgentStateFromOutput(taskId, data) {
 }
 
 function inferAgentStateFromOutput(data) {
+  const rawText = String(data);
   const text = stripTerminalControlSequences(String(data));
+  const normalizedRaw = rawText.toLowerCase();
   const normalized = text.toLowerCase();
   const lastLine = lastMeaningfulLine(text).toLowerCase();
 
@@ -752,7 +755,11 @@ function inferAgentStateFromOutput(data) {
     return null;
   }
 
-  if (/(approval required|requires approval|approve\?|allow\?|deny\?|permission requested|confirm\?|continue\?|yes\/no|\by\/n\b)/.test(normalized)) {
+  if (/(you approved|approved .* to run|✔ .*approved)/.test(normalized)) {
+    return AgentState.WORKING;
+  }
+
+  if (isApprovalPrompt(normalized, normalizedRaw)) {
     return AgentState.WAITING_APPROVAL;
   }
 
@@ -769,6 +776,18 @@ function inferAgentStateFromOutput(data) {
   }
 
   return AgentState.WORKING;
+}
+
+function isApprovalPrompt(normalized, normalizedRaw) {
+  return (
+    /action required/.test(normalizedRaw) ||
+    /(approval required|requires approval|permission requested)/.test(normalized) ||
+    /(approve\?|allow\?|deny\?|confirm\?|continue\?|yes\/no|\by\/n\b)/.test(normalized) ||
+    /would you like to run the following command\?/.test(normalized) ||
+    /do you want to allow\b/.test(normalized) ||
+    /yes,\s*proceed\s*\(y\)/.test(normalized) ||
+    /press enter to confirm or esc to cancel/.test(normalized)
+  );
 }
 
 function stripTerminalControlSequences(value) {
