@@ -178,7 +178,7 @@ export function App() {
   };
 
   const resumeTask = (task: Task) => {
-    const resumeCommand = task.resumeCommand?.trim();
+    const resumeCommand = task.resumeCommand?.trim() || task.agentSessionResumeCommand?.trim();
     if (!resumeCommand) {
       return;
     }

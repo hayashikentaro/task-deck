@@ -553,7 +553,15 @@ async function buildCwdSuggestions() {
 }
 
 function normalizeStoredTaskAgentState(task) {
-  return { ...task, agentState: task.agentState ?? inferAgentStateFromStatus(task) };
+  const normalizedTask = { ...task, agentState: task.agentState ?? inferAgentStateFromStatus(task) };
+  if (normalizedTask.agentSessionId && !normalizedTask.agentSessionResumeCommand && isCodexLikeTask(normalizedTask)) {
+    return {
+      ...normalizedTask,
+      agentSessionProvider: normalizedTask.agentSessionProvider || "codex",
+      agentSessionResumeCommand: buildCodexSessionResumeCommand(normalizedTask, normalizedTask.agentSessionId),
+    };
+  }
+  return normalizedTask;
 }
 
 function detectInitialAgentSession(command, agentProfileId, agentLabel) {
@@ -569,6 +577,9 @@ function detectInitialAgentSession(command, agentProfileId, agentLabel) {
   return {
     agentSessionId: explicitResumeId,
     agentSessionSource: "codex resume command",
+    agentSessionProvider: "codex",
+    agentSessionDetectedAt: new Date().toISOString(),
+    agentSessionResumeCommand: buildCodexSessionResumeCommand({ command, agentProfileId }, explicitResumeId),
   };
 }
 
@@ -587,6 +598,9 @@ function updateAgentSessionFromOutput(taskId, data) {
     ...task,
     agentSessionId: sessionId,
     agentSessionSource: "codex output",
+    agentSessionProvider: "codex",
+    agentSessionDetectedAt: new Date().toISOString(),
+    agentSessionResumeCommand: buildCodexSessionResumeCommand(task, sessionId),
     updatedAt: new Date().toISOString(),
   });
   broadcastTasks();
@@ -664,6 +678,14 @@ function extractCodexSessionIdFromOutput(data) {
 function extractCodexResumeId(command) {
   const match = String(command).match(/\bcodex\b[\s\S]*?\bresume\s+([^\s"';&|()]+)/i);
   return normalizeDetectedSessionId(match?.[1]);
+}
+
+function buildCodexSessionResumeCommand(task, sessionId) {
+  const command = String(task.command || "");
+  if (task.agentProfileId === "ai-dev-container-codex" || /\bdocker\b[\s\S]*\btaskdeck-ai-dev\b/.test(command)) {
+    return `docker start taskdeck-ai-dev >/dev/null && docker exec -it -w /workspace taskdeck-ai-dev sh -lc 'codex resume ${sessionId}'`;
+  }
+  return `codex resume ${sessionId}`;
 }
 
 function normalizeDetectedSessionId(value) {

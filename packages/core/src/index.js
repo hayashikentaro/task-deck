@@ -37,6 +37,9 @@ export function createTask({
   initialInstruction = "",
   agentSessionId = "",
   agentSessionSource = "",
+  agentSessionProvider = "",
+  agentSessionDetectedAt = "",
+  agentSessionResumeCommand = "",
 }) {
   const now = new Date().toISOString();
   const normalizedCommand = command.trim();
@@ -53,6 +56,9 @@ export function createTask({
     resumeCommand,
     agentSessionId,
     agentSessionSource,
+    agentSessionProvider,
+    agentSessionDetectedAt,
+    agentSessionResumeCommand,
     status: TaskStatus.IDLE,
     agentState: AgentState.STARTING,
     risk: assessCommandRisk(normalizedCommand),
@@ -117,6 +123,9 @@ export function serializeTask(task) {
     resumeCommand: task.resumeCommand || "",
     agentSessionId: task.agentSessionId || "",
     agentSessionSource: task.agentSessionSource || "",
+    agentSessionProvider: task.agentSessionProvider || "",
+    agentSessionDetectedAt: task.agentSessionDetectedAt || "",
+    agentSessionResumeCommand: task.agentSessionResumeCommand || "",
     status: task.status,
     agentState: task.agentState ?? inferAgentStateFromStatus(task),
     risk: task.risk,

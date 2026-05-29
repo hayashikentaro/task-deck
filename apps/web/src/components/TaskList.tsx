@@ -92,7 +92,7 @@ export function TaskList({
           const isSelected = task.id === selectedTaskId;
           const isExpanded = expandedTaskIds.has(task.id);
           const canRerun = task.status !== "running" && runningTaskIds.length === 0;
-          const resumeCommand = task.resumeCommand?.trim() || "";
+          const resumeCommand = task.resumeCommand?.trim() || task.agentSessionResumeCommand?.trim() || "";
           const resumeLastCommand = !resumeCommand && isCodexTask(task) ? "codex resume --last" : "";
           const isResumePending = resumeCommand
             ? pendingResumeKeys.includes(resumeTaskKey(task.id, resumeCommand))
@@ -162,6 +162,13 @@ export function TaskList({
                     <Info label="Session mode" value={sessionModeLabel(task.sessionMode)} />
                     {task.agentSessionId ? <Info label="Session id" value={task.agentSessionId} /> : null}
                     {task.agentSessionSource ? <Info label="Session source" value={task.agentSessionSource} /> : null}
+                    {task.agentSessionProvider ? <Info label="Session provider" value={task.agentSessionProvider} /> : null}
+                    {task.agentSessionDetectedAt ? (
+                      <Info label="Session detected" value={formatDate(task.agentSessionDetectedAt)} />
+                    ) : null}
+                    {task.agentSessionResumeCommand ? (
+                      <Info label="Session resume command" value={task.agentSessionResumeCommand} wide />
+                    ) : null}
                     {task.resumeCommand ? <Info label="Resume command" value={task.resumeCommand} wide /> : null}
                     <Info label="Command" value={task.command} />
                     <Info label="CWD" value={task.cwd} />

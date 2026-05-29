@@ -26,6 +26,9 @@ export type Task = {
   resumeCommand?: string;
   agentSessionId?: string;
   agentSessionSource?: string;
+  agentSessionProvider?: string;
+  agentSessionDetectedAt?: string;
+  agentSessionResumeCommand?: string;
   status: TaskStatus;
   agentState: AgentState;
   risk: TaskRisk;
