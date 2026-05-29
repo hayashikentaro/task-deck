@@ -835,7 +835,7 @@ function savedCodexSessionFromTask(task) {
     sessionId,
     source: String(task.agentSessionSource || ""),
     resumeCommand,
-    title: String(task.title || "Codex session"),
+    title: normalizeSavedSessionTitle(task.title),
     cwd: String(task.cwd || repoRoot),
     agentProfileId,
     agentLabel,
@@ -847,7 +847,12 @@ function savedCodexSessionFromTask(task) {
 
 function isLikelySyntheticSession(task, sessionId) {
   const source = String(task.agentSessionSource || "");
-  return /(e2e|smoke|fake|test|fixture|example|mock|manual-codex)/i.test(sessionId) || source === "manual session id";
+  return /(?:^|[^a-z0-9])(e2e|smoke|fake|test|fixture|example|mock|manual-codex)(?:$|[^a-z0-9])/i.test(sessionId) || source === "manual session id";
+}
+
+function normalizeSavedSessionTitle(title) {
+  const normalizedTitle = String(title || "").trim().replace(/^(?:Resume saved:\s*)+/i, "");
+  return normalizedTitle || "Codex session";
 }
 
 function codexCommandEnvironment(task) {
