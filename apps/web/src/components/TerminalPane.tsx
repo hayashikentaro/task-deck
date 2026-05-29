@@ -26,6 +26,7 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
   const [terminalMessage, setTerminalMessage] = useState("");
 
   const directInputDebug = directInputDebugRef.current;
+  const taskId = task?.id ?? null;
   const terminalMode = getTerminalMode(task, isConnected);
   const searchMatchCount = useMemo(() => countMatches(logBuffer, searchTerm), [logBuffer, searchTerm]);
 
@@ -144,10 +145,10 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
   }, []);
 
   useEffect(() => {
-    selectedTaskIdRef.current = task?.id ?? null;
+    selectedTaskIdRef.current = taskId;
     setSearchTerm("");
     return loadPersistedLog(task);
-  }, [loadPersistedLog, task]);
+  }, [loadPersistedLog, taskId]);
 
   useEffect(() => {
     if (!lastOutput || lastOutput.taskId !== task?.id) {
