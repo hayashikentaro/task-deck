@@ -29,6 +29,8 @@ const diagnosticCommands: DiagnosticCommand[] = [
   { label: "git status", command: "git status" },
   { label: "which codex", command: "which codex" },
   { label: "which goose", command: "which goose" },
+  { label: "codex --version", command: "codex --version" },
+  { label: "goose --version", command: "goose --version" },
 ];
 
 export function InputComposer({ isConnected, task, send }: InputComposerProps) {
@@ -152,16 +154,36 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
 }
 
 function shouldSendFromEnterKey(event: KeyboardEvent<HTMLTextAreaElement>, isComposing: boolean) {
-  if (event.key !== "Enter") {
+  if (!isEnterKey(event)) {
     return false;
   }
-  if (isComposing || event.nativeEvent.isComposing) {
+  if (isImeCompositionActive(event, isComposing)) {
     return false;
   }
-  if (event.shiftKey) {
+  if (shouldInsertNewline(event)) {
     return false;
   }
-  return event.metaKey || event.ctrlKey || !event.altKey;
+  return isPlainEnter(event) || isCommandEnter(event);
+}
+
+function isEnterKey(event: KeyboardEvent<HTMLTextAreaElement>) {
+  return event.key === "Enter";
+}
+
+function isImeCompositionActive(event: KeyboardEvent<HTMLTextAreaElement>, isComposing: boolean) {
+  return isComposing || event.nativeEvent.isComposing;
+}
+
+function shouldInsertNewline(event: KeyboardEvent<HTMLTextAreaElement>) {
+  return event.shiftKey;
+}
+
+function isPlainEnter(event: KeyboardEvent<HTMLTextAreaElement>) {
+  return !event.altKey && !event.ctrlKey && !event.metaKey;
+}
+
+function isCommandEnter(event: KeyboardEvent<HTMLTextAreaElement>) {
+  return event.metaKey || event.ctrlKey;
 }
 
 function getComposerMode(task: Task | null, isConnected: boolean) {

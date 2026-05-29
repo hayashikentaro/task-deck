@@ -55,9 +55,9 @@ const defaultAgentProfiles = [
   },
   {
     id: "goose-container-direct",
-    label: "Goose Container direct",
-    command: "docker exec -it -w /workspace chrome-goose-1 goose",
-    description: "Run Goose directly inside the existing chrome-goose-1 container",
+    label: "Goose Container",
+    command: "docker exec -it -w /workspace chrome-goose-1 bash -lc 'goose'",
+    description: "Run Goose directly in the existing chrome-goose-1 container workspace",
     diagnosticContainer: "chrome-goose-1",
     diagnosticWorkspace: "/workspace",
   },
