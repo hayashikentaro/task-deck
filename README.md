@@ -68,6 +68,14 @@ Tasks carry both a low-level process `status` and a supervisor-facing `agentStat
 
 The UI is organized around a supervision-first workspace: the left rail is an expandable task-card list, the center pane is the terminal and persisted log view, the right rail launches new agent sessions, and the composer stays attached to the terminal. Task list filters let the operator focus on all, active, needs-input, review-ready, done, failed/stopped, or risky tasks without changing the underlying task records.
 
+## Agent State Inference
+
+Process and task lifecycle states are the reliable base layer: process start, user input sent through TaskDeck, PTY output observed from the child process, and process exit. User input is a TaskDeck-owned event, and process exit is a process-owned event.
+
+TUI text is not a stable protocol. TUI fallback should only detect explicit user-action prompts such as approval requested, input requested, or review-ready hints. Decorative spinner or status text from Goose, Codex, or other agents should not be added as permanent detection rules.
+
+Generic PTY output is classified as process-sourced, medium-confidence `working`: the output is real, but the interpretation is still an inference. True `thinking` is not directly observable from TUI text.
+
 Expanded task cards show command, cwd, process status, exit code, timing, initial instruction when available, and compact diff status. The former top summary strip and right-side task-state panel are intentionally folded into the card model.
 
 
