@@ -1439,6 +1439,59 @@ dd {
   color: var(--status-failed);
 }
 
+.modal-backdrop {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 58%);
+  padding: 20px;
+}
+
+.confirmation-modal {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 18px 60px rgb(0 0 0 / 42%);
+  padding: 18px;
+}
+
+.confirmation-modal h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.confirmation-modal p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.confirmation-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.confirmation-actions button {
+  padding: 8px 11px;
+  font-size: 12px;
+}
+
+.confirmation-actions button[data-priority="secondary"] {
+  color: var(--status-muted);
+}
+
+.confirmation-actions button[data-priority="danger"] {
+  border-color: var(--status-failed);
+  color: var(--status-failed);
+}
+
 @media (max-width: 1120px) {
   .workspace-grid {
     grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.4fr);

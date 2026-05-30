@@ -124,10 +124,10 @@ app.get("/api/agent-sessions", async (_request, response) => {
 });
 
 app.delete("/api/tasks", async (_request, response) => {
-  const runningTaskIds = getRunningTaskIds();
-  const taskIdsToClear = Array.from(tasks.keys()).filter((taskId) => !activePtys.has(taskId));
+  const taskIdsToClear = Array.from(tasks.keys());
 
   for (const taskId of taskIdsToClear) {
+    stopActivePty(taskId);
     await clearTask(taskId);
   }
 
@@ -138,8 +138,8 @@ app.delete("/api/tasks", async (_request, response) => {
     ok: true,
     clearedTaskIds: taskIdsToClear,
     tasks: listTasks(),
-    runningTaskId: runningTaskIds[0] ?? null,
-    runningTaskIds,
+    runningTaskId: getPrimaryRunningTaskId(),
+    runningTaskIds: getRunningTaskIds(),
   });
 });
 
@@ -152,15 +152,7 @@ app.delete("/api/tasks/:taskId", async (request, response) => {
     return;
   }
 
-  const activePty = activePtys.get(taskId);
-  if (activePty) {
-    clearActivePty(taskId);
-    try {
-      activePty.process.kill();
-    } catch (error) {
-      console.error("TaskDeck could not stop PTY for " + taskId + ": " + error.message);
-    }
-  }
+  stopActivePty(taskId);
 
   await clearTask(taskId);
   await persistTasks();
@@ -1616,6 +1608,19 @@ async function clearTask(taskId) {
   tasks.delete(taskId);
   logs.delete(taskId);
   await deleteTaskLog(taskId);
+}
+
+function stopActivePty(taskId) {
+  const activePty = activePtys.get(taskId);
+  if (!activePty) {
+    return;
+  }
+  clearActivePty(taskId);
+  try {
+    activePty.process.kill();
+  } catch (error) {
+    console.error("TaskDeck could not stop PTY for " + taskId + ": " + error.message);
+  }
 }
 
 function send(socket, payload) {

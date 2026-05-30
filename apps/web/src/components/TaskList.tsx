@@ -10,7 +10,7 @@ type TaskListProps = {
   selectedTaskId: string | null;
   runningTaskIds: string[];
   onClearTask: (taskId: string) => void;
-  onClearTasks: () => void;
+  onClearTasks: () => void | Promise<void>;
   onInterruptTask: () => void;
   onRerunTask: () => void;
   onResumeLastTask: (task: Task) => void;
@@ -36,6 +36,7 @@ export function TaskList({
   const [filter, setFilter] = useState<TaskFilter>("all");
   const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set());
   const [confirmResumeLastTaskId, setConfirmResumeLastTaskId] = useState<string | null>(null);
+  const [isClearAllConfirmOpen, setIsClearAllConfirmOpen] = useState(false);
   const runningTaskIdSet = useMemo(() => new Set(runningTaskIds), [runningTaskIds]);
   const visibleTasks = useMemo(() => tasks.filter((task) => matchesFilter(task, filter)), [filter, tasks]);
 
@@ -60,17 +61,38 @@ export function TaskList({
     setConfirmResumeLastTaskId(null);
   };
 
+  const confirmClearAll = async () => {
+    await onClearTasks();
+    setIsClearAllConfirmOpen(false);
+  };
+
   return (
     <aside className="task-list" aria-label="Tasks">
       <div className="pane-heading">
         <h2>Tasks</h2>
         <div className="pane-actions">
           <span>{tasks.length}</span>
-          <button disabled={tasks.length === 0} onClick={onClearTasks} type="button">
+          <button disabled={tasks.length === 0} onClick={() => setIsClearAllConfirmOpen(true)} type="button">
             Clear
           </button>
         </div>
       </div>
+      {isClearAllConfirmOpen ? (
+        <div aria-labelledby="clear-all-title" aria-modal="true" className="modal-backdrop" role="dialog">
+          <div className="confirmation-modal">
+            <h3 id="clear-all-title">Clear all tasks?</h3>
+            <p>This will stop running PTYs and remove all task records and logs from TaskDeck.</p>
+            <div className="confirmation-actions">
+              <button data-priority="secondary" onClick={() => setIsClearAllConfirmOpen(false)} type="button">
+                Cancel
+              </button>
+              <button data-priority="danger" onClick={confirmClearAll} type="button">
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className="task-filters" aria-label="Task filters">
         {(["all", "needs_you", "not_now"] as TaskFilter[]).map((nextFilter) => (
           <button
