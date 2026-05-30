@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import type { DiagnosticContainer, TaskDeckDiagnostics } from "../types";
+import type { CreateTaskInput, DiagnosticContainer, TaskDeckDiagnostics } from "../types";
 
 type DiagnosticsPaneProps = {
   isConnected: boolean;
+  onCreateTask: (input: CreateTaskInput) => boolean;
 };
 
-export function DiagnosticsPane({ isConnected }: DiagnosticsPaneProps) {
+export function DiagnosticsPane({ isConnected, onCreateTask }: DiagnosticsPaneProps) {
   const [diagnostics, setDiagnostics] = useState<TaskDeckDiagnostics | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
@@ -34,6 +35,25 @@ export function DiagnosticsPane({ isConnected }: DiagnosticsPaneProps) {
         loadDiagnostics();
       })
       .catch((error) => setStatusMessage(error.message || `Unable to start ${containerName}.`));
+  };
+
+  const startCodexAuthTask = (containerName: string, action: "logout" | "device-login") => {
+    const isDeviceLogin = action === "device-login";
+    const command = buildCodexAuthCommand(containerName, isDeviceLogin ? "codex login --device-auth" : "codex logout");
+    const didStart = onCreateTask({
+      title: isDeviceLogin ? "Codex device login" : "Codex logout",
+      command,
+      cwd: "",
+      agentProfileId: "codex-auth",
+      agentLabel: "Codex auth",
+      sessionMode: "diagnostic",
+      initialInstruction: "",
+    });
+    setStatusMessage(
+      didStart
+        ? `Started ${isDeviceLogin ? "Codex device login" : "Codex logout"} in ${containerName}.`
+        : "TaskDeck is not connected.",
+    );
   };
 
   const copyText = (text: string, label: string) => {
@@ -102,6 +122,20 @@ export function DiagnosticsPane({ isConnected }: DiagnosticsPaneProps) {
               >
                 Start
               </button>
+              <button
+                disabled={!isConnected || !diagnostics.docker.ok || !container.present}
+                type="button"
+                onClick={() => startCodexAuthTask(container.name, "logout")}
+              >
+                Codex logout
+              </button>
+              <button
+                disabled={!isConnected || !diagnostics.docker.ok || !container.present}
+                type="button"
+                onClick={() => startCodexAuthTask(container.name, "device-login")}
+              >
+                Codex device login
+              </button>
             </div>
           </div>
         ))}
@@ -112,4 +146,13 @@ export function DiagnosticsPane({ isConnected }: DiagnosticsPaneProps) {
       </div>
     </section>
   );
+}
+
+function buildCodexAuthCommand(containerName: string, codexCommand: string) {
+  const quotedContainerName = shellQuote(containerName);
+  return `docker start ${quotedContainerName} >/dev/null && docker exec -it -w /workspace ${quotedContainerName} sh -lc ${shellQuote(codexCommand)}`;
+}
+
+function shellQuote(value: string) {
+  return `'${value.replace(/'/g, "'\\''")}'`;
 }

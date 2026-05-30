@@ -35,11 +35,6 @@ const diagnosticCommands: DiagnosticCommand[] = [
   { label: "codex --version", command: "codex --version" },
   { label: "goose --version", command: "goose --version" },
 ];
-const codexAuthCommands: DiagnosticCommand[] = [
-  { label: "codex help", command: "codex --help" },
-  { label: "logout", command: "codex logout" },
-  { label: "device login", command: "codex login --device-auth" },
-];
 const inPtyContainerCheckCommands: DiagnosticCommand[] = [
   {
     label: "pwd",
@@ -110,10 +105,6 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
 
   const sendAllDiagnostics = () => {
     sendShellCommands(diagnosticCommands.map((diagnostic) => diagnostic.command).join("\n"));
-  };
-
-  const sendCodexAuthCommand = (command: string) => {
-    sendShellCommands(command);
   };
 
   const sendContainerCheck = (command: string) => {
@@ -190,21 +181,6 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
                 <button disabled={!canSend} type="button" onClick={sendAllDiagnostics}>
                   all
                 </button>
-              </div>
-            </div>
-            <div className="composer-action-group">
-              <span>Codex auth</span>
-              <div className="composer-actions">
-                {codexAuthCommands.map((command) => (
-                  <button
-                    disabled={!canSend}
-                    key={command.command}
-                    type="button"
-                    onClick={() => sendCodexAuthCommand(command.command)}
-                  >
-                    {command.label}
-                  </button>
-                ))}
               </div>
             </div>
             <div className="composer-action-group">

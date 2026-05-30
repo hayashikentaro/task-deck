@@ -302,7 +302,7 @@ export function App() {
             savedCodexSessions={savedCodexSessions}
             onCreateTask={createTask}
           />
-          <DiagnosticsPane isConnected={connectionState === "connected"} />
+          <DiagnosticsPane isConnected={connectionState === "connected"} onCreateTask={createTask} />
         </aside>
       </section>
     </main>
