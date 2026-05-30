@@ -585,10 +585,7 @@ dd {
 
 .task-row-heading {
   min-width: 0;
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  align-items: baseline;
+  display: block;
 }
 
 .task-title {
@@ -613,6 +610,8 @@ dd {
 
 .task-updated {
   flex: 0 0 auto;
+  margin-left: auto;
+  text-align: right;
 }
 
 .task-command {
@@ -1291,6 +1290,11 @@ dd {
   display: flex;
   gap: 5px;
   align-items: baseline;
+}
+
+.task-meta-spacer {
+  flex: 1 1 auto;
+  min-width: 6px;
 }
 
 .task-meta-separator {

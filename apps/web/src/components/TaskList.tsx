@@ -152,7 +152,6 @@ export function TaskList({
               <button className="task-select-button" onClick={() => selectTask(task.id)} type="button">
                 <span className="task-row-heading">
                   <span className="task-title">{displayTaskTitle(task.title)}</span>
-                  <span className="task-updated">{formatTime(task.updatedAt)}</span>
                 </span>
                 <span className="task-badge-row">
                   <span className="task-badge" data-kind={`supervision-${bucket}`} title={supervisionTitle(task)}>
@@ -167,6 +166,8 @@ export function TaskList({
                   <span className="task-command" title={task.command}>
                     {task.agentLabel || agentOrCommandLabel(task.command)}
                   </span>
+                  <span className="task-meta-spacer" />
+                  <span className="task-updated">{formatTime(task.updatedAt)}</span>
                 </span>
               </button>
               <div className="task-card-actions">
