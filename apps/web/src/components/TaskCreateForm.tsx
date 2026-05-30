@@ -189,6 +189,9 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
             ) : null}
           </div>
         ) : null}
+        <button disabled={!canStart} type="submit">
+          Start
+        </button>
         <label className="instruction-field">
           <span>Initial instruction</span>
           <textarea
@@ -198,9 +201,6 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
             onChange={(event) => setInitialInstruction(event.target.value)}
           />
         </label>
-        <button disabled={!canStart} type="submit">
-          Start
-        </button>
       </form>
     </section>
   );
