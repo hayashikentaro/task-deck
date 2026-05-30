@@ -487,9 +487,9 @@ dd {
   width: 100%;
   overflow: hidden;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 6px;
-  align-items: stretch;
+  align-items: start;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--surface-raised);
@@ -504,7 +504,7 @@ dd {
 }
 
 .task-list-item[data-selected="true"] .task-select-button {
-  padding-left: 14px;
+  padding-left: 10px;
 }
 
 .task-list-item[data-tone="active"],
@@ -1223,10 +1223,6 @@ dd {
   resize: vertical;
 }
 
-.task-list-item {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
 .task-list-item[data-expanded="true"] {
   align-items: start;
 }
@@ -1244,8 +1240,11 @@ dd {
 
 .task-expand-button {
   width: 34px;
-  min-height: 32px;
+  height: 34px;
+  min-height: 34px;
+  margin: 10px 0 0 10px;
   padding: 0;
+  border-radius: 999px;
   font-size: 16px;
   line-height: 1;
 }

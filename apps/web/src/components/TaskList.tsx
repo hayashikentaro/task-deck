@@ -113,6 +113,16 @@ export function TaskList({
               data-tone={taskTone(task, runningTaskIdSet)}
               key={task.id}
             >
+              <button
+                aria-expanded={isExpanded}
+                aria-label={isExpanded ? "Collapse task details" : "Expand task details"}
+                className="task-expand-button"
+                onClick={() => toggleExpanded(task.id)}
+                title={isExpanded ? "Collapse task details" : "Expand task details"}
+                type="button"
+              >
+                {isExpanded ? "⌃" : "⌄"}
+              </button>
               <button className="task-select-button" onClick={() => selectTask(task.id)} type="button">
                 <span className="task-row-heading">
                   <span className="task-title">{displayTaskTitle(task.title)}</span>
@@ -144,16 +154,6 @@ export function TaskList({
                 </span>
               </button>
               <div className="task-card-actions">
-                <button
-                  aria-expanded={isExpanded}
-                  aria-label={isExpanded ? "Collapse task details" : "Expand task details"}
-                  className="task-expand-button"
-                  onClick={() => toggleExpanded(task.id)}
-                  title={isExpanded ? "Collapse task details" : "Expand task details"}
-                  type="button"
-                >
-                  {isExpanded ? "⌃" : "⌄"}
-                </button>
                 <button onClick={() => onClearTask(task.id)} type="button">
                   Clear
                 </button>
