@@ -154,8 +154,8 @@ export function TaskList({
                 </span>
               </button>
               <div className="task-card-actions">
-                <button onClick={() => onClearTask(task.id)} type="button">
-                  Clear
+                <button aria-label="Clear task" className="task-clear-button" onClick={() => onClearTask(task.id)} title="Clear task" type="button">
+                  ×
                 </button>
               </div>
               {isExpanded ? (
