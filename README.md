@@ -50,7 +50,7 @@ DELETE /api/presets
 
 `POST /api/validate-cwd` accepts `{ "cwd": "apps/web" }` and returns whether the cwd resolves to an existing directory, its absolute path, and git-repository status. The task form uses it to validate cwd before starting a task.
 
-`GET /api/agent-sessions` returns saved Codex sessions derived from stored task metadata. Sessions require a Codex provider, session id, and precise resume command, exclude obvious synthetic ids such as e2e/smoke/fake/test ids, and deduplicate by provider, agent profile, command environment, and session id.
+`GET /api/agent-sessions` returns saved Codex sessions derived from stored task metadata and Codex's container-side session JSONL storage under `/home/dev/.codex/sessions`. Sessions require a Codex provider, session id, and precise resume command, exclude obvious synthetic ids such as e2e/smoke/fake/test ids, and deduplicate by provider, agent profile, command environment, and session id. Container-side `/workspace` cwd values are mapped back to the host bind source when Docker mount information is available.
 
 The server persists tasks and logs under `.taskdeck/`, which is intentionally ignored by Git:
 

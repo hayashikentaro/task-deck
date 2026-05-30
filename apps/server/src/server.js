@@ -117,9 +117,9 @@ app.get("/api/tasks", (_request, response) => {
   });
 });
 
-app.get("/api/agent-sessions", (_request, response) => {
+app.get("/api/agent-sessions", async (_request, response) => {
   response.json({
-    sessions: listSavedCodexSessions(),
+    sessions: await listSavedCodexSessions(),
   });
 });
 
@@ -1312,7 +1312,7 @@ function listTasks() {
   return Array.from(tasks.values()).map(serializeTask).reverse();
 }
 
-function listSavedCodexSessions() {
+async function listSavedCodexSessions() {
   const sessionsByKey = new Map();
 
   for (const task of tasks.values()) {
@@ -1326,7 +1326,168 @@ function listSavedCodexSessions() {
     }
   }
 
+  for (const session of await listCodexStorageSessions()) {
+    const current = sessionsByKey.get(session.key);
+    if (!current || timestampForSort(session.updatedAt) > timestampForSort(current.updatedAt)) {
+      sessionsByKey.set(session.key, session);
+    }
+  }
+
   return Array.from(sessionsByKey.values()).sort((left, right) => timestampForSort(right.updatedAt) - timestampForSort(left.updatedAt));
+}
+
+async function listCodexStorageSessions() {
+  const profiles = (await loadAgentProfiles()).filter((profile) =>
+    isCodexLikeTask({ agentProfileId: profile.id, agentLabel: profile.label, command: profile.command }) && profile.diagnosticContainer,
+  );
+  const sessions = [];
+
+  for (const profile of profiles) {
+    sessions.push(...(await listCodexStorageSessionsForProfile(profile)));
+  }
+
+  return sessions;
+}
+
+async function listCodexStorageSessionsForProfile(profile) {
+  const containerName = String(profile.diagnosticContainer || "").trim();
+  if (!isSafeContainerName(containerName)) {
+    return [];
+  }
+
+  try {
+    const [storageOutput, mounts] = await Promise.all([
+      readCodexStorageSessionMetadata(containerName),
+      inspectContainerMounts(containerName),
+    ]);
+    const sessions = [];
+    for (const line of storageOutput.split("\n")) {
+      const session = codexStorageSessionFromLine(line, profile, mounts);
+      if (session) {
+        sessions.push(session);
+      }
+    }
+    return sessions;
+  } catch (_error) {
+    return [];
+  }
+}
+
+async function readCodexStorageSessionMetadata(containerName) {
+  const script =
+    "find /home/dev/.codex/sessions -maxdepth 6 -type f -name '*.jsonl' 2>/dev/null | sort | " +
+    "while IFS= read -r file; do " +
+    "first_line=$(sed -n '1p' \"$file\"); " +
+    "user_line=$(grep -m 1 '\"type\":\"user_message\"' \"$file\" || true); " +
+    "printf '%s\\t%s\\t%s\\n' \"$file\" \"$first_line\" \"$user_line\"; " +
+    "done";
+  const { stdout } = await execFileAsync("docker", ["exec", containerName, "sh", "-lc", script], {
+    maxBuffer: 5 * 1024 * 1024,
+    timeout: 5000,
+  });
+  return stdout;
+}
+
+async function inspectContainerMounts(containerName) {
+  const { stdout } = await execFileAsync("docker", ["inspect", containerName, "--format", "{{json .Mounts}}"], {
+    maxBuffer: 1024 * 1024,
+    timeout: 3000,
+  });
+  return JSON.parse(stdout);
+}
+
+function codexStorageSessionFromLine(line, profile, mounts) {
+  const separatorIndex = line.indexOf("\t");
+  if (separatorIndex === -1) {
+    return null;
+  }
+
+  const filePath = line.slice(0, separatorIndex);
+  const remainder = line.slice(separatorIndex + 1);
+  const secondSeparatorIndex = remainder.indexOf("\t");
+  const jsonText = secondSeparatorIndex === -1 ? remainder : remainder.slice(0, secondSeparatorIndex);
+  const userJsonText = secondSeparatorIndex === -1 ? "" : remainder.slice(secondSeparatorIndex + 1);
+  let event;
+  try {
+    event = JSON.parse(jsonText);
+  } catch (_error) {
+    return null;
+  }
+
+  if (event?.type !== "session_meta") {
+    return null;
+  }
+
+  const sessionId = normalizeDetectedSessionId(event?.payload?.id);
+  if (!sessionId || isLikelySyntheticSession({ agentSessionSource: "codex storage" }, sessionId)) {
+    return null;
+  }
+
+  const provider = "codex";
+  const agentProfileId = String(profile.id || "codex");
+  const agentLabel = String(profile.label || "Codex CLI");
+  const commandEnvironment = codexCommandEnvironment({ command: profile.command, agentProfileId });
+  const resumeCommand = buildCodexSessionResumeCommand({ command: profile.command, agentProfileId }, sessionId);
+  const detectedAt = String(event?.payload?.timestamp || timestampFromCodexSessionPath(filePath) || "");
+  const containerCwd = String(event?.payload?.cwd || "/workspace");
+  const cwd = mapContainerPathToHostPath(containerCwd, mounts) || repoRoot;
+  const title = titleFromCodexStorageUserEvent(userJsonText) || "Codex storage session";
+
+  return {
+    key: `${provider}:${agentProfileId}:${commandEnvironment}:${sessionId}`,
+    provider,
+    sessionId,
+    source: "codex storage",
+    resumeCommand,
+    title,
+    cwd,
+    agentProfileId,
+    agentLabel,
+    commandEnvironment,
+    detectedAt,
+    updatedAt: detectedAt,
+  };
+}
+
+function titleFromCodexStorageUserEvent(userJsonText) {
+  if (!userJsonText) {
+    return "";
+  }
+  try {
+    const event = JSON.parse(userJsonText);
+    const message = String(event?.payload?.message || "").trim().replace(/^›\s*/, "");
+    return message.length > 72 ? `${message.slice(0, 69)}...` : message;
+  } catch (_error) {
+    return "";
+  }
+}
+
+function timestampFromCodexSessionPath(filePath) {
+  const match = String(filePath).match(/rollout-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})/);
+  if (!match) {
+    return "";
+  }
+  return `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}.000Z`;
+}
+
+function mapContainerPathToHostPath(containerPath, mounts) {
+  const normalizedContainerPath = path.posix.normalize(String(containerPath || ""));
+  const matchingMounts = Array.isArray(mounts)
+    ? mounts
+        .filter((mount) => mount?.Type === "bind" && mount?.Source && mount?.Destination)
+        .sort((left, right) => String(right.Destination).length - String(left.Destination).length)
+    : [];
+
+  for (const mount of matchingMounts) {
+    const destination = path.posix.normalize(String(mount.Destination));
+    if (normalizedContainerPath !== destination && !normalizedContainerPath.startsWith(`${destination}/`)) {
+      continue;
+    }
+    const relativePath = normalizedContainerPath.slice(destination.length).replace(/^\/+/, "");
+    return path.join(String(mount.Source), relativePath);
+  }
+
+  return "";
 }
 
 function savedCodexSessionFromTask(task) {
