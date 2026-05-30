@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { defaultAgentProfiles } from "../agentProfiles";
-import type { AgentProfile, CreateTaskInput, CwdValidation, SavedCodexSession, TaskDeckContext } from "../types";
+import type { AgentProfile, CreateTaskInput, SavedCodexSession, TaskDeckContext } from "../types";
 
 type TaskCreateFormProps = {
   context: TaskDeckContext | null;
@@ -18,56 +18,12 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
   const [sessionMode, setSessionMode] = useState<SessionMode>("new");
   const [initialInstruction, setInitialInstruction] = useState("");
   const [cwd, setCwd] = useState("");
-  const [cwdValidation, setCwdValidation] = useState<CwdValidation | null>(null);
-  const [isValidatingCwd, setIsValidatingCwd] = useState(false);
 
   useEffect(() => {
     if (!cwd && context?.defaultCwd) {
       setCwd(context.defaultCwd);
     }
   }, [context?.defaultCwd, cwd]);
-
-  useEffect(() => {
-    const abortController = new AbortController();
-    const validationTimer = window.setTimeout(() => {
-      setIsValidatingCwd(true);
-      fetch("/api/validate-cwd", {
-        body: JSON.stringify({ cwd }),
-        headers: { "Content-Type": "application/json" },
-        method: "POST",
-        signal: abortController.signal,
-      })
-        .then((response) => response.json())
-        .then((validation: CwdValidation) => {
-          if (!abortController.signal.aborted) {
-            setCwdValidation(validation);
-          }
-        })
-        .catch(() => {
-          if (!abortController.signal.aborted) {
-            setCwdValidation({
-              ok: false,
-              inputCwd: cwd,
-              resolvedCwd: cwd,
-              exists: false,
-              isDirectory: false,
-              isGitRepo: false,
-              message: "Unable to validate cwd.",
-            });
-          }
-        })
-        .finally(() => {
-          if (!abortController.signal.aborted) {
-            setIsValidatingCwd(false);
-          }
-        });
-    }, 200);
-
-    return () => {
-      window.clearTimeout(validationTimer);
-      abortController.abort();
-    };
-  }, [cwd]);
 
   const agentProfiles = context?.agentProfiles.length ? context.agentProfiles : defaultAgentProfiles;
   const selectedAgent =
@@ -85,14 +41,13 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
     null;
   const sessionSelectValue =
     sessionMode === "saved_codex" && selectedSavedSession ? savedSessionOptionValue(selectedSavedSession.key) : sessionMode;
-  const cwdIsValid = cwdValidation?.ok ?? false;
   const launchCommand = buildLaunchCommand(
     selectedAgent,
     sessionMode,
     selectedSavedSession,
   );
   const command = launchCommand.command;
-  const canStart = !disabled && cwdIsValid && !isValidatingCwd && Boolean(command);
+  const canStart = !disabled && Boolean(cwd) && Boolean(command);
 
   useEffect(() => {
     if (!agentProfiles.some((profile) => profile.id === selectedAgentId)) {
@@ -234,18 +189,6 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
             ) : null}
           </div>
         ) : null}
-        <label className="workspace-field">
-          <span>Workspace</span>
-          <input
-            aria-invalid={!cwdIsValid}
-            onChange={(event) => setCwd(event.target.value)}
-            placeholder="Workspace path"
-            value={cwd}
-          />
-          <small data-state={cwdValidation?.ok ? "valid" : "invalid"}>
-            {isValidatingCwd ? "Checking workspace..." : cwdValidation?.message || "Workspace is required."}
-          </small>
-        </label>
         <label className="instruction-field">
           <span>Initial instruction</span>
           <textarea

@@ -1209,22 +1209,8 @@ dd {
 }
 
 .task-create-form label,
-.workspace-field,
 .agent-picker {
   min-width: 0;
-}
-
-.workspace-field small {
-  color: var(--status-muted);
-  font-size: 12px;
-}
-
-.workspace-field small[data-state="valid"] {
-  color: var(--status-done);
-}
-
-.workspace-field small[data-state="invalid"] {
-  color: var(--status-failed);
 }
 
 .task-create-form button[type="submit"] {
