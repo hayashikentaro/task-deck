@@ -1,42 +1,42 @@
 :root {
   color-scheme: dark;
-  --bg: #15140f;
-  --panel: #1d1b15;
-  --panel-soft: #29231a;
-  --line: #4a4031;
-  --line-strong: #806846;
-  --text: #f1ead9;
+  --bg: #11110e;
+  --panel: #161613;
+  --panel-soft: #211d17;
+  --line: #302e29;
+  --line-strong: #5f5138;
+  --text: #eee7d6;
   --text-primary: var(--text);
-  --text-secondary: #d2c5a9;
-  --text-muted: #9e927c;
-  --terminal: #090a09;
-  --surface: #201d16;
-  --surface-input: #100f0c;
-  --surface-raised: #191712;
+  --text-secondary: #cfc6b2;
+  --text-muted: #8c8578;
+  --terminal: #080907;
+  --surface: #181714;
+  --surface-input: #0d0d0b;
+  --surface-raised: #131411;
 
-  --status-focus: #d7a84f;
-  --status-selected: var(--status-focus);
-  --status-active: #66b7ad;
-  --status-starting: #d7a84f;
-  --status-thinking: #c1b05f;
-  --status-working: #66b7ad;
-  --status-needs-input: #d98250;
-  --status-needs-approval: #d7a84f;
-  --status-review-ready: #a985b5;
-  --status-done: #9da95b;
-  --status-failed: #c75c43;
-  --status-stopped: #b46b5a;
-  --status-risk-medium: #d7a84f;
-  --status-risk-high: #c75c43;
-  --status-disconnected: #c75c43;
-  --status-muted: #958b78;
-  --status-readonly: #958b78;
-  --status-done-border: rgba(157, 169, 91, 0.55);
-  --status-failed-border: rgba(199, 92, 67, 0.72);
+  --status-focus: #c6a45b;
+  --status-selected: #5e948f;
+  --status-active: #5e948f;
+  --status-starting: #c6a45b;
+  --status-thinking: #b5a85e;
+  --status-working: #5e948f;
+  --status-needs-input: #b96a48;
+  --status-needs-approval: #c6a45b;
+  --status-review-ready: #8c749b;
+  --status-done: #7e8e58;
+  --status-failed: #ae583f;
+  --status-stopped: #9a5d4f;
+  --status-risk-medium: #c6a45b;
+  --status-risk-high: #ae583f;
+  --status-disconnected: #ae583f;
+  --status-muted: #837b6e;
+  --status-readonly: #837b6e;
+  --status-done-border: rgba(126, 142, 88, 0.5);
+  --status-failed-border: rgba(174, 88, 63, 0.68);
 
-  --tone-active-bg: #17231f;
-  --tone-attention-bg: #2a1b15;
-  --tone-risk-bg: #282112;
+  --tone-active-bg: #141d1b;
+  --tone-attention-bg: #231813;
+  --tone-risk-bg: #211d12;
 }
 
 * {
@@ -53,8 +53,8 @@ body {
   height: 100%;
   overflow: hidden;
   background:
-    radial-gradient(circle at 50% -20%, rgb(129 96 48 / 18%), transparent 36rem),
-    linear-gradient(180deg, #16140f 0%, var(--bg) 100%);
+    radial-gradient(circle at 50% -18%, rgb(128 112 76 / 10%), transparent 34rem),
+    linear-gradient(180deg, #141411 0%, var(--bg) 100%);
   color: var(--text);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
