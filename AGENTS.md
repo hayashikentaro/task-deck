@@ -81,6 +81,7 @@ Keep state, risk, diffs, review, and agent supervision central. Terminal/PTY int
 - Do not silently change API names, routes, persisted metadata shapes, or task semantics.
 - When changing API routes or response shapes, update README and frontend types together.
 - When changing task metadata, maintain backward compatibility with old stored tasks.
+- For icon-only controls such as disclosure, close, clear, expand/collapse, and directional buttons, use vector icons such as inline SVG instead of text glyphs. Keep dimensions fixed and rotate/reuse one vector when representing state changes so the visual size does not shift.
 
 ## Implementation Cautions
 
