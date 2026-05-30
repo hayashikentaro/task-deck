@@ -1249,8 +1249,24 @@ dd {
   margin: 10px 0 0 10px;
   padding: 0;
   border-radius: 999px;
-  font-size: 16px;
-  line-height: 1;
+  display: grid;
+  place-items: center;
+}
+
+.task-expand-icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transform: rotate(180deg);
+  transition: transform 120ms ease;
+}
+
+.task-expand-button[data-expanded="true"] .task-expand-icon {
+  transform: rotate(0deg);
 }
 
 .task-card-meta {

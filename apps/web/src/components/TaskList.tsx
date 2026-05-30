@@ -117,11 +117,14 @@ export function TaskList({
                 aria-expanded={isExpanded}
                 aria-label={isExpanded ? "Collapse task details" : "Expand task details"}
                 className="task-expand-button"
+                data-expanded={isExpanded}
                 onClick={() => toggleExpanded(task.id)}
                 title={isExpanded ? "Collapse task details" : "Expand task details"}
                 type="button"
               >
-                {isExpanded ? "⌄" : "⌃"}
+                <svg aria-hidden="true" className="task-expand-icon" focusable="false" viewBox="0 0 16 16">
+                  <path d="M4 6l4 4 4-4" />
+                </svg>
               </button>
               <button className="task-select-button" onClick={() => selectTask(task.id)} type="button">
                 <span className="task-row-heading">
