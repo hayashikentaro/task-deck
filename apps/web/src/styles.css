@@ -20,7 +20,7 @@
   --status-starting: #c6a45b;
   --status-thinking: #b5a85e;
   --status-working: #5e948f;
-  --status-needs-input: #b96a48;
+  --status-needs-input: #d4bd5f;
   --status-needs-approval: #c6a45b;
   --status-review-ready: #8c749b;
   --status-done: #7e8e58;
@@ -36,7 +36,7 @@
 
   --tone-active-bg: #141d1b;
   --tone-attention-bg: #231813;
-  --tone-risk-bg: #211d12;
+  --tone-risk-bg: #211f12;
 }
 
 * {
