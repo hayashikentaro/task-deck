@@ -77,10 +77,6 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
           spellCheck={false}
           value={value}
         />
-        <div className="composer-meta">
-          <span className="composer-status">{modeText}</span>
-          <span className="composer-hint">Enter to send · Shift+Enter newline · Cmd/Ctrl+Enter send</span>
-        </div>
         <button disabled={!canSend || !value} type="submit">
           Send
         </button>
