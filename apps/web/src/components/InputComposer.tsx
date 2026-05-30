@@ -38,7 +38,7 @@ const diagnosticCommands: DiagnosticCommand[] = [
 const codexAuthCommands: DiagnosticCommand[] = [
   { label: "codex help", command: "codex --help" },
   { label: "logout", command: "codex logout" },
-  { label: "login", command: "codex login" },
+  { label: "device login", command: "codex login --device-auth" },
 ];
 const inPtyContainerCheckCommands: DiagnosticCommand[] = [
   {
