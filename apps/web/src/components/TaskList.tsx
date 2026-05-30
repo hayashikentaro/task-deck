@@ -121,7 +121,7 @@ export function TaskList({
                 title={isExpanded ? "Collapse task details" : "Expand task details"}
                 type="button"
               >
-                {isExpanded ? "⌃" : "⌄"}
+                {isExpanded ? "⌄" : "⌃"}
               </button>
               <button className="task-select-button" onClick={() => selectTask(task.id)} type="button">
                 <span className="task-row-heading">
