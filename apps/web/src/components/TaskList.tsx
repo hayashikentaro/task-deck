@@ -135,22 +135,12 @@ export function TaskList({
                   <span className="task-badge" data-kind={`supervision-${bucket}`} title={supervisionTitle(task)}>
                     {supervisionBucketLabel(bucket)}
                   </span>
-                  <span className="task-badge" data-kind={`process-${task.status}`}>
-                    {task.status}
-                  </span>
-                  <span className="task-badge" data-kind={`risk-${task.risk.level}`}>
-                    {task.risk.level}
-                  </span>
-                  {task.exitCode === null ? null : (
-                    <span className="task-badge" data-kind="exit">
-                      exit {task.exitCode}
-                    </span>
-                  )}
                 </span>
                 <span className="task-card-meta">
                   <span className="task-cwd" title={task.cwd}>
                     {workspaceLabel(task.cwd)}
                   </span>
+                  <span className="task-meta-separator">·</span>
                   <span className="task-command" title={task.command}>
                     {task.agentLabel || agentOrCommandLabel(task.command)}
                   </span>

@@ -612,7 +612,6 @@ dd {
 
 .task-command {
   color: var(--text-secondary);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
 .task-badge-row {
@@ -1284,8 +1283,15 @@ dd {
 
 .task-card-meta {
   min-width: 0;
-  display: grid;
-  gap: 3px;
+  display: flex;
+  gap: 5px;
+  align-items: baseline;
+}
+
+.task-meta-separator {
+  flex: 0 0 auto;
+  color: var(--status-muted);
+  font-size: 12px;
 }
 
 .task-card-detail {
