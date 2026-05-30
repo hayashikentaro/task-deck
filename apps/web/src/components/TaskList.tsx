@@ -115,7 +115,7 @@ export function TaskList({
             >
               <button className="task-select-button" onClick={() => selectTask(task.id)} type="button">
                 <span className="task-row-heading">
-                  <span className="task-title">{task.title}</span>
+                  <span className="task-title">{displayTaskTitle(task.title)}</span>
                   <span className="task-updated">{formatTime(task.updatedAt)}</span>
                 </span>
                 <span className="task-badge-row">
@@ -407,6 +407,10 @@ function sessionModeLabel(sessionMode: string | undefined) {
   if (sessionMode === "custom_resume") return "Legacy custom resume";
   if (sessionMode === "new") return "New session";
   return "-";
+}
+
+function displayTaskTitle(title: string) {
+  return title.trim().replace(/^(?:Resume saved:\s*)+/i, "") || "Untitled task";
 }
 
 function resumeTaskKey(taskId: string, resumeCommand: string) {
