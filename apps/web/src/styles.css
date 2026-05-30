@@ -410,7 +410,7 @@ dd {
 .workspace-grid {
   min-height: 0;
   display: grid;
-  grid-template-columns: 340px minmax(0, 1fr) 340px;
+  grid-template-columns: 238px minmax(0, 1fr) 238px;
   gap: 14px;
   overflow: hidden;
   padding: 14px 14px 8px;
@@ -997,7 +997,7 @@ dd {
   }
 
   .workspace-grid {
-    grid-template-columns: 280px minmax(0, 1fr);
+    grid-template-columns: 196px minmax(0, 1fr);
   }
 
   .right-rail {
@@ -1061,7 +1061,7 @@ dd {
 }
 
 .workspace-grid {
-  grid-template-columns: minmax(320px, 0.85fr) minmax(0, 1.8fr) minmax(320px, 0.85fr);
+  grid-template-columns: minmax(224px, 0.6fr) minmax(0, 2.3fr) minmax(224px, 0.6fr);
   padding: 14px;
 }
 
@@ -1499,7 +1499,7 @@ dd {
 
 @media (max-width: 1120px) {
   .workspace-grid {
-    grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.4fr);
+    grid-template-columns: minmax(196px, 0.65fr) minmax(0, 1.75fr);
   }
 
   .right-rail {
