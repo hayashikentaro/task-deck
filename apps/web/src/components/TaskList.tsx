@@ -1,15 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AgentState, AttentionState, Task } from "../types";
 
-type TaskFilter =
-  | "all"
-  | "needs_you"
-  | "maybe_needs_you"
-  | "review_ready"
-  | "running"
-  | "done"
-  | "failed"
-  | "risk";
+type TaskFilter = "all" | "needs_you" | "not_now";
 
 type TaskListProps = {
   actionError: string;
@@ -79,16 +71,7 @@ export function TaskList({
         </div>
       </div>
       <div className="task-filters" aria-label="Task filters">
-        {([
-          "all",
-          "needs_you",
-          "maybe_needs_you",
-          "review_ready",
-          "running",
-          "done",
-          "failed",
-          "risk",
-        ] as TaskFilter[]).map((nextFilter) => (
+        {(["all", "needs_you", "not_now"] as TaskFilter[]).map((nextFilter) => (
           <button
             aria-pressed={filter === nextFilter}
             data-active={filter === nextFilter}
@@ -121,6 +104,7 @@ export function TaskList({
           const canResumeLast = Boolean(resumeLastCommand) && !isResumeLastPending;
           const resumePreviewCommand = resumeCommand || resumeLastCommand;
           const isConfirmingResumeLast = confirmResumeLastTaskId === task.id;
+          const bucket = supervisionBucket(task);
           return (
             <article
               className="task-list-item"
@@ -135,17 +119,11 @@ export function TaskList({
                   <span className="task-updated">{formatTime(task.updatedAt)}</span>
                 </span>
                 <span className="task-badge-row">
-                  <span className="task-badge" data-kind={`attention-${attentionState(task)}`} title={attentionTitle(task)}>
-                    attention {attentionStateLabel(attentionState(task))}
+                  <span className="task-badge" data-kind={`supervision-${bucket}`} title={supervisionTitle(task)}>
+                    {supervisionBucketLabel(bucket)}
                   </span>
                   <span className="task-badge" data-kind={`process-${task.status}`}>
-                    observed {task.status}
-                  </span>
-                  <span className="task-badge" data-kind={`agent-${task.agentState}`} title={stateMetadataTitle(task)}>
-                    signal {agentStateLabel(task.agentState)}
-                  </span>
-                  <span className="task-badge" data-kind={`confidence-${task.agentStateConfidence || "unknown"}`}>
-                    {stateConfidenceLabel(task.agentStateConfidence)} confidence
+                    {task.status}
                   </span>
                   <span className="task-badge" data-kind={`risk-${task.risk.level}`}>
                     {task.risk.level}
@@ -338,41 +316,25 @@ function SectionLabel({ label }: { label: string }) {
 
 function matchesFilter(task: Task, filter: TaskFilter) {
   if (filter === "needs_you") {
-    return attentionState(task) === "needs_input" || attentionState(task) === "needs_approval";
+    return supervisionBucket(task) === "needs_you";
   }
-  if (filter === "maybe_needs_you") {
-    return attentionState(task) === "may_need_user";
-  }
-  if (filter === "review_ready") {
-    return attentionState(task) === "review_ready";
-  }
-  if (filter === "running") {
-    return task.status === "running" && attentionState(task) === "none";
-  }
-  if (filter === "done") {
-    return task.status === "succeeded" || task.agentState === "done";
-  }
-  if (filter === "failed") {
-    return task.status === "failed" || task.status === "interrupted" || attentionState(task) === "failed";
-  }
-  if (filter === "risk") {
-    return task.risk.level === "high" || task.risk.level === "medium";
+  if (filter === "not_now") {
+    return task.status === "running" && supervisionBucket(task) === "not_now";
   }
   return true;
 }
 
 function filterLabel(filter: TaskFilter) {
   if (filter === "needs_you") return "Needs you";
-  if (filter === "maybe_needs_you") return "Maybe needs you";
-  if (filter === "review_ready") return "Review ready";
-  if (filter === "running") return "Running";
-  if (filter === "done") return "Done";
-  if (filter === "failed") return "Failed/stopped";
-  if (filter === "risk") return "Risk";
+  if (filter === "not_now") return "Not now";
   return "All";
 }
 
 function taskTone(task: Task, runningTaskIds: Set<string>) {
+  if (supervisionBucket(task) === "needs_you") {
+    return "waiting_input";
+  }
+
   const nextAttentionState = attentionState(task);
   if (nextAttentionState === "failed") {
     return "failed";
@@ -415,8 +377,20 @@ function attentionStateLabel(nextAttentionState: AttentionState) {
   return nextAttentionState.replace(/_/g, " ");
 }
 
-function attentionTitle(task: Task) {
-  return task.attentionStateReason || "No user attention needed.";
+function supervisionBucket(task: Task) {
+  if (task.status !== "running") return "not_now";
+  return task.attentionState === "none" || !task.attentionState ? "not_now" : "needs_you";
+}
+
+function supervisionBucketLabel(bucket: ReturnType<typeof supervisionBucket>) {
+  return bucket === "needs_you" ? "Needs you" : "Not now";
+}
+
+function supervisionTitle(task: Task) {
+  if (supervisionBucket(task) === "needs_you") {
+    return task.attentionStateReason || "This running task may need human attention.";
+  }
+  return task.status === "running" ? "Recent PTY activity observed." : "Task is not running.";
 }
 
 function stateSourceLabel(source?: string) {
@@ -425,13 +399,6 @@ function stateSourceLabel(source?: string) {
 
 function stateConfidenceLabel(confidence?: string) {
   return confidence || "-";
-}
-
-function stateMetadataTitle(task: Task) {
-  const source = stateSourceLabel(task.agentStateSource);
-  const confidence = stateConfidenceLabel(task.agentStateConfidence);
-  const reason = task.agentStateReason || "No state reason recorded.";
-  return `Source: ${source}\nConfidence: ${confidence}\nReason: ${reason}`;
 }
 
 function sessionModeLabel(sessionMode: string | undefined) {

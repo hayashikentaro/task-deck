@@ -635,6 +635,16 @@ dd {
   color: var(--text-primary);
 }
 
+.task-badge[data-kind="supervision-needs_you"] {
+  border-color: var(--status-needs-input);
+  color: var(--status-needs-input);
+}
+
+.task-badge[data-kind="supervision-not_now"] {
+  border-color: var(--status-muted);
+  color: var(--status-muted);
+}
+
 .task-badge[data-kind="attention-none"] {
   border-color: var(--status-muted);
   color: var(--status-muted);
