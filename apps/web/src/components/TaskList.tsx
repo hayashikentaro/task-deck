@@ -158,7 +158,9 @@ export function TaskList({
               </button>
               <div className="task-card-actions">
                 <button aria-label="Clear task" className="task-clear-button" onClick={() => onClearTask(task.id)} title="Clear task" type="button">
-                  ×
+                  <svg aria-hidden="true" className="task-clear-icon" focusable="false" viewBox="0 0 16 16">
+                    <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
+                  </svg>
                 </button>
               </div>
               {isExpanded ? (

@@ -572,9 +572,12 @@ dd {
   height: 34px;
   min-height: 34px;
   padding: 0;
-  border-radius: 999px;
-  font-size: 20px;
-  line-height: 1;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  display: grid;
+  place-items: center;
 }
 
 .task-row-heading {
@@ -1242,17 +1245,32 @@ dd {
   font-size: 12px;
 }
 
+.task-card-actions .task-clear-button {
+  padding: 0;
+}
+
+.task-clear-button:hover:not(:disabled),
+.task-expand-button:hover:not(:disabled) {
+  border-color: transparent;
+  background: transparent;
+  color: var(--status-focus);
+}
+
 .task-expand-button {
   width: 34px;
   height: 34px;
   min-height: 34px;
   margin: 10px 0 0 10px;
   padding: 0;
-  border-radius: 999px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
   display: grid;
   place-items: center;
 }
 
+.task-clear-icon,
 .task-expand-icon {
   width: 16px;
   height: 16px;
@@ -1261,6 +1279,9 @@ dd {
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.task-expand-icon {
   transform: rotate(180deg);
   transition: transform 120ms ease;
 }
