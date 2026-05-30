@@ -280,10 +280,8 @@ dd {
   min-width: 0;
 }
 
-.instruction-field textarea {
+.instruction-field input {
   height: 42px;
-  min-height: 42px;
-  resize: none;
 }
 
 .cwd-helper {
@@ -1222,12 +1220,6 @@ dd {
 
 .task-create-form button[type="submit"] {
   width: 100%;
-}
-
-.instruction-field textarea {
-  height: 78px;
-  min-height: 78px;
-  resize: vertical;
 }
 
 .task-list-item[data-expanded="true"] {

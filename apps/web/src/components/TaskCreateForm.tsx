@@ -191,9 +191,8 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
         ) : null}
         <label className="instruction-field">
           <span>Initial instruction</span>
-          <textarea
+          <input
             placeholder="Describe the coding task for the agent..."
-            rows={3}
             value={initialInstruction}
             onChange={(event) => setInitialInstruction(event.target.value)}
           />
