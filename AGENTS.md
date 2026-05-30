@@ -65,7 +65,6 @@ AGENTS.md      Repository guidance for AI agents
 - Resume last: an imprecise Codex resume mode that targets the latest Codex session.
 - Resume saved: a precise resume path using stored task/session metadata when available.
 - Saved Codex session: a best-effort session derived from TaskDeck task metadata, not from Codex internal storage.
-- Quick actions / PTY checks: compact composer helpers for prompt snippets, PTY diagnostics, and container checks.
 - Diagnostics: server/UI checks for Docker, configured agent containers, and configured workspaces.
 
 Keep state, risk, diffs, review, and agent supervision central. Terminal/PTY interaction is a means to supervise work, not a chat surface or decorative terminal skin.
