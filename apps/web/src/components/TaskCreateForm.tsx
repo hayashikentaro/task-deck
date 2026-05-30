@@ -142,7 +142,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
     }
     onCreateTask({
       title: buildTaskTitle(
-        sessionMode === "saved_codex" ? "Resume saved" : selectedAgent.label,
+        selectedAgent.label,
         initialInstruction,
         selectedSavedSession,
       ),
@@ -313,7 +313,7 @@ function buildTaskTitle(agentLabel: string, instruction: string, savedSession?: 
   const firstLine = instruction.trim().split(/\r?\n/).find(Boolean);
   if (!firstLine) {
     if (savedSession) {
-      return `Resume saved: ${savedSession.title}`;
+      return savedSession.title;
     }
     return `${agentLabel} session`;
   }
