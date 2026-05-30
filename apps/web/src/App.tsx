@@ -3,6 +3,7 @@ import { DiagnosticsPane } from "./components/DiagnosticsPane";
 import { TaskCreateForm } from "./components/TaskCreateForm";
 import { TaskList } from "./components/TaskList";
 import { TerminalPane } from "./components/TerminalPane";
+import { buildCodexResumeCommandForCommand } from "./codexPermissions";
 import type { CreateTaskInput, OutputEvent, SavedCodexSession, Task, TaskDeckContext } from "./types";
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
@@ -186,6 +187,7 @@ export function App() {
       cwd: selectedTask.cwd,
       agentProfileId: selectedTask.agentProfileId,
       agentLabel: selectedTask.agentLabel,
+      agentPermissionLevel: selectedTask.agentPermissionLevel,
       sessionMode: selectedTask.sessionMode,
       resumeCommand: selectedTask.resumeCommand,
       initialInstruction: selectedTask.initialInstruction,
@@ -207,7 +209,7 @@ export function App() {
     if (!isCodexTask(task)) {
       return;
     }
-    startResumeTask(task, "codex resume --last", "resume_last");
+    startResumeTask(task, buildCodexResumeLastCommandForTask(task), "resume_last");
   };
 
   const startResumeTask = (task: Task, resumeCommand: string, sessionMode: string) => {
@@ -222,6 +224,7 @@ export function App() {
       cwd: task.cwd,
       agentProfileId: task.agentProfileId,
       agentLabel: task.agentLabel,
+      agentPermissionLevel: task.agentPermissionLevel,
       sessionMode,
       resumeCommand,
     });
@@ -316,6 +319,11 @@ function resumeTaskKey(taskId: string, resumeCommand: string) {
 function isCodexTask(task: Task) {
   const haystack = `${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command}`.toLowerCase();
   return /\bcodex\b/.test(haystack);
+}
+
+function buildCodexResumeLastCommandForTask(task: Task) {
+  const command = String(task.command || task.resumeCommand || task.agentSessionResumeCommand || "");
+  return buildCodexResumeCommandForCommand(command, task.agentPermissionLevel, "--last");
 }
 
 function getRunningTaskIdsFromMessage(message: { runningTaskId?: string | null; runningTaskIds?: string[] }) {

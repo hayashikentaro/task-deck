@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { buildCodexResumeCommandForCommand } from "../codexPermissions";
 import type { AgentState, AttentionState, Task } from "../types";
 
 type TaskFilter = "all" | "needs_you" | "not_now";
@@ -93,7 +94,7 @@ export function TaskList({
           const isExpanded = expandedTaskIds.has(task.id);
           const canRerun = task.status !== "running" && runningTaskIds.length === 0;
           const resumeCommand = task.resumeCommand?.trim() || task.agentSessionResumeCommand?.trim() || "";
-          const resumeLastCommand = !resumeCommand && isCodexTask(task) ? "codex resume --last" : "";
+          const resumeLastCommand = !resumeCommand && isCodexTask(task) ? buildCodexResumeLastCommandForTask(task) : "";
           const isResumePending = resumeCommand
             ? pendingResumeKeys.includes(resumeTaskKey(task.id, resumeCommand))
             : false;
@@ -158,6 +159,9 @@ export function TaskList({
                   {isSelected && actionError ? <p className="task-action-error">{actionError}</p> : null}
                   <dl className="task-detail-grid">
                     <Info label="Agent" value={task.agentLabel || agentOrCommandLabel(task.command)} />
+                    {task.agentPermissionLevel ? (
+                      <Info label="Permission level" value={permissionLevelLabel(task.agentPermissionLevel)} />
+                    ) : null}
                     <Info label="Session mode" value={sessionModeLabel(task.sessionMode)} />
                     {task.agentSessionId ? <Info label="Session id" value={task.agentSessionId} /> : null}
                     {task.agentSessionSource ? <Info label="Session source" value={task.agentSessionSource} /> : null}
@@ -404,6 +408,13 @@ function sessionModeLabel(sessionMode: string | undefined) {
   return "-";
 }
 
+function permissionLevelLabel(permissionLevel: string | undefined) {
+  if (permissionLevel === "full_access") return "Full access";
+  if (permissionLevel === "workspace_write") return "Workspace write";
+  if (permissionLevel === "read_only") return "Read only";
+  return permissionLevel || "-";
+}
+
 function displayTaskTitle(title: string) {
   return title.trim().replace(/^(?:Resume saved:\s*)+/i, "") || "Untitled task";
 }
@@ -415,6 +426,11 @@ function resumeTaskKey(taskId: string, resumeCommand: string) {
 function isCodexTask(task: Task) {
   const haystack = `${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command}`.toLowerCase();
   return /\bcodex\b/.test(haystack);
+}
+
+function buildCodexResumeLastCommandForTask(task: Task) {
+  const command = String(task.command || task.resumeCommand || task.agentSessionResumeCommand || "");
+  return buildCodexResumeCommandForCommand(command, task.agentPermissionLevel, "--last");
 }
 
 function agentOrCommandLabel(command: string) {

@@ -307,6 +307,7 @@ wss.on("connection", (socket) => {
           cwd: String(message.cwd || "").trim(),
           agentProfileId: String(message.agentProfileId || "").trim(),
           agentLabel: String(message.agentLabel || "").trim(),
+          agentPermissionLevel: String(message.agentPermissionLevel || "").trim(),
           sessionMode: String(message.sessionMode || "").trim(),
           resumeCommand: String(message.resumeCommand || "").trim(),
           agentSessionProvider: String(message.agentSessionProvider || "").trim(),
@@ -390,6 +391,7 @@ async function startTask({
   cwd,
   agentProfileId,
   agentLabel,
+  agentPermissionLevel,
   sessionMode,
   resumeCommand,
   agentSessionProvider,
@@ -424,6 +426,7 @@ async function startTask({
     cwd: resolvedCwd,
     agentProfileId,
     agentLabel,
+    agentPermissionLevel,
     sessionMode,
     resumeCommand,
     initialInstruction,
@@ -1241,13 +1244,37 @@ function extractCodexResumeId(command) {
 
 function buildCodexSessionResumeCommand(task, sessionId) {
   const command = String(task.command || "");
+  const codexCommand = `codex ${codexPermissionArgsForTask(task)} resume ${sessionId}`;
   if (task.agentProfileId === "ai-dev-container-codex" || /\bdocker\b[\s\S]*\bai-agent-sandbox-agent-1\b/.test(command)) {
-    return `docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex resume ${sessionId}'`;
+    return `docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color ${codexCommand}'`;
   }
   if (/\bdocker\b[\s\S]*\bai-agent-sandbox-codex-1\b/.test(command)) {
-    return `docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-codex-1 sh -lc 'TERM=xterm-256color codex resume ${sessionId}'`;
+    return `docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-codex-1 sh -lc 'TERM=xterm-256color ${codexCommand}'`;
   }
-  return `codex resume ${sessionId}`;
+  return codexCommand;
+}
+
+function codexPermissionArgsForTask(task) {
+  const permissionLevel = String(task.agentPermissionLevel || "").trim();
+  if (permissionLevel === "workspace_write") {
+    return "--sandbox workspace-write";
+  }
+  if (permissionLevel === "read_only") {
+    return "--sandbox read-only";
+  }
+  if (permissionLevel === "full_access") {
+    return "--dangerously-bypass-approvals-and-sandbox";
+  }
+
+  const command = String(task.command || task.agentSessionResumeCommand || task.resumeCommand || "");
+  const explicitSandbox = command.match(/\bcodex\b[\s\S]*?(--sandbox\s+(?:read-only|workspace-write|danger-full-access))/i);
+  if (explicitSandbox) {
+    return explicitSandbox[1];
+  }
+  if (/\bcodex\b[\s\S]*?--dangerously-bypass-approvals-and-sandbox\b/i.test(command)) {
+    return "--dangerously-bypass-approvals-and-sandbox";
+  }
+  return "--dangerously-bypass-approvals-and-sandbox";
 }
 
 function withDetectedResumeCommand(task, agentSessionResumeCommand) {

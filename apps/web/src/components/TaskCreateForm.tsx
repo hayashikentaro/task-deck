@@ -1,5 +1,10 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { defaultAgentProfiles } from "../agentProfiles";
+import {
+  applyCodexPermissionToCommand,
+  buildCodexResumeCommandForCommand,
+  type CodexPermissionLevel,
+} from "../codexPermissions";
 import type { AgentProfile, CreateTaskInput, SavedCodexSession, TaskDeckContext } from "../types";
 
 type TaskCreateFormProps = {
@@ -16,6 +21,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
   const [selectedAgentId, setSelectedAgentId] = useState(defaultAgentProfileId);
   const [selectedSavedSessionKey, setSelectedSavedSessionKey] = useState("");
   const [sessionMode, setSessionMode] = useState<SessionMode>("new");
+  const [codexPermissionLevel, setCodexPermissionLevel] = useState<CodexPermissionLevel>("full_access");
   const [initialInstruction, setInitialInstruction] = useState("");
   const [cwd, setCwd] = useState("");
 
@@ -45,6 +51,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
     selectedAgent,
     sessionMode,
     selectedSavedSession,
+    codexPermissionLevel,
   );
   const command = launchCommand.command;
   const canStart = !disabled && Boolean(cwd) && Boolean(command);
@@ -105,6 +112,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
       cwd,
       agentProfileId: sessionMode === "saved_codex" ? selectedSavedSession?.agentProfileId || "codex" : selectedAgent.id,
       agentLabel: sessionMode === "saved_codex" ? selectedSavedSession?.agentLabel || "Codex CLI" : selectedAgent.label,
+      agentPermissionLevel: selectedAgentIsCodex ? codexPermissionLevel : undefined,
       sessionMode,
       resumeCommand: launchCommand.resumeCommand || undefined,
       agentSessionProvider: sessionMode === "saved_codex" ? selectedSavedSession?.provider : undefined,
@@ -113,7 +121,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
         sessionMode === "saved_codex" ? selectedSavedSession?.source || "saved session picker" : undefined,
       agentSessionDetectedAt:
         sessionMode === "saved_codex" ? selectedSavedSession?.detectedAt || selectedSavedSession?.updatedAt : undefined,
-      agentSessionResumeCommand: sessionMode === "saved_codex" ? selectedSavedSession?.resumeCommand : undefined,
+      agentSessionResumeCommand: sessionMode === "saved_codex" ? launchCommand.resumeCommand : undefined,
       initialInstruction: initialInstruction.trim(),
     });
   };
@@ -134,6 +142,19 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
             ))}
           </select>
         </div>
+        {selectedAgentIsCodex ? (
+          <label className="codex-permission-field">
+            <span>Codex permissions</span>
+            <select
+              value={codexPermissionLevel}
+              onChange={(event) => setCodexPermissionLevel(event.target.value as CodexPermissionLevel)}
+            >
+              <option value="full_access">Full access</option>
+              <option value="workspace_write">Workspace write</option>
+              <option value="read_only">Read only</option>
+            </select>
+          </label>
+        ) : null}
         <label className="session-mode-field">
           <span>Session</span>
           <select value={sessionSelectValue} onChange={(event) => handleSessionChange(event.target.value)}>
@@ -175,7 +196,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
                 </div>
                 <div>
                   <dt>Command</dt>
-                  <dd>{selectedSavedSession.resumeCommand}</dd>
+                  <dd>{launchCommand.resumeCommand}</dd>
                 </div>
                 <div>
                   <dt>Environment</dt>
@@ -226,29 +247,26 @@ function buildLaunchCommand(
   profile: AgentProfile,
   sessionMode: SessionMode,
   savedSession: SavedCodexSession | null,
+  codexPermissionLevel: CodexPermissionLevel,
 ) {
   if (sessionMode === "saved_codex") {
-    const resumeCommand = savedSession?.resumeCommand.trim() || "";
+    const resumeCommand = applyCodexPermissionToCommand(savedSession?.resumeCommand.trim() || "", codexPermissionLevel);
     return { command: resumeCommand, resumeCommand };
   }
 
   if (sessionMode === "resume_last" && isCodexProfile(profile)) {
-    const resumeCommand = buildCodexResumeLastCommand(profile);
+    const resumeCommand = buildCodexResumeLastCommand(profile, codexPermissionLevel);
     return { command: resumeCommand, resumeCommand };
   }
 
-  const command = profile.command.trim();
+  const command = isCodexProfile(profile)
+    ? applyCodexPermissionToCommand(profile.command.trim(), codexPermissionLevel)
+    : profile.command.trim();
   return { command, resumeCommand: "" };
 }
 
-function buildCodexResumeLastCommand(profile: AgentProfile) {
-  if (agentCommandEnvironment(profile) === "ai-agent-sandbox-agent-1") {
-    return "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex resume --last'";
-  }
-  if (agentCommandEnvironment(profile) === "ai-agent-sandbox-codex-1") {
-    return "docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-codex-1 sh -lc 'TERM=xterm-256color codex resume --last'";
-  }
-  return "codex resume --last";
+function buildCodexResumeLastCommand(profile: AgentProfile, codexPermissionLevel: CodexPermissionLevel) {
+  return buildCodexResumeCommandForCommand(profile.command, codexPermissionLevel, "--last");
 }
 
 function buildTaskTitle(agentLabel: string, instruction: string, savedSession?: SavedCodexSession | null) {
