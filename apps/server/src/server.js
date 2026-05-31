@@ -377,6 +377,26 @@ server.listen(port, host, () => {
 const attentionTimer = setInterval(updateQuietAttentionStates, 1000);
 attentionTimer.unref?.();
 
+function buildUniqueNewSessionTitle(title, sessionMode) {
+  const normalizedTitle = String(title || "").trim();
+  if (sessionMode !== "new" || !normalizedTitle) {
+    return normalizedTitle;
+  }
+
+  const existingTitles = new Set(Array.from(tasks.values()).map((task) => String(task.title || "")));
+  if (!existingTitles.has(normalizedTitle)) {
+    return normalizedTitle;
+  }
+
+  let index = 2;
+  let candidate = `${normalizedTitle} (${index})`;
+  while (existingTitles.has(candidate)) {
+    index += 1;
+    candidate = `${normalizedTitle} (${index})`;
+  }
+  return candidate;
+}
+
 async function startTask({
   title,
   command,
@@ -411,9 +431,10 @@ async function startTask({
     agentSessionDetectedAt,
     agentSessionResumeCommand,
   });
+  const taskTitle = buildUniqueNewSessionTitle(title, sessionMode);
 
   const task = markTaskRunning(createTask({
-    title,
+    title: taskTitle,
     command,
     cwd: resolvedCwd,
     agentProfileId,
