@@ -931,6 +931,26 @@ dd {
   color: var(--status-focus);
 }
 
+
+.terminal-font-size {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  color: var(--status-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.terminal-font-size select {
+  width: 58px;
+  height: 28px;
+  border-color: var(--line);
+  background: var(--surface-input);
+  padding: 0 24px 0 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
 .terminal-search {
   width: min(200px, 24vw);
   min-width: 120px;

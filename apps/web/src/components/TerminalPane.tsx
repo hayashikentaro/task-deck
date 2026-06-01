@@ -12,6 +12,8 @@ type TerminalPaneProps = {
 };
 
 const logTailLength = 200_000;
+const terminalFontSizeStorageKey = "taskdeck.terminalFontSize";
+const terminalFontSizes = [11, 12, 13, 14, 15, 16, 18];
 
 export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -24,6 +26,7 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
   const [logBuffer, setLogBuffer] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [terminalMessage, setTerminalMessage] = useState("");
+  const [terminalFontSize, setTerminalFontSize] = useState(readStoredTerminalFontSize);
 
   const directInputDebug = directInputDebugRef.current;
   const taskId = task?.id ?? null;
@@ -49,7 +52,7 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
       cursorBlink: true,
       convertEol: true,
       fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
-      fontSize: 13,
+      fontSize: terminalFontSize,
       theme: {
         background: "#080907",
         foreground: "#e2dac8",
@@ -105,6 +108,23 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
       fitAddonRef.current = null;
     };
   }, [send]);
+
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    const fitAddon = fitAddonRef.current;
+    if (!terminal || !fitAddon) {
+      return;
+    }
+
+    terminal.options.fontSize = terminalFontSize;
+    window.localStorage.setItem(terminalFontSizeStorageKey, String(terminalFontSize));
+    fitAddon.fit();
+
+    const taskId = selectedTaskIdRef.current;
+    if (taskId) {
+      send({ type: "resize", taskId, cols: terminal.cols, rows: terminal.rows });
+    }
+  }, [send, terminalFontSize]);
 
   const loadPersistedLog = useCallback((nextTask: Task | null) => {
     const terminal = terminalRef.current;
@@ -220,6 +240,20 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
           >
             Follow {followOutput ? "on" : "off"}
           </button>
+          <label className="terminal-font-size">
+            <span>Font</span>
+            <select
+              aria-label="Terminal font size"
+              value={terminalFontSize}
+              onChange={(event) => setTerminalFontSize(Number(event.target.value))}
+            >
+              {terminalFontSizes.map((fontSize) => (
+                <option key={fontSize} value={fontSize}>
+                  {fontSize}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="terminal-search">
             <input
               disabled={!task}
@@ -300,4 +334,9 @@ function modeTone(mode: string) {
 
 function isDirectInputDebugEnabled() {
   return new URLSearchParams(window.location.search).get("directInput") === "1";
+}
+
+function readStoredTerminalFontSize() {
+  const storedValue = Number(window.localStorage.getItem(terminalFontSizeStorageKey));
+  return terminalFontSizes.includes(storedValue) ? storedValue : 13;
 }
