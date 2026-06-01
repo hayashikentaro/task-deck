@@ -163,8 +163,17 @@ app.post("/api/attachments", express.raw({ type: Array.from(imageAttachmentMimeT
 
     response.json({ attachment: { ...attachment, pending: true } });
   } catch (error) {
-    response.status(500).json({ error: error.message });
+    console.error(`TaskDeck attachment upload failed: ${error.message}`);
+    response.status(500).json({ error: "Unable to upload image." });
   }
+});
+
+app.use("/api/attachments", (error, _request, response, next) => {
+  if (error?.type === "entity.too.large" || error?.name === "PayloadTooLargeError") {
+    response.status(413).json({ error: "Attachment upload failed: payload too large." });
+    return;
+  }
+  next(error);
 });
 
 app.get("/api/tasks", (_request, response) => {

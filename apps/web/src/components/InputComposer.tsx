@@ -183,14 +183,38 @@ async function uploadSelectedImages(images: SelectedImageAttachment[]) {
       },
       body: image.file,
     });
-    const payload = (await response.json()) as { attachment?: PendingTaskAttachment; error?: string };
-    if (!response.ok || !payload.attachment) {
-      throw new Error(payload.error || `Unable to upload ${image.file.name}.`);
+    const payload = await readJsonResponse<{ attachment?: PendingTaskAttachment; error?: string }>(response);
+    if (!response.ok) {
+      throw new Error(payload?.error || formatUploadFailure(response));
+    }
+    if (!payload) {
+      throw new Error("TaskDeck server returned an empty response.");
+    }
+    if (!payload.attachment) {
+      throw new Error(payload.error || "Unable to upload image.");
     }
     uploadedAttachments.push(payload.attachment);
   }
 
   return uploadedAttachments;
+}
+
+async function readJsonResponse<T>(response: Response): Promise<T | null> {
+  const text = await response.text();
+  if (!text.trim()) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`TaskDeck server returned a non-JSON response (${response.status} ${response.statusText}).`);
+  }
+}
+
+function formatUploadFailure(response: Response) {
+  const statusText = response.statusText || "Upload failed";
+  return `Attachment upload failed: ${response.status} ${statusText}.`;
 }
 
 function isSupportedImage(file: File) {
