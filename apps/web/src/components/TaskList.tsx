@@ -1,43 +1,29 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { buildCodexResumeCommandForCommand } from "../codexPermissions";
 import type { AgentState, AttentionState, Task } from "../types";
 
 type TaskFilter = "all" | "needs_you" | "not_now";
 
 type TaskListProps = {
-  actionError: string;
   tasks: Task[];
   selectedTaskId: string | null;
   runningTaskIds: string[];
   onClearTask: (taskId: string) => void;
   onClearTasks: () => void | Promise<void>;
-  onInterruptTask: () => void;
-  onRerunTask: () => void;
-  onResumeLastTask: (task: Task) => void;
-  onResumeTask: (task: Task) => void;
   onRenameTask: (taskId: string, title: string) => Promise<boolean>;
-  pendingResumeKeys: string[];
   onSelectTask: (taskId: string) => void;
 };
 
 export function TaskList({
-  actionError,
   tasks,
   selectedTaskId,
   runningTaskIds,
   onClearTask,
   onClearTasks,
-  onInterruptTask,
-  onRerunTask,
-  onResumeLastTask,
-  onResumeTask,
   onRenameTask,
-  pendingResumeKeys,
   onSelectTask,
 }: TaskListProps) {
   const [filter, setFilter] = useState<TaskFilter>("all");
   const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set());
-  const [confirmResumeLastTaskId, setConfirmResumeLastTaskId] = useState<string | null>(null);
   const [isClearAllConfirmOpen, setIsClearAllConfirmOpen] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
@@ -59,11 +45,6 @@ export function TaskList({
 
   const selectTask = (taskId: string) => {
     onSelectTask(taskId);
-  };
-
-  const confirmResumeLast = (task: Task) => {
-    onResumeLastTask(task);
-    setConfirmResumeLastTaskId(null);
   };
 
   const confirmClearAll = async () => {
@@ -144,19 +125,7 @@ export function TaskList({
         {visibleTasks.map((task) => {
           const isSelected = task.id === selectedTaskId;
           const isExpanded = expandedTaskIds.has(task.id);
-          const canRerun = task.status !== "running" && runningTaskIds.length === 0;
           const resumeCommand = task.resumeCommand?.trim() || task.agentSessionResumeCommand?.trim() || "";
-          const resumeLastCommand = !resumeCommand && isCodexTask(task) ? buildCodexResumeLastCommandForTask(task) : "";
-          const isResumePending = resumeCommand
-            ? pendingResumeKeys.includes(resumeTaskKey(task.id, resumeCommand))
-            : false;
-          const isResumeLastPending = resumeLastCommand
-            ? pendingResumeKeys.includes(resumeTaskKey(task.id, resumeLastCommand))
-            : false;
-          const canResume = Boolean(resumeCommand) && !isResumePending;
-          const canResumeLast = Boolean(resumeLastCommand) && !isResumeLastPending;
-          const resumePreviewCommand = resumeCommand || resumeLastCommand;
-          const isConfirmingResumeLast = confirmResumeLastTaskId === task.id;
           const bucket = supervisionBucket(task);
           const isEditingTitle = editingTaskId === task.id;
           return (
@@ -241,7 +210,6 @@ export function TaskList({
               </div>
               {isExpanded ? (
                 <div className="task-card-detail">
-                  {isSelected && actionError ? <p className="task-action-error">{actionError}</p> : null}
                   <dl className="task-detail-grid">
                     <Info label="Agent" value={task.agentLabel || agentOrCommandLabel(task.command)} />
                     {task.agentPermissionLevel ? (
@@ -300,51 +268,11 @@ export function TaskList({
                   </dl>
                   {isSelected ? (
                     <>
-                      {resumePreviewCommand ? (
-                        <p className="resume-command-preview" title={resumePreviewCommand}>
+                      {resumeCommand ? (
+                        <p className="resume-command-preview" title={resumeCommand}>
                           <span>Resume command:</span>
-                          <code>{resumePreviewCommand}</code>
+                          <code>{resumeCommand}</code>
                         </p>
-                      ) : null}
-                      <div className="task-detail-actions">
-                        <button disabled={!canRerun} onClick={onRerunTask} type="button">
-                          Rerun command
-                        </button>
-                        <button disabled={task.status !== "running"} onClick={onInterruptTask} type="button">
-                          Interrupt
-                        </button>
-                        {resumeCommand ? (
-                          <button disabled={!canResume} onClick={() => onResumeTask(task)} type="button">
-                            Resume saved
-                          </button>
-                        ) : null}
-                        {canResumeLast ? (
-                          <button
-                            data-priority="secondary"
-                            disabled={isResumeLastPending}
-                            onClick={() => setConfirmResumeLastTaskId(task.id)}
-                            type="button"
-                          >
-                            Resume last
-                          </button>
-                        ) : null}
-                      </div>
-                      {isConfirmingResumeLast ? (
-                        <div className="resume-last-confirmation">
-                          <p>Resume last uses the latest Codex session, not necessarily this task.</p>
-                          <div>
-                            <button disabled={isResumeLastPending} onClick={() => confirmResumeLast(task)} type="button">
-                              Confirm resume last
-                            </button>
-                            <button
-                              data-priority="secondary"
-                              onClick={() => setConfirmResumeLastTaskId(null)}
-                              type="button"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
                       ) : null}
                     </>
                   ) : null}
@@ -530,20 +458,6 @@ function taskDisplayName(task: Task) {
 
 function displayTaskTitle(title: string | undefined) {
   return String(title || "").trim().replace(/^(?:Resume saved:\s*)+/i, "") || "Untitled task";
-}
-
-function resumeTaskKey(taskId: string, resumeCommand: string) {
-  return `${taskId}:${resumeCommand}`;
-}
-
-function isCodexTask(task: Task) {
-  const haystack = `${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command}`.toLowerCase();
-  return /\bcodex\b/.test(haystack);
-}
-
-function buildCodexResumeLastCommandForTask(task: Task) {
-  const command = String(task.command || task.resumeCommand || task.agentSessionResumeCommand || "");
-  return buildCodexResumeCommandForCommand(command, task.agentPermissionLevel, "--last");
 }
 
 function agentOrCommandLabel(command: string) {

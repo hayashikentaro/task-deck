@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DiagnosticsPane } from "./components/DiagnosticsPane";
+import { SelectedSessionPanel } from "./components/SelectedSessionPanel";
 import { TaskCreateForm } from "./components/TaskCreateForm";
 import { TaskList } from "./components/TaskList";
 import { TerminalPane } from "./components/TerminalPane";
@@ -331,18 +332,12 @@ export function App() {
     <main className="app-shell">
       <section className="workspace-grid">
         <TaskList
-          actionError={taskActionError}
           tasks={tasks}
           selectedTaskId={selectedTaskId}
           runningTaskIds={runningTaskIds}
           onClearTask={clearTask}
           onClearTasks={clearTasks}
-          onInterruptTask={interruptTask}
-          onRerunTask={rerunTask}
-          onResumeLastTask={resumeLastTask}
-          onResumeTask={resumeTask}
           onRenameTask={renameTask}
-          pendingResumeKeys={pendingResumeKeys}
           onSelectTask={setSelectedTaskId}
         />
         <TerminalPane
@@ -358,6 +353,17 @@ export function App() {
             savedCodexSessions={savedCodexSessions}
             onCreateTask={createTask}
             onRenameSavedSession={renameSavedSession}
+          />
+          <SelectedSessionPanel
+            actionError={taskActionError}
+            isConnected={connectionState === "connected"}
+            task={selectedTask}
+            runningTaskIds={runningTaskIds}
+            pendingResumeKeys={pendingResumeKeys}
+            onInterruptTask={interruptTask}
+            onRerunTask={rerunTask}
+            onResumeLastTask={resumeLastTask}
+            onResumeTask={resumeTask}
           />
           <DiagnosticsPane isConnected={connectionState === "connected"} onCreateTask={createTask} />
         </aside>
