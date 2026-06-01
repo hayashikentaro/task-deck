@@ -1,5 +1,6 @@
 import express from "express";
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
@@ -34,6 +35,8 @@ const taskStorePath = path.join(dataRoot, "tasks.json");
 const presetStorePath = path.join(dataRoot, "presets.json");
 const sessionLabelStorePath = path.join(dataRoot, "session-labels.json");
 const logRoot = path.join(dataRoot, "logs");
+const attachmentRoot = path.join(dataRoot, "attachments");
+const pendingAttachmentRoot = path.join(attachmentRoot, "pending");
 const defaultConfigPath = path.join(repoRoot, "taskdeck.config.json");
 const localConfigPath = path.join(repoRoot, "taskdeck.local.json");
 const envConfigPath = process.env.TASKDECK_CONFIG ? path.resolve(process.env.TASKDECK_CONFIG) : "";
@@ -79,6 +82,12 @@ const inputPromptStabilizationMs = 750;
 const ptyActivityWindowMs = 3000;
 const maxPtyActivityFrames = 40;
 const quietAttentionMs = 5000;
+const imageAttachmentMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+const imageAttachmentExtensions = new Map([
+  ["image/png", ".png"],
+  ["image/jpeg", ".jpg"],
+  ["image/webp", ".webp"],
+]);
 const activePtys = new Map();
 let persistTasksQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
@@ -110,6 +119,46 @@ app.post("/api/diagnostics/containers/:containerName/start", async (request, res
 
 app.post("/api/validate-cwd", async (request, response) => {
   response.json(await validateCwd(String(request.body?.cwd || "")));
+});
+
+app.post("/api/attachments", express.raw({ type: Array.from(imageAttachmentMimeTypes), limit: "12mb" }), async (request, response) => {
+  try {
+    const mimeType = normalizeImageMimeType(request.headers["content-type"]);
+    if (!mimeType) {
+      response.status(415).json({ error: "Unsupported image type." });
+      return;
+    }
+
+    if (!Buffer.isBuffer(request.body) || request.body.length === 0) {
+      response.status(400).json({ error: "Attachment body is required." });
+      return;
+    }
+
+    const id = randomUUID();
+    const filename = sanitizeAttachmentFilename(decodeHeaderValue(request.headers["x-taskdeck-filename"]) || "image", mimeType);
+    const extension = imageAttachmentExtensions.get(mimeType) || path.extname(filename) || ".img";
+    const storedFilename = `${id}${extension}`;
+    const createdAt = new Date().toISOString();
+    const filePath = path.join(pendingAttachmentRoot, storedFilename);
+    const metadataPath = path.join(pendingAttachmentRoot, `${id}.json`);
+
+    await fs.mkdir(pendingAttachmentRoot, { recursive: true });
+    await fs.writeFile(filePath, request.body);
+    const attachment = {
+      id,
+      type: "image",
+      filename,
+      path: filePath,
+      mimeType,
+      size: request.body.length,
+      createdAt,
+    };
+    await fs.writeFile(metadataPath, `${JSON.stringify({ ...attachment, storedFilename }, null, 2)}\n`);
+
+    response.json({ attachment: { ...attachment, pending: true } });
+  } catch (error) {
+    response.status(500).json({ error: error.message });
+  }
 });
 
 app.get("/api/tasks", (_request, response) => {
@@ -362,6 +411,7 @@ wss.on("connection", (socket) => {
           agentSessionDetectedAt: String(message.agentSessionDetectedAt || "").trim(),
           agentSessionResumeCommand: String(message.agentSessionResumeCommand || "").trim(),
           initialInstruction: String(message.initialInstruction || "").trim(),
+          attachments: normalizePendingAttachmentRefs(message.attachments),
         },
         socket,
       );
@@ -466,6 +516,7 @@ async function startTask({
   agentSessionDetectedAt,
   agentSessionResumeCommand,
   initialInstruction,
+  attachments = [],
 }, socket) {
   if (!command) {
     send(socket, { type: "error", message: "Enter a command before starting a task." });
@@ -486,8 +537,7 @@ async function startTask({
     agentSessionResumeCommand,
   });
   const taskTitle = buildUniqueNewSessionTitle(title, sessionMode);
-
-  const task = markTaskRunning(createTask({
+  const baseTask = createTask({
     title: taskTitle,
     command,
     cwd: resolvedCwd,
@@ -499,7 +549,14 @@ async function startTask({
     initialInstruction,
     ...detectedAgentSession,
     ...explicitAgentSession,
-  }));
+  });
+  const finalizedAttachments = await finalizePendingAttachments(attachments, baseTask.id);
+  const launchInitialInstruction = appendAttachmentContext(initialInstruction, finalizedAttachments);
+
+  const task = markTaskRunning({
+    ...baseTask,
+    attachments: finalizedAttachments,
+  });
   tasks.set(task.id, task);
   logs.set(task.id, "");
   persistTasks();
@@ -545,11 +602,11 @@ async function startTask({
       broadcast({ type: "output", taskId: task.id, data });
     });
 
-    if (initialInstruction) {
+    if (launchInitialInstruction) {
       setTimeout(() => {
         const activePty = activePtys.get(task.id);
         if (activePty) {
-          writeOrQueuePtyInput(activePty, formatAgentInputForPty(initialInstruction), "initial-instruction");
+          writeOrQueuePtyInput(activePty, formatAgentInputForPty(launchInitialInstruction), "initial-instruction");
         }
       }, 350);
     }
@@ -703,6 +760,19 @@ function normalizeTerminalInput(input) {
   return String(input).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
+function appendAttachmentContext(initialInstruction, attachments) {
+  if (!attachments.length) {
+    return initialInstruction;
+  }
+
+  const attachmentBlock = [
+    "Attached images:",
+    ...attachments.map((attachment) => `- ${attachment.path}`),
+  ].join("\n");
+  const instruction = String(initialInstruction || "").trim();
+  return instruction ? `${instruction}\n\n${attachmentBlock}` : attachmentBlock;
+}
+
 function logInputDebug(taskId, data, source) {
   if (!inputDebugEnabled) {
     return;
@@ -747,7 +817,11 @@ async function buildCwdSuggestions() {
 }
 
 function normalizeStoredTaskAgentState(task) {
-  const normalizedTask = { ...task, agentState: task.agentState ?? inferAgentStateFromStatus(task) };
+  const normalizedTask = {
+    ...task,
+    agentState: task.agentState ?? inferAgentStateFromStatus(task),
+    attachments: normalizeTaskAttachmentsForServer(task.attachments),
+  };
   if (normalizedTask.agentSessionId && isCodexLikeTask(normalizedTask)) {
     const agentSessionResumeCommand =
       normalizedTask.agentSessionResumeCommand || buildCodexSessionResumeCommand(normalizedTask, normalizedTask.agentSessionId);
@@ -759,6 +833,121 @@ function normalizeStoredTaskAgentState(task) {
     return withDetectedResumeCommand(nextTask, agentSessionResumeCommand);
   }
   return normalizedTask;
+}
+
+function normalizePendingAttachmentRefs(attachments) {
+  if (!Array.isArray(attachments)) {
+    return [];
+  }
+
+  return attachments
+    .filter((attachment) => attachment && typeof attachment === "object")
+    .map((attachment) => ({
+      id: String(attachment.id || "").trim(),
+    }))
+    .filter((attachment) => attachment.id);
+}
+
+async function finalizePendingAttachments(pendingAttachments, taskId) {
+  const finalizedAttachments = [];
+  if (!pendingAttachments.length) {
+    return finalizedAttachments;
+  }
+
+  const taskAttachmentRoot = path.join(attachmentRoot, taskId);
+  await fs.mkdir(taskAttachmentRoot, { recursive: true });
+
+  for (const pendingAttachment of pendingAttachments) {
+    const id = String(pendingAttachment.id || "").trim();
+    if (!isSafeAttachmentId(id)) {
+      continue;
+    }
+
+    try {
+      const metadataPath = path.join(pendingAttachmentRoot, `${id}.json`);
+      const metadata = JSON.parse(await fs.readFile(metadataPath, "utf8"));
+      const mimeType = normalizeImageMimeType(metadata.mimeType);
+      if (!mimeType || metadata.type !== "image") {
+        continue;
+      }
+
+      const storedFilename = path.basename(String(metadata.storedFilename || ""));
+      const sourcePath = path.join(pendingAttachmentRoot, storedFilename);
+      const filename = sanitizeAttachmentFilename(metadata.filename || "image", mimeType);
+      const extension = imageAttachmentExtensions.get(mimeType) || path.extname(filename) || ".img";
+      const destinationFilename = `${id}${extension}`;
+      const destinationPath = path.join(taskAttachmentRoot, destinationFilename);
+
+      await fs.rename(sourcePath, destinationPath);
+      await fs.rm(metadataPath, { force: true });
+
+      finalizedAttachments.push({
+        id,
+        type: "image",
+        filename,
+        path: destinationPath,
+        mimeType,
+        size: Number.isFinite(Number(metadata.size)) ? Number(metadata.size) : 0,
+        createdAt: String(metadata.createdAt || new Date().toISOString()),
+      });
+    } catch (error) {
+      console.warn(`TaskDeck could not attach pending image ${id}: ${error.message}`);
+    }
+  }
+
+  return finalizedAttachments;
+}
+
+function normalizeTaskAttachmentsForServer(attachments) {
+  if (!Array.isArray(attachments)) {
+    return [];
+  }
+
+  return attachments
+    .filter((attachment) => attachment && typeof attachment === "object")
+    .map((attachment) => ({
+      id: String(attachment.id || ""),
+      type: attachment.type === "image" ? "image" : String(attachment.type || ""),
+      filename: String(attachment.filename || ""),
+      path: String(attachment.path || ""),
+      mimeType: String(attachment.mimeType || ""),
+      size: Number.isFinite(Number(attachment.size)) ? Number(attachment.size) : 0,
+      createdAt: String(attachment.createdAt || ""),
+    }))
+    .filter((attachment) => attachment.id && attachment.type && attachment.filename && attachment.path);
+}
+
+function normalizeImageMimeType(value) {
+  const mimeType = String(value || "").split(";")[0].trim().toLowerCase();
+  return imageAttachmentMimeTypes.has(mimeType) ? mimeType : "";
+}
+
+function decodeHeaderValue(value) {
+  if (!value) {
+    return "";
+  }
+
+  try {
+    return decodeURIComponent(String(value));
+  } catch {
+    return String(value);
+  }
+}
+
+function sanitizeAttachmentFilename(filename, mimeType) {
+  const fallbackExtension = imageAttachmentExtensions.get(mimeType) || ".img";
+  const rawBasename = path.basename(String(filename || "image")).trim();
+  const normalizedBasename = rawBasename
+    .replace(/[^\w .()-]/g, "_")
+    .replace(/\s+/g, " ")
+    .slice(0, 120);
+  const extension = imageAttachmentExtensions.get(mimeType) || path.extname(normalizedBasename) || fallbackExtension;
+  const nameWithoutExtension = path.basename(normalizedBasename, path.extname(normalizedBasename)).trim() || "image";
+  return `${nameWithoutExtension}${extension}`;
+}
+
+function isSafeAttachmentId(id) {
+  return /^[0-9a-f-]{36}$/i.test(id);
 }
 
 function detectInitialAgentSession(command, agentProfileId, agentLabel) {
@@ -1765,6 +1954,7 @@ async function clearTask(taskId) {
   tasks.delete(taskId);
   logs.delete(taskId);
   await deleteTaskLog(taskId);
+  await deleteTaskAttachments(taskId);
 }
 
 function stopActivePty(taskId) {
@@ -1794,6 +1984,7 @@ function broadcast(payload) {
 
 async function initializePersistence() {
   await fs.mkdir(logRoot, { recursive: true });
+  await fs.mkdir(pendingAttachmentRoot, { recursive: true });
 
   const [storedTasks, storedPresets, storedSessionLabels] = await Promise.all([
     readJsonArray(taskStorePath, "tasks"),
@@ -2311,6 +2502,14 @@ async function deleteTaskLog(taskId) {
     await fs.rm(logPathForTask(taskId), { force: true });
   } catch (error) {
     console.error(`TaskDeck could not delete log for ${taskId}: ${error.message}`);
+  }
+}
+
+async function deleteTaskAttachments(taskId) {
+  try {
+    await fs.rm(path.join(attachmentRoot, taskId), { force: true, recursive: true });
+  } catch (error) {
+    console.error(`TaskDeck could not delete attachments for ${taskId}: ${error.message}`);
   }
 }
 

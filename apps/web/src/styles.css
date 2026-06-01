@@ -99,6 +99,15 @@ select {
   padding-right: 36px;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 h1,
 h2,
 p {
@@ -331,10 +340,84 @@ dd {
 
 .instruction-field {
   min-width: 0;
+  display: grid;
+  gap: 7px;
 }
 
 .instruction-field input {
   height: 42px;
+}
+
+.instruction-input-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.add-context-button {
+  width: 40px;
+  height: 42px;
+  min-height: 42px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.add-context-button svg,
+.attachment-chip button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.attachment-chip-list {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.attachment-chip {
+  min-width: 0;
+  max-width: 100%;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  padding: 4px 6px 4px 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.attachment-chip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-chip button {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--text-muted);
+  display: grid;
+  place-items: center;
+}
+
+.attachment-error {
+  color: var(--status-failed);
+  font-size: 12px;
 }
 
 .cwd-helper {

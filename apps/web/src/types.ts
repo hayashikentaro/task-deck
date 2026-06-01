@@ -27,6 +27,20 @@ export type TaskRisk = {
   reasons: string[];
 };
 
+export type TaskAttachment = {
+  id: string;
+  type: "image";
+  filename: string;
+  path: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
+};
+
+export type PendingTaskAttachment = TaskAttachment & {
+  pending?: boolean;
+};
+
 export type Task = {
   id: string;
   title: string;
@@ -60,6 +74,7 @@ export type Task = {
   exitCode: number | null;
   signal: number | string | null;
   initialInstruction?: string;
+  attachments?: TaskAttachment[];
 };
 
 export type SavedCodexSession = {
@@ -98,6 +113,7 @@ export type CreateTaskInput = {
   agentSessionDetectedAt?: string;
   agentSessionResumeCommand?: string;
   initialInstruction?: string;
+  attachments?: PendingTaskAttachment[];
 };
 
 export type TaskPreset = CreateTaskInput;

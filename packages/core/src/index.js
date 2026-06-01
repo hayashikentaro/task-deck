@@ -63,6 +63,7 @@ export function createTask({
   agentSessionProvider = "",
   agentSessionDetectedAt = "",
   agentSessionResumeCommand = "",
+  attachments = [],
 }) {
   const now = new Date().toISOString();
   const normalizedCommand = command.trim();
@@ -100,6 +101,7 @@ export function createTask({
     exitCode: null,
     signal: null,
     initialInstruction,
+    attachments: normalizeTaskAttachments(attachments),
   };
 }
 
@@ -208,7 +210,27 @@ export function serializeTask(task) {
     exitCode: task.exitCode,
     signal: task.signal,
     initialInstruction: task.initialInstruction || "",
+    attachments: normalizeTaskAttachments(task.attachments),
   };
+}
+
+function normalizeTaskAttachments(attachments) {
+  if (!Array.isArray(attachments)) {
+    return [];
+  }
+
+  return attachments
+    .filter((attachment) => attachment && typeof attachment === "object")
+    .map((attachment) => ({
+      id: String(attachment.id || ""),
+      type: attachment.type === "image" ? "image" : String(attachment.type || ""),
+      filename: String(attachment.filename || ""),
+      path: String(attachment.path || ""),
+      mimeType: String(attachment.mimeType || ""),
+      size: Number.isFinite(Number(attachment.size)) ? Number(attachment.size) : 0,
+      createdAt: String(attachment.createdAt || ""),
+    }))
+    .filter((attachment) => attachment.id && attachment.type && attachment.filename && attachment.path);
 }
 
 export function assessCommandRisk(command) {

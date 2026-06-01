@@ -32,6 +32,7 @@ GET /api/context
 GET /api/diagnostics
 POST /api/diagnostics/containers/:containerName/start
 POST /api/validate-cwd
+POST /api/attachments
 GET /api/tasks
 DELETE /api/tasks
 GET /api/agent-sessions
@@ -52,6 +53,8 @@ DELETE /api/presets
 
 `POST /api/validate-cwd` accepts `{ "cwd": "apps/web" }` and returns whether the cwd resolves to an existing directory, its absolute path, and git-repository status. The task form uses it to validate cwd before starting a task.
 
+`POST /api/attachments` accepts raw `image/png`, `image/jpeg`, or `image/webp` bodies with `X-TaskDeck-Filename` and returns a pending image attachment. New Agent Session uses this for the `+` context button beside Initial instruction. Pending images are moved under the created task when the session starts, and their absolute paths are appended to the launched agent context.
+
 `GET /api/agent-sessions` returns saved Codex sessions derived from stored task metadata and Codex's container-side session JSONL storage under `/home/dev/.codex/sessions`. Sessions require a Codex provider, session id, and precise resume command, exclude obvious synthetic ids such as e2e/smoke/fake/test ids, and deduplicate by provider, agent profile, command environment, and session id. Container-side `/workspace` cwd values are mapped back to the host bind source when Docker mount information is available.
 
 `PATCH /api/tasks/:taskId/title` and `PATCH /api/agent-sessions/:sessionKey/label` update the TaskDeck display name used to identify a session. When a task has an external session id, the display name is stored against that session key so matching task cards and the saved-session dropdown show the same human-readable label. Tasks without a detected session id still update their own task title.
@@ -63,6 +66,9 @@ The server persists tasks and logs under `.taskdeck/`, which is intentionally ig
   tasks.json
   session-labels.json
   presets.json
+  attachments/
+    <taskId>/
+      <attachmentId>.png
   logs/
     <taskId>.log
 ```

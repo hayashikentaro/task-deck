@@ -278,6 +278,19 @@ export function TaskList({
                     {task.initialInstruction ? (
                       <Info label="Initial instruction" value={task.initialInstruction} wide />
                     ) : null}
+                    {task.attachments?.length ? (
+                      <>
+                        <SectionLabel label="Attachments" />
+                        {task.attachments.map((attachment) => (
+                          <Info
+                            key={attachment.id}
+                            label={attachment.filename}
+                            value={attachment.path}
+                            wide
+                          />
+                        ))}
+                      </>
+                    ) : null}
                     <div className="task-detail-item">
                       <dt>Diff</dt>
                       <dd>

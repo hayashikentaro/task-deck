@@ -1,24 +1,29 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { defaultAgentProfiles } from "../agentProfiles";
 import {
   applyCodexPermissionToCommand,
   buildCodexResumeCommandForCommand,
   type CodexPermissionLevel,
 } from "../codexPermissions";
-import type { AgentProfile, CreateTaskInput, SavedCodexSession, TaskDeckContext } from "../types";
+import type { AgentProfile, CreateTaskInput, PendingTaskAttachment, SavedCodexSession, TaskDeckContext } from "../types";
 
 type TaskCreateFormProps = {
   context: TaskDeckContext | null;
   disabled: boolean;
   savedCodexSessions: SavedCodexSession[];
-  onCreateTask: (input: CreateTaskInput) => void;
+  onCreateTask: (input: CreateTaskInput) => boolean;
   onRenameSavedSession: (sessionKey: string, label: string) => Promise<boolean>;
 };
 
 const defaultAgentProfileId = "codex";
 type SessionMode = "new" | "resume_last" | "saved_codex";
+type SelectedImageAttachment = {
+  id: string;
+  file: File;
+};
 
 export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreateTask, onRenameSavedSession }: TaskCreateFormProps) {
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState(defaultAgentProfileId);
   const [selectedSavedSessionKey, setSelectedSavedSessionKey] = useState("");
   const [sessionMode, setSessionMode] = useState<SessionMode>("new");
@@ -28,6 +33,9 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
   const [isEditingSessionLabel, setIsEditingSessionLabel] = useState(false);
   const [sessionLabelInput, setSessionLabelInput] = useState("");
   const [isRenamingSession, setIsRenamingSession] = useState(false);
+  const [selectedImages, setSelectedImages] = useState<SelectedImageAttachment[]>([]);
+  const [attachmentError, setAttachmentError] = useState("");
+  const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
 
   useEffect(() => {
     if (!cwd && context?.defaultCwd) {
@@ -58,7 +66,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
     codexPermissionLevel,
   );
   const command = launchCommand.command;
-  const canStart = !disabled && Boolean(cwd) && Boolean(command);
+  const canStart = !disabled && !isUploadingAttachments && Boolean(cwd) && Boolean(command);
 
   useEffect(() => {
     if (!agentProfiles.some((profile) => profile.id === selectedAgentId)) {
@@ -106,33 +114,71 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
     setSessionMode(value as SessionMode);
   };
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleImageSelection = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+
+    const supportedImages = files.filter((file) => isSupportedImage(file));
+    if (supportedImages.length !== files.length) {
+      setAttachmentError("PNG, JPEG, or WebP images only.");
+    } else {
+      setAttachmentError("");
+    }
+
+    setSelectedImages((current) => [
+      ...current,
+      ...supportedImages.map((file) => ({
+        id: crypto.randomUUID(),
+        file,
+      })),
+    ]);
+  };
+
+  const removeSelectedImage = (imageId: string) => {
+    setSelectedImages((current) => current.filter((image) => image.id !== imageId));
+  };
+
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     if (!canStart) {
       return;
     }
-    onCreateTask({
-      title: buildTaskTitle(
-        selectedAgent.label,
-        initialInstruction,
-        selectedSavedSession,
-      ),
-      command,
-      cwd,
-      agentProfileId: sessionMode === "saved_codex" ? selectedSavedSession?.agentProfileId || "codex" : selectedAgent.id,
-      agentLabel: sessionMode === "saved_codex" ? selectedSavedSession?.agentLabel || "Codex CLI" : selectedAgent.label,
-      agentPermissionLevel: selectedAgentIsCodex ? codexPermissionLevel : undefined,
-      sessionMode,
-      resumeCommand: launchCommand.resumeCommand || undefined,
-      agentSessionProvider: sessionMode === "saved_codex" ? selectedSavedSession?.provider : undefined,
-      agentSessionId: sessionMode === "saved_codex" ? selectedSavedSession?.sessionId : undefined,
-      agentSessionSource:
-        sessionMode === "saved_codex" ? selectedSavedSession?.source || "saved session picker" : undefined,
-      agentSessionDetectedAt:
-        sessionMode === "saved_codex" ? selectedSavedSession?.detectedAt || selectedSavedSession?.updatedAt : undefined,
-      agentSessionResumeCommand: sessionMode === "saved_codex" ? launchCommand.resumeCommand : undefined,
-      initialInstruction: initialInstruction.trim(),
-    });
+
+    try {
+      setIsUploadingAttachments(true);
+      setAttachmentError("");
+      const uploadedAttachments = await uploadSelectedImages(selectedImages);
+      const didStart = onCreateTask({
+        title: buildTaskTitle(
+          selectedAgent.label,
+          initialInstruction,
+          selectedSavedSession,
+        ),
+        command,
+        cwd,
+        agentProfileId: sessionMode === "saved_codex" ? selectedSavedSession?.agentProfileId || "codex" : selectedAgent.id,
+        agentLabel: sessionMode === "saved_codex" ? selectedSavedSession?.agentLabel || "Codex CLI" : selectedAgent.label,
+        agentPermissionLevel: selectedAgentIsCodex ? codexPermissionLevel : undefined,
+        sessionMode,
+        resumeCommand: launchCommand.resumeCommand || undefined,
+        agentSessionProvider: sessionMode === "saved_codex" ? selectedSavedSession?.provider : undefined,
+        agentSessionId: sessionMode === "saved_codex" ? selectedSavedSession?.sessionId : undefined,
+        agentSessionSource:
+          sessionMode === "saved_codex" ? selectedSavedSession?.source || "saved session picker" : undefined,
+        agentSessionDetectedAt:
+          sessionMode === "saved_codex" ? selectedSavedSession?.detectedAt || selectedSavedSession?.updatedAt : undefined,
+        agentSessionResumeCommand: sessionMode === "saved_codex" ? launchCommand.resumeCommand : undefined,
+        initialInstruction: initialInstruction.trim(),
+        attachments: uploadedAttachments,
+      });
+      if (didStart) {
+        setSelectedImages([]);
+      }
+    } catch (error) {
+      setAttachmentError(error instanceof Error ? error.message : "Unable to attach images.");
+    } finally {
+      setIsUploadingAttachments(false);
+    }
   };
 
   const submitSessionLabel = async (event: FormEvent) => {
@@ -273,20 +319,87 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
             ) : null}
           </div>
         ) : null}
-        <label className="instruction-field">
+        <div className="instruction-field">
           <span>Initial instruction</span>
-          <input
-            placeholder="Describe the coding task for the agent..."
-            value={initialInstruction}
-            onChange={(event) => setInitialInstruction(event.target.value)}
-          />
-        </label>
+          <div className="instruction-input-row">
+            <button
+              aria-label="Add context"
+              className="add-context-button"
+              onClick={() => imageInputRef.current?.click()}
+              title="Add context"
+              type="button"
+            >
+              <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+                <path d="M8 3v10M3 8h10" />
+              </svg>
+            </button>
+            <input
+              placeholder="Describe the coding task for the agent..."
+              value={initialInstruction}
+              onChange={(event) => setInitialInstruction(event.target.value)}
+            />
+            <input
+              ref={imageInputRef}
+              accept="image/png,image/jpeg,image/webp"
+              className="visually-hidden"
+              multiple
+              onChange={handleImageSelection}
+              type="file"
+            />
+          </div>
+          {selectedImages.length > 0 ? (
+            <div className="attachment-chip-list" aria-label="Selected image attachments">
+              {selectedImages.map((image) => (
+                <span className="attachment-chip" key={image.id}>
+                  <span>{image.file.name}</span>
+                  <button
+                    aria-label={`Remove ${image.file.name}`}
+                    onClick={() => removeSelectedImage(image.id)}
+                    title="Remove attachment"
+                    type="button"
+                  >
+                    <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+                      <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
+                    </svg>
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {attachmentError ? <small className="attachment-error">{attachmentError}</small> : null}
+        </div>
         <button disabled={!canStart} type="submit">
-          Start
+          {isUploadingAttachments ? "Attaching..." : "Start"}
         </button>
       </form>
     </section>
   );
+}
+
+async function uploadSelectedImages(images: SelectedImageAttachment[]) {
+  const uploadedAttachments: PendingTaskAttachment[] = [];
+
+  for (const image of images) {
+    const response = await fetch("/api/attachments", {
+      method: "POST",
+      headers: {
+        "Content-Type": image.file.type,
+        "X-TaskDeck-Filename": encodeURIComponent(image.file.name),
+      },
+      body: image.file,
+    });
+    const payload = (await response.json()) as { attachment?: PendingTaskAttachment; error?: string };
+    if (!response.ok || !payload.attachment) {
+      throw new Error(payload.error || `Unable to upload ${image.file.name}.`);
+    }
+    uploadedAttachments.push(payload.attachment);
+  }
+
+  return uploadedAttachments;
+}
+
+function isSupportedImage(file: File) {
+  return ["image/png", "image/jpeg", "image/webp"].includes(file.type);
 }
 
 function findDefaultAgentProfile(agentProfiles: AgentProfile[]) {
