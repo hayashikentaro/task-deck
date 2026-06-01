@@ -43,7 +43,7 @@ export function TaskList({
   const [editingTitle, setEditingTitle] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
   const runningTaskIdSet = useMemo(() => new Set(runningTaskIds), [runningTaskIds]);
-  const visibleTasks = useMemo(() => tasks.filter((task) => matchesFilter(task, filter)), [filter, tasks]);
+  const visibleTasks = useMemo(() => sortTasksBySupervision(tasks.filter((task) => matchesFilter(task, filter))), [filter, tasks]);
 
   const toggleExpanded = (taskId: string) => {
     setExpandedTaskIds((current) => {
@@ -408,6 +408,17 @@ function matchesFilter(task: Task, filter: TaskFilter) {
   return true;
 }
 
+function sortTasksBySupervision(tasks: Task[]) {
+  return [...tasks].sort((left, right) => {
+    const leftNeedsYou = supervisionBucket(left) === "needs_you";
+    const rightNeedsYou = supervisionBucket(right) === "needs_you";
+    if (leftNeedsYou !== rightNeedsYou) {
+      return leftNeedsYou ? -1 : 1;
+    }
+    return timestampForSort(right.updatedAt) - timestampForSort(left.updatedAt);
+  });
+}
+
 function filterLabel(filter: TaskFilter) {
   if (filter === "needs_you") return "Needs you";
   if (filter === "not_now") return "Not now";
@@ -549,4 +560,9 @@ function formatDate(value: string | null) {
     return "-";
   }
   return new Date(value).toLocaleTimeString();
+}
+
+function timestampForSort(value: string | null | undefined) {
+  const timestamp = Date.parse(String(value || ""));
+  return Number.isFinite(timestamp) ? timestamp : 0;
 }
