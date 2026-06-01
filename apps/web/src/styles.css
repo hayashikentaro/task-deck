@@ -348,13 +348,6 @@ dd {
   height: 42px;
 }
 
-.instruction-input-row {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
-  gap: 8px;
-}
-
 .add-context-button {
   width: 40px;
   height: 42px;
@@ -1148,7 +1141,8 @@ dd {
   min-width: 0;
   width: 100%;
   max-width: 100%;
-  display: block;
+  display: grid;
+  gap: 8px;
   grid-row: 4;
   overflow: hidden;
   padding: 10px;
@@ -1159,7 +1153,7 @@ dd {
 .input-composer-inner {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
   gap: 8px;
   align-items: end;
 }
@@ -1175,9 +1169,21 @@ dd {
   overflow-y: auto;
 }
 
-.input-composer button {
+.input-composer-inner > button {
   height: 42px;
   padding: 0 14px;
+}
+
+.input-composer-inner > .input-attach-button {
+  padding: 0;
+}
+
+.input-attachment-chip-list {
+  padding-right: 64px;
+}
+
+.input-attachment-error {
+  display: block;
 }
 
 @media (max-width: 1120px) {
@@ -1240,7 +1246,7 @@ dd {
   }
 
   .input-composer-inner {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
   }
 }
 

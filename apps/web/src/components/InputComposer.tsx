@@ -1,5 +1,5 @@
-import { FormEvent, KeyboardEvent, useLayoutEffect, useRef, useState } from "react";
-import type { Task } from "../types";
+import { ChangeEvent, FormEvent, KeyboardEvent, useLayoutEffect, useRef, useState } from "react";
+import type { PendingTaskAttachment, Task } from "../types";
 
 type InputComposerProps = {
   isConnected: boolean;
@@ -11,12 +11,22 @@ const maxComposerHeight = 140;
 const terminalEnter = "\r";
 const bracketedPasteStart = "\x1b[200~";
 const bracketedPasteEnd = "\x1b[201~";
+type SelectedImageAttachment = {
+  id: string;
+  file: File;
+};
 
 export function InputComposer({ isConnected, task, send }: InputComposerProps) {
   const [value, setValue] = useState("");
   const [isComposing, setIsComposing] = useState(false);
+  const [selectedImages, setSelectedImages] = useState<SelectedImageAttachment[]>([]);
+  const [attachmentError, setAttachmentError] = useState("");
+  const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const canSend = Boolean(task && task.status === "running" && isConnected);
+  const hasComposerContent = Boolean(value || selectedImages.length);
+  const canSubmit = canSend && hasComposerContent && !isUploadingAttachments;
   const modeText = getComposerMode(task, isConnected);
 
   useLayoutEffect(() => {
@@ -41,13 +51,49 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
     sendValue();
   };
 
-  const sendValue = () => {
-    if (!value) {
+  const handleImageSelection = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+
+    const supportedImages = files.filter((file) => isSupportedImage(file));
+    if (supportedImages.length !== files.length) {
+      setAttachmentError("PNG, JPEG, or WebP images only.");
+    } else {
+      setAttachmentError("");
+    }
+
+    setSelectedImages((current) => [
+      ...current,
+      ...supportedImages.map((file) => ({
+        id: crypto.randomUUID(),
+        file,
+      })),
+    ]);
+  };
+
+  const removeSelectedImage = (imageId: string) => {
+    setSelectedImages((current) => current.filter((image) => image.id !== imageId));
+  };
+
+  const sendValue = async () => {
+    if (!hasComposerContent || isUploadingAttachments) {
       return;
     }
-    const didSend = sendAgentInput(value);
-    if (didSend) {
-      setValue("");
+
+    try {
+      setIsUploadingAttachments(true);
+      setAttachmentError("");
+      const uploadedAttachments = await uploadSelectedImages(selectedImages);
+      const input = appendAttachmentContext(value, uploadedAttachments);
+      const didSend = sendAgentInput(input);
+      if (didSend) {
+        setValue("");
+        setSelectedImages([]);
+      }
+    } catch (error) {
+      setAttachmentError(error instanceof Error ? error.message : "Unable to attach images.");
+    } finally {
+      setIsUploadingAttachments(false);
     }
   };
 
@@ -61,7 +107,47 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
 
   return (
     <form className="input-composer" onSubmit={handleSubmit}>
+      {selectedImages.length > 0 ? (
+        <div className="attachment-chip-list input-attachment-chip-list" aria-label="Selected image attachments">
+          {selectedImages.map((image) => (
+            <span className="attachment-chip" key={image.id}>
+              <span>{image.file.name}</span>
+              <button
+                aria-label={`Remove ${image.file.name}`}
+                onClick={() => removeSelectedImage(image.id)}
+                title="Remove attachment"
+                type="button"
+              >
+                <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+                  <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
+                </svg>
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {attachmentError ? <small className="attachment-error input-attachment-error">{attachmentError}</small> : null}
       <div className="input-composer-inner">
+        <button
+          aria-label="Attach image"
+          className="add-context-button input-attach-button"
+          disabled={!canSend || isUploadingAttachments}
+          onClick={() => imageInputRef.current?.click()}
+          title="Attach image"
+          type="button"
+        >
+          <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+            <path d="M8 3v10M3 8h10" />
+          </svg>
+        </button>
+        <input
+          ref={imageInputRef}
+          accept="image/png,image/jpeg,image/webp"
+          className="visually-hidden"
+          multiple
+          onChange={handleImageSelection}
+          type="file"
+        />
         <textarea
           ref={textareaRef}
           autoCapitalize="off"
@@ -77,12 +163,51 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
           spellCheck={false}
           value={value}
         />
-        <button disabled={!canSend || !value} type="submit">
-          Send
+        <button disabled={!canSubmit} type="submit">
+          {isUploadingAttachments ? "Sending..." : "Send"}
         </button>
       </div>
     </form>
   );
+}
+
+async function uploadSelectedImages(images: SelectedImageAttachment[]) {
+  const uploadedAttachments: PendingTaskAttachment[] = [];
+
+  for (const image of images) {
+    const response = await fetch("/api/attachments", {
+      method: "POST",
+      headers: {
+        "Content-Type": image.file.type,
+        "X-TaskDeck-Filename": encodeURIComponent(image.file.name),
+      },
+      body: image.file,
+    });
+    const payload = (await response.json()) as { attachment?: PendingTaskAttachment; error?: string };
+    if (!response.ok || !payload.attachment) {
+      throw new Error(payload.error || `Unable to upload ${image.file.name}.`);
+    }
+    uploadedAttachments.push(payload.attachment);
+  }
+
+  return uploadedAttachments;
+}
+
+function isSupportedImage(file: File) {
+  return ["image/png", "image/jpeg", "image/webp"].includes(file.type);
+}
+
+function appendAttachmentContext(input: string, attachments: PendingTaskAttachment[]) {
+  if (!attachments.length) {
+    return input;
+  }
+
+  const attachmentBlock = [
+    "Attached images:",
+    ...attachments.map((attachment) => `- ${attachment.path}`),
+  ].join("\n");
+  const instruction = input.trim();
+  return instruction ? `${instruction}\n\n${attachmentBlock}` : attachmentBlock;
 }
 
 function shouldSendFromEnterKey(event: KeyboardEvent<HTMLTextAreaElement>, isComposing: boolean) {
