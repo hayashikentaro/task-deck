@@ -1,8 +1,8 @@
 # TaskDeck
 
-![Attached TaskDeck screenshot](docs/assets/readme-attached-image.png)
-
 TaskDeck is a supervision UI for AI agent tasks. This MVP uses PTYs as a compatibility layer: a local React UI and Node server can start container-backed agent sessions, stream output to xterm.js in the browser, accept keyboard input, and show task/attention state.
+
+![Attached TaskDeck screenshot](docs/assets/readme-attached-image.png)
 
 ## Getting Started
 
