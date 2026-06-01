@@ -30,6 +30,7 @@ export type TaskRisk = {
 export type Task = {
   id: string;
   title: string;
+  sessionLabel?: string;
   command: string;
   cwd: string;
   agentProfileId?: string;

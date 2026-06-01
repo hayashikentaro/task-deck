@@ -276,6 +276,50 @@ dd {
   white-space: nowrap;
 }
 
+.saved-session-preview .session-label-cell {
+  overflow: visible;
+  white-space: normal;
+}
+
+.session-label-display {
+  min-width: 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.session-label-display span {
+  min-width: 0;
+  overflow: hidden;
+  text-transform: none;
+  text-overflow: ellipsis;
+}
+
+.session-label-display button,
+.session-label-edit-form button {
+  width: auto;
+  padding: 4px 7px;
+  font-size: 11px;
+}
+
+.session-label-edit-form {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.session-label-edit-form input {
+  height: 30px;
+  padding: 5px 7px;
+  font-size: 12px;
+}
+
+.session-label-edit-form div {
+  display: flex;
+  grid-template-columns: none;
+  gap: 6px;
+}
+
 .saved-session-empty {
   color: var(--status-muted);
   font-size: 12px;
@@ -582,6 +626,42 @@ dd {
   color: var(--text-muted);
   display: grid;
   place-items: center;
+}
+
+.task-edit-title-button {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  display: grid;
+  place-items: center;
+}
+
+.task-title-edit-form {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+}
+
+.task-title-edit-form input {
+  height: 34px;
+  padding: 6px 8px;
+  font-weight: 700;
+}
+
+.task-title-edit-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.task-title-edit-actions button {
+  padding: 6px 8px;
+  font-size: 12px;
 }
 
 .task-row-heading {
@@ -1243,11 +1323,13 @@ dd {
   font-size: 12px;
 }
 
-.task-card-actions .task-clear-button {
+.task-card-actions .task-clear-button,
+.task-card-actions .task-edit-title-button {
   padding: 0;
 }
 
 .task-clear-button:hover:not(:disabled),
+.task-edit-title-button:hover:not(:disabled),
 .task-expand-button:hover:not(:disabled) {
   border-color: transparent;
   background: transparent;
@@ -1269,6 +1351,7 @@ dd {
 }
 
 .task-clear-icon,
+.task-edit-title-icon,
 .task-expand-icon {
   width: 16px;
   height: 16px;

@@ -12,18 +12,22 @@ type TaskCreateFormProps = {
   disabled: boolean;
   savedCodexSessions: SavedCodexSession[];
   onCreateTask: (input: CreateTaskInput) => void;
+  onRenameSavedSession: (sessionKey: string, label: string) => Promise<boolean>;
 };
 
 const defaultAgentProfileId = "codex";
 type SessionMode = "new" | "resume_last" | "saved_codex";
 
-export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreateTask }: TaskCreateFormProps) {
+export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreateTask, onRenameSavedSession }: TaskCreateFormProps) {
   const [selectedAgentId, setSelectedAgentId] = useState(defaultAgentProfileId);
   const [selectedSavedSessionKey, setSelectedSavedSessionKey] = useState("");
   const [sessionMode, setSessionMode] = useState<SessionMode>("new");
   const [codexPermissionLevel, setCodexPermissionLevel] = useState<CodexPermissionLevel>("full_access");
   const [initialInstruction, setInitialInstruction] = useState("");
   const [cwd, setCwd] = useState("");
+  const [isEditingSessionLabel, setIsEditingSessionLabel] = useState(false);
+  const [sessionLabelInput, setSessionLabelInput] = useState("");
+  const [isRenamingSession, setIsRenamingSession] = useState(false);
 
   useEffect(() => {
     if (!cwd && context?.defaultCwd) {
@@ -88,6 +92,11 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
     }
   }, [matchingSavedCodexSessions, selectedAgentIsCodex, selectedSavedSessionKey, sessionMode]);
 
+  useEffect(() => {
+    setIsEditingSessionLabel(false);
+    setSessionLabelInput(selectedSavedSession?.title || "");
+  }, [selectedSavedSession?.key, selectedSavedSession?.title]);
+
   const handleSessionChange = (value: string) => {
     if (value.startsWith("saved:")) {
       setSessionMode("saved_codex");
@@ -124,6 +133,20 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
       agentSessionResumeCommand: sessionMode === "saved_codex" ? launchCommand.resumeCommand : undefined,
       initialInstruction: initialInstruction.trim(),
     });
+  };
+
+  const submitSessionLabel = async (event: FormEvent) => {
+    event.preventDefault();
+    const nextLabel = sessionLabelInput.trim();
+    if (!selectedSavedSession || !nextLabel || isRenamingSession) {
+      return;
+    }
+    setIsRenamingSession(true);
+    const didRename = await onRenameSavedSession(selectedSavedSession.key, nextLabel);
+    setIsRenamingSession(false);
+    if (didRename) {
+      setIsEditingSessionLabel(false);
+    }
   };
 
   return (
@@ -187,9 +210,49 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
                   <dd>{selectedSavedSession.sessionId}</dd>
                 </div>
                 <div>
-                  <dt>Source</dt>
-                  <dd>{selectedSavedSession.title}</dd>
+                  <dt>TaskDeck label</dt>
+                  <dd className="session-label-cell">
+                    {isEditingSessionLabel ? (
+                      <form className="session-label-edit-form" onSubmit={submitSessionLabel}>
+                        <input
+                          aria-label="TaskDeck display name"
+                          autoFocus
+                          value={sessionLabelInput}
+                          onChange={(event) => setSessionLabelInput(event.target.value)}
+                        />
+                        <div>
+                          <button disabled={isRenamingSession || !sessionLabelInput.trim()} type="submit">
+                            Save
+                          </button>
+                          <button
+                            data-priority="secondary"
+                            disabled={isRenamingSession}
+                            onClick={() => {
+                              setSessionLabelInput(selectedSavedSession.title);
+                              setIsEditingSessionLabel(false);
+                            }}
+                            type="button"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <span className="session-label-display">
+                        <span>{selectedSavedSession.title}</span>
+                        <button onClick={() => setIsEditingSessionLabel(true)} type="button">
+                          Edit
+                        </button>
+                      </span>
+                    )}
+                  </dd>
                 </div>
+                {selectedSavedSession.source ? (
+                  <div>
+                    <dt>Source</dt>
+                    <dd>{selectedSavedSession.source}</dd>
+                  </div>
+                ) : null}
                 <div>
                   <dt>Detected</dt>
                   <dd>{selectedSavedSession.detectedAt || selectedSavedSession.updatedAt}</dd>

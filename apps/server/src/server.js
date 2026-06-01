@@ -32,6 +32,7 @@ const webDist = path.join(webRoot, "dist");
 const dataRoot = path.join(repoRoot, ".taskdeck");
 const taskStorePath = path.join(dataRoot, "tasks.json");
 const presetStorePath = path.join(dataRoot, "presets.json");
+const sessionLabelStorePath = path.join(dataRoot, "session-labels.json");
 const logRoot = path.join(dataRoot, "logs");
 const defaultConfigPath = path.join(repoRoot, "taskdeck.config.json");
 const localConfigPath = path.join(repoRoot, "taskdeck.local.json");
@@ -67,6 +68,7 @@ const inputDebugEnabled = process.env.TASKDECK_INPUT_DEBUG === "1";
 const clients = new Set();
 const tasks = new Map();
 const logs = new Map();
+const sessionLabels = new Map();
 let presets = [];
 const maxLogLength = 250_000;
 const terminalEnter = "\r";
@@ -80,6 +82,7 @@ const quietAttentionMs = 5000;
 const activePtys = new Map();
 let persistTasksQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
+let persistSessionLabelsQueue = Promise.resolve();
 
 app.use(express.json());
 
@@ -119,6 +122,57 @@ app.get("/api/tasks", (_request, response) => {
 
 app.get("/api/agent-sessions", async (_request, response) => {
   response.json({
+    sessions: await listSavedCodexSessions(),
+  });
+});
+
+app.patch("/api/agent-sessions/:sessionKey/label", async (request, response) => {
+  const sessionKey = String(request.params.sessionKey || "").trim();
+  const label = String(request.body?.label || "").trim();
+
+  if (!label) {
+    response.status(400).json({ error: "TaskDeck display name is required." });
+    return;
+  }
+
+  const sessions = await listSavedCodexSessions();
+  if (!sessions.some((session) => session.key === sessionKey)) {
+    response.status(404).json({ error: "Saved session not found." });
+    return;
+  }
+
+  await renameSessionLabel(sessionKey, label);
+  broadcastTasks();
+
+  response.json({
+    ok: true,
+    sessions: await listSavedCodexSessions(),
+    tasks: listTasks(),
+  });
+});
+
+app.patch("/api/tasks/:taskId/title", async (request, response) => {
+  const { taskId } = request.params;
+  const task = tasks.get(taskId);
+  const title = String(request.body?.title || "").trim();
+
+  if (!task) {
+    response.status(404).json({ error: "Task not found." });
+    return;
+  }
+
+  if (!title) {
+    response.status(400).json({ error: "TaskDeck display name is required." });
+    return;
+  }
+
+  await renameTaskDeckDisplayName(task, title);
+  broadcastTasks();
+
+  response.json({
+    ok: true,
+    task: serializeTaskForClient(tasks.get(taskId)),
+    tasks: listTasks(),
     sessions: await listSavedCodexSessions(),
   });
 });
@@ -186,7 +240,7 @@ app.get("/api/tasks/:taskId", (request, response) => {
     return;
   }
 
-  response.json({ task: serializeTask(task) });
+  response.json({ task: serializeTaskForClient(task) });
 });
 
 app.get("/api/tasks/:taskId/logs", (request, response) => {
@@ -1349,7 +1403,18 @@ function setTask(task) {
 }
 
 function listTasks() {
-  return Array.from(tasks.values()).map(serializeTask).reverse();
+  return Array.from(tasks.values()).map(serializeTaskForClient).reverse();
+}
+
+function serializeTaskForClient(task) {
+  if (!task) {
+    return null;
+  }
+  const serializedTask = serializeTask(task);
+  return {
+    ...serializedTask,
+    sessionLabel: taskSessionLabel(task),
+  };
 }
 
 async function listSavedCodexSessions() {
@@ -1471,10 +1536,11 @@ function codexStorageSessionFromLine(line, profile, mounts) {
   const detectedAt = String(event?.payload?.timestamp || timestampFromCodexSessionPath(filePath) || "");
   const containerCwd = String(event?.payload?.cwd || "/workspace");
   const cwd = mapContainerPathToHostPath(containerCwd, mounts) || repoRoot;
-  const title = titleFromCodexStorageUserEvent(userJsonText) || "Codex storage session";
+  const key = `${provider}:${agentProfileId}:${commandEnvironment}:${sessionId}`;
+  const title = sessionLabelForKey(key) || titleFromCodexStorageUserEvent(userJsonText) || "Codex storage session";
 
   return {
-    key: `${provider}:${agentProfileId}:${commandEnvironment}:${sessionId}`,
+    key,
     provider,
     sessionId,
     source: "codex storage",
@@ -1549,13 +1615,14 @@ function savedCodexSessionFromTask(task) {
   const agentProfileId = String(task.agentProfileId || "codex");
   const agentLabel = String(task.agentLabel || "Codex CLI");
   const commandEnvironment = codexCommandEnvironment(task);
+  const key = `${provider}:${agentProfileId}:${commandEnvironment}:${sessionId}`;
   return {
-    key: `${provider}:${agentProfileId}:${commandEnvironment}:${sessionId}`,
+    key,
     provider,
     sessionId,
     source: String(task.agentSessionSource || ""),
     resumeCommand,
-    title: normalizeSavedSessionTitle(task.title),
+    title: sessionLabelForKey(key) || normalizeSavedSessionTitle(task.title),
     cwd: String(task.cwd || repoRoot),
     agentProfileId,
     agentLabel,
@@ -1599,6 +1666,75 @@ function appendLog(taskId, data) {
   const nextLog = `${logs.get(taskId) || ""}${data}`;
   logs.set(taskId, nextLog.slice(-maxLogLength));
   appendTaskLog(taskId, data);
+}
+
+async function renameTaskDeckDisplayName(task, label) {
+  const now = new Date().toISOString();
+  const sessionLabelKey = taskSessionLabelKey(task);
+
+  if (sessionLabelKey) {
+    setSessionLabel(sessionLabelKey, label, now);
+    for (const candidate of tasks.values()) {
+      if (taskSessionLabelKey(candidate) === sessionLabelKey) {
+        tasks.set(candidate.id, {
+          ...candidate,
+          title: label,
+          updatedAt: now,
+        });
+      }
+    }
+    await Promise.all([persistTasks(), persistSessionLabels()]);
+    return;
+  }
+
+  tasks.set(task.id, {
+    ...task,
+    title: label,
+    updatedAt: now,
+  });
+  await persistTasks();
+}
+
+async function renameSessionLabel(sessionLabelKey, label) {
+  const now = new Date().toISOString();
+  setSessionLabel(sessionLabelKey, label, now);
+  for (const task of tasks.values()) {
+    if (taskSessionLabelKey(task) === sessionLabelKey) {
+      tasks.set(task.id, {
+        ...task,
+        title: label,
+        updatedAt: now,
+      });
+    }
+  }
+  await Promise.all([persistTasks(), persistSessionLabels()]);
+}
+
+function setSessionLabel(sessionLabelKey, label, updatedAt) {
+  sessionLabels.set(sessionLabelKey, { label, updatedAt });
+}
+
+function taskSessionLabel(task) {
+  const sessionLabelKey = taskSessionLabelKey(task);
+  if (!sessionLabelKey) {
+    return "";
+  }
+  return String(sessionLabels.get(sessionLabelKey)?.label || "");
+}
+
+function taskSessionLabelKey(task) {
+  const provider = String(task.agentSessionProvider || "").trim();
+  const sessionId = String(task.agentSessionId || "").trim();
+  if (!provider || !sessionId) {
+    return "";
+  }
+  const agentProfileId = String(task.agentProfileId || provider);
+  const commandEnvironment = codexCommandEnvironment(task);
+  return `${provider}:${agentProfileId}:${commandEnvironment}:${sessionId}`;
+}
+
+function sessionLabelForKey(sessionKey) {
+  return String(sessionLabels.get(sessionKey)?.label || "").trim();
 }
 
 function broadcastTasks() {
@@ -1659,10 +1795,21 @@ function broadcast(payload) {
 async function initializePersistence() {
   await fs.mkdir(logRoot, { recursive: true });
 
-  const [storedTasks, storedPresets] = await Promise.all([
+  const [storedTasks, storedPresets, storedSessionLabels] = await Promise.all([
     readJsonArray(taskStorePath, "tasks"),
     readJsonArray(presetStorePath, "presets"),
+    readJsonObject(sessionLabelStorePath, "session labels"),
   ]);
+
+  for (const [key, value] of Object.entries(storedSessionLabels)) {
+    const label = String(value?.label || "").trim();
+    if (label) {
+      sessionLabels.set(key, {
+        label,
+        updatedAt: String(value?.updatedAt || ""),
+      });
+    }
+  }
 
   presets = sanitizePresets(storedPresets);
   if (presets.length !== storedPresets.length) {
@@ -1707,6 +1854,23 @@ async function readJsonArray(filePath, label) {
   }
 
   return [];
+}
+
+async function readJsonObject(filePath, label) {
+  try {
+    const rawContents = await fs.readFile(filePath, "utf8");
+    const parsed = JSON.parse(rawContents);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed;
+    }
+    console.warn(`TaskDeck ignored ${filePath} because it did not contain a ${label} object.`);
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      console.warn(`TaskDeck could not read ${filePath}: ${error.message}`);
+    }
+  }
+
+  return {};
 }
 
 async function loadAgentProfiles() {
@@ -2024,6 +2188,31 @@ function persistTasks() {
     });
 
   return persistTasksQueue;
+}
+
+function persistSessionLabels() {
+  const serializedSessionLabels = Object.fromEntries(
+    Array.from(sessionLabels.entries()).map(([key, value]) => [
+      key,
+      {
+        label: String(value?.label || ""),
+        updatedAt: String(value?.updatedAt || ""),
+      },
+    ]),
+  );
+
+  persistSessionLabelsQueue = persistSessionLabelsQueue
+    .then(async () => {
+      await fs.mkdir(dataRoot, { recursive: true });
+      const tempPath = `${sessionLabelStorePath}.tmp`;
+      await fs.writeFile(tempPath, `${JSON.stringify(serializedSessionLabels, null, 2)}\n`);
+      await fs.rename(tempPath, sessionLabelStorePath);
+    })
+    .catch((error) => {
+      console.error(`TaskDeck could not persist session labels: ${error.message}`);
+    });
+
+  return persistSessionLabelsQueue;
 }
 
 function savePreset(taskSpec) {

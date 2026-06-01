@@ -171,6 +171,58 @@ export function App() {
     return didSend;
   };
 
+  const renameTask = async (taskId: string, title: string) => {
+    try {
+      const response = await fetch(`/api/tasks/${taskId}/title`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+      const payload = (await response.json()) as { error?: string; tasks?: Task[]; sessions?: SavedCodexSession[] };
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to update TaskDeck display name.");
+      }
+      if (payload.tasks) {
+        setTasks(payload.tasks);
+      }
+      if (payload.sessions) {
+        setSavedCodexSessions(payload.sessions);
+      } else {
+        loadSavedCodexSessions();
+      }
+      setTaskActionError("");
+      return true;
+    } catch (error) {
+      setTaskActionError(error instanceof Error ? error.message : "Unable to update TaskDeck display name.");
+      return false;
+    }
+  };
+
+  const renameSavedSession = async (sessionKey: string, label: string) => {
+    try {
+      const response = await fetch(`/api/agent-sessions/${encodeURIComponent(sessionKey)}/label`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label }),
+      });
+      const payload = (await response.json()) as { error?: string; tasks?: Task[]; sessions?: SavedCodexSession[] };
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to update TaskDeck display name.");
+      }
+      if (payload.tasks) {
+        setTasks(payload.tasks);
+      }
+      if (payload.sessions) {
+        setSavedCodexSessions(payload.sessions);
+      }
+      setTaskActionError("");
+      return true;
+    } catch (error) {
+      setTaskActionError(error instanceof Error ? error.message : "Unable to update TaskDeck display name.");
+      return false;
+    }
+  };
+
   const interruptTask = () => {
     if (selectedTask) {
       send({ type: "interrupt", taskId: selectedTask.id });
@@ -182,7 +234,7 @@ export function App() {
       return;
     }
     const didStart = createTask({
-      title: selectedTask.title,
+      title: taskDisplayName(selectedTask),
       command: selectedTask.command,
       cwd: selectedTask.cwd,
       agentProfileId: selectedTask.agentProfileId,
@@ -219,7 +271,7 @@ export function App() {
     }
     setPendingResumeKeys((current) => [...current, resumeKey]);
     const didStart = createTask({
-      title: sessionMode === "resume_last" ? `Resume last: ${task.title}` : task.title,
+      title: sessionMode === "resume_last" ? `Resume last: ${taskDisplayName(task)}` : taskDisplayName(task),
       command: resumeCommand,
       cwd: task.cwd,
       agentProfileId: task.agentProfileId,
@@ -289,6 +341,7 @@ export function App() {
           onRerunTask={rerunTask}
           onResumeLastTask={resumeLastTask}
           onResumeTask={resumeTask}
+          onRenameTask={renameTask}
           pendingResumeKeys={pendingResumeKeys}
           onSelectTask={setSelectedTaskId}
         />
@@ -304,6 +357,7 @@ export function App() {
             disabled={connectionState !== "connected"}
             savedCodexSessions={savedCodexSessions}
             onCreateTask={createTask}
+            onRenameSavedSession={renameSavedSession}
           />
           <DiagnosticsPane isConnected={connectionState === "connected"} onCreateTask={createTask} />
         </aside>
@@ -324,6 +378,10 @@ function isCodexTask(task: Task) {
 function buildCodexResumeLastCommandForTask(task: Task) {
   const command = String(task.command || task.resumeCommand || task.agentSessionResumeCommand || "");
   return buildCodexResumeCommandForCommand(command, task.agentPermissionLevel, "--last");
+}
+
+function taskDisplayName(task: Task) {
+  return String(task.sessionLabel || task.title || "").trim() || "Untitled task";
 }
 
 function getRunningTaskIdsFromMessage(message: { runningTaskId?: string | null; runningTaskIds?: string[] }) {

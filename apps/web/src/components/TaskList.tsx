@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { buildCodexResumeCommandForCommand } from "../codexPermissions";
 import type { AgentState, AttentionState, Task } from "../types";
 
@@ -15,6 +15,7 @@ type TaskListProps = {
   onRerunTask: () => void;
   onResumeLastTask: (task: Task) => void;
   onResumeTask: (task: Task) => void;
+  onRenameTask: (taskId: string, title: string) => Promise<boolean>;
   pendingResumeKeys: string[];
   onSelectTask: (taskId: string) => void;
 };
@@ -30,6 +31,7 @@ export function TaskList({
   onRerunTask,
   onResumeLastTask,
   onResumeTask,
+  onRenameTask,
   pendingResumeKeys,
   onSelectTask,
 }: TaskListProps) {
@@ -37,6 +39,9 @@ export function TaskList({
   const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set());
   const [confirmResumeLastTaskId, setConfirmResumeLastTaskId] = useState<string | null>(null);
   const [isClearAllConfirmOpen, setIsClearAllConfirmOpen] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const [isRenaming, setIsRenaming] = useState(false);
   const runningTaskIdSet = useMemo(() => new Set(runningTaskIds), [runningTaskIds]);
   const visibleTasks = useMemo(() => tasks.filter((task) => matchesFilter(task, filter)), [filter, tasks]);
 
@@ -64,6 +69,31 @@ export function TaskList({
   const confirmClearAll = async () => {
     await onClearTasks();
     setIsClearAllConfirmOpen(false);
+  };
+
+  const startEditingTitle = (task: Task) => {
+    onSelectTask(task.id);
+    setEditingTaskId(task.id);
+    setEditingTitle(taskDisplayName(task));
+  };
+
+  const cancelEditingTitle = () => {
+    setEditingTaskId(null);
+    setEditingTitle("");
+  };
+
+  const submitTitleEdit = async (event: FormEvent, task: Task) => {
+    event.preventDefault();
+    const nextTitle = editingTitle.trim();
+    if (!nextTitle || isRenaming) {
+      return;
+    }
+    setIsRenaming(true);
+    const didRename = await onRenameTask(task.id, nextTitle);
+    setIsRenaming(false);
+    if (didRename) {
+      cancelEditingTitle();
+    }
   };
 
   return (
@@ -128,6 +158,7 @@ export function TaskList({
           const resumePreviewCommand = resumeCommand || resumeLastCommand;
           const isConfirmingResumeLast = confirmResumeLastTaskId === task.id;
           const bucket = supervisionBucket(task);
+          const isEditingTitle = editingTaskId === task.id;
           return (
             <article
               className="task-list-item"
@@ -149,28 +180,59 @@ export function TaskList({
                   <path d="M4 6l4 4 4-4" />
                 </svg>
               </button>
-              <button className="task-select-button" onClick={() => selectTask(task.id)} type="button">
-                <span className="task-row-heading">
-                  <span className="task-title">{displayTaskTitle(task.title)}</span>
-                </span>
-                <span className="task-badge-row">
-                  <span className="task-badge" data-kind={`supervision-${bucket}`} title={supervisionTitle(task)}>
-                    {supervisionBucketLabel(bucket)}
+              {isEditingTitle ? (
+                <form className="task-title-edit-form" onSubmit={(event) => submitTitleEdit(event, task)}>
+                  <input
+                    aria-label="TaskDeck display name"
+                    autoFocus
+                    value={editingTitle}
+                    onChange={(event) => setEditingTitle(event.target.value)}
+                  />
+                  <div className="task-title-edit-actions">
+                    <button disabled={isRenaming || !editingTitle.trim()} type="submit">
+                      Save
+                    </button>
+                    <button data-priority="secondary" disabled={isRenaming} onClick={cancelEditingTitle} type="button">
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <button className="task-select-button" onClick={() => selectTask(task.id)} type="button">
+                  <span className="task-row-heading">
+                    <span className="task-title">{taskDisplayName(task)}</span>
                   </span>
-                </span>
-                <span className="task-card-meta">
-                  <span className="task-cwd" title={task.cwd}>
-                    {workspaceLabel(task.cwd)}
+                  <span className="task-badge-row">
+                    <span className="task-badge" data-kind={`supervision-${bucket}`} title={supervisionTitle(task)}>
+                      {supervisionBucketLabel(bucket)}
+                    </span>
                   </span>
-                  <span className="task-meta-separator">·</span>
-                  <span className="task-command" title={task.command}>
-                    {task.agentLabel || agentOrCommandLabel(task.command)}
+                  <span className="task-card-meta">
+                    <span className="task-cwd" title={task.cwd}>
+                      {workspaceLabel(task.cwd)}
+                    </span>
+                    <span className="task-meta-separator">·</span>
+                    <span className="task-command" title={task.command}>
+                      {task.agentLabel || agentOrCommandLabel(task.command)}
+                    </span>
+                    <span className="task-meta-spacer" />
+                    <span className="task-updated">{formatTime(task.updatedAt)}</span>
                   </span>
-                  <span className="task-meta-spacer" />
-                  <span className="task-updated">{formatTime(task.updatedAt)}</span>
-                </span>
-              </button>
+                </button>
+              )}
               <div className="task-card-actions">
+                <button
+                  aria-label="Edit TaskDeck display name"
+                  className="task-edit-title-button"
+                  onClick={() => startEditingTitle(task)}
+                  title="Edit TaskDeck display name"
+                  type="button"
+                >
+                  <svg aria-hidden="true" className="task-edit-title-icon" focusable="false" viewBox="0 0 16 16">
+                    <path d="M3.5 11.5l1 1 6.7-6.7-1-1L3.5 11.5z" />
+                    <path d="M9.5 4.5l1-1 2 2-1 1" />
+                  </svg>
+                </button>
                 <button aria-label="Clear task" className="task-clear-button" onClick={() => onClearTask(task.id)} title="Clear task" type="button">
                   <svg aria-hidden="true" className="task-clear-icon" focusable="false" viewBox="0 0 16 16">
                     <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
@@ -438,8 +500,12 @@ function permissionLevelLabel(permissionLevel: string | undefined) {
   return permissionLevel || "-";
 }
 
-function displayTaskTitle(title: string) {
-  return title.trim().replace(/^(?:Resume saved:\s*)+/i, "") || "Untitled task";
+function taskDisplayName(task: Task) {
+  return displayTaskTitle(task.sessionLabel || task.title);
+}
+
+function displayTaskTitle(title: string | undefined) {
+  return String(title || "").trim().replace(/^(?:Resume saved:\s*)+/i, "") || "Untitled task";
 }
 
 function resumeTaskKey(taskId: string, resumeCommand: string) {
