@@ -95,6 +95,10 @@ textarea {
   padding: 10px 12px;
 }
 
+select {
+  padding-right: 36px;
+}
+
 h1,
 h2,
 p {
@@ -229,7 +233,7 @@ dd {
 .session-mode-field select,
 .saved-session-field select {
   height: 40px;
-  padding: 0 10px;
+  padding: 0 36px 0 10px;
 }
 
 .saved-session-field {
@@ -534,8 +538,8 @@ dd {
   width: 100%;
   overflow: hidden;
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) 24px;
-  gap: 4px;
+  grid-template-columns: 26px minmax(0, 1fr) 36px;
+  gap: 2px;
   align-items: start;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -1315,7 +1319,8 @@ dd {
 .task-card-actions {
   display: grid;
   gap: 6px;
-  margin: 6px;
+  justify-items: center;
+  padding: 8px 8px 0 0;
 }
 
 .task-card-actions button {
