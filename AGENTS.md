@@ -116,6 +116,7 @@ Keep state, risk, diffs, review, and agent supervision central. Terminal/PTY int
 ## Commit and Push Rule
 
 Whenever repository files are modified, commit the relevant changes and push them to the current branch.
+変更したら、関連する変更を commit して push すること。
 
 - Do not force push.
 - If push fails, report the reason and leave the local commit intact.
