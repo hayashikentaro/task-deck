@@ -942,11 +942,11 @@ dd {
 }
 
 .terminal-font-size select {
-  width: 76px;
+  width: 64px;
   height: 28px;
   border-color: var(--line);
   background: var(--surface-input);
-  padding: 0 30px 0 10px;
+  padding: 0 24px 0 10px;
   color: var(--text-secondary);
   font-size: 12px;
 }
