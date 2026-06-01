@@ -538,7 +538,7 @@ dd {
   width: 100%;
   overflow: hidden;
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) 30px;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
   gap: 2px;
   align-items: start;
   border: 1px solid var(--line);
@@ -942,11 +942,11 @@ dd {
 }
 
 .terminal-font-size select {
-  width: 58px;
+  width: 76px;
   height: 28px;
   border-color: var(--line);
   background: var(--surface-input);
-  padding: 0 24px 0 8px;
+  padding: 0 30px 0 10px;
   color: var(--text-secondary);
   font-size: 12px;
 }
@@ -1337,10 +1337,10 @@ dd {
 }
 
 .task-card-actions {
-  display: grid;
-  gap: 6px;
-  justify-items: center;
-  padding: 8px 4px 0 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 8px 0 0;
 }
 
 .task-card-actions button {
