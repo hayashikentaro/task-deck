@@ -106,5 +106,4 @@ Agent profiles can be changed without editing application code. TaskDeck merges 
 
 Each profile supports `id`, `label`, `command`, `description`, optional `diagnosticContainer`, optional `diagnosticWorkspace`, optional `modelOptions`, and optional `runtimeModelSwitchCommand`. The diagnostics panel uses the diagnostic fields to inspect/start configured Docker containers and check whether expected container workspace directories exist. When `modelOptions` and `runtimeModelSwitchCommand` are set, expanded running task cards can send a runtime model switch command to the task PTY; `{model}` or `{{model}}` in the command is replaced with the selected option. The committed profiles are `codex` and `goose`, both running inside `ai-agent-sandbox-agent-1`.
 
-Attached images:
-- /Users/hayashikentarou/Documents/task-deck/.taskdeck/attachments/pending/db6f9c09-4d99-461a-9706-1d560f0bc4b7.png
+![Attached TaskDeck screenshot](docs/assets/readme-attached-image.png)
