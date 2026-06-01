@@ -538,7 +538,7 @@ dd {
   width: 100%;
   overflow: hidden;
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) 36px;
+  grid-template-columns: 26px minmax(0, 1fr) 30px;
   gap: 2px;
   align-items: start;
   border: 1px solid var(--line);
@@ -1320,7 +1320,7 @@ dd {
   display: grid;
   gap: 6px;
   justify-items: center;
-  padding: 8px 8px 0 0;
+  padding: 8px 4px 0 0;
 }
 
 .task-card-actions button {
