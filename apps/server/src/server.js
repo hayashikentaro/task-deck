@@ -48,6 +48,12 @@ const defaultAgentProfiles = [
     description: "Run Codex CLI inside the AI agent sandbox container",
     diagnosticContainer: "ai-agent-sandbox-agent-1",
     diagnosticWorkspace: "/workspace",
+    modelOptions: [
+      { id: "default", label: "Default" },
+      { id: "gpt-5.5", label: "gpt-5.5" },
+      { id: "gpt-5.5-thinking", label: "gpt-5.5 Thinking" },
+    ],
+    runtimeModelSwitchCommand: "/model {model}",
   },
   {
     id: "goose",
@@ -403,6 +409,7 @@ wss.on("connection", (socket) => {
           agentProfileId: String(message.agentProfileId || "").trim(),
           agentLabel: String(message.agentLabel || "").trim(),
           agentPermissionLevel: String(message.agentPermissionLevel || "").trim(),
+          agentModel: String(message.agentModel || "").trim(),
           sessionMode: String(message.sessionMode || "").trim(),
           resumeCommand: String(message.resumeCommand || "").trim(),
           agentSessionProvider: String(message.agentSessionProvider || "").trim(),
@@ -415,6 +422,11 @@ wss.on("connection", (socket) => {
         },
         socket,
       );
+      return;
+    }
+
+    if (message.type === "apply_model") {
+      applyRuntimeModelSwitch(message, socket);
       return;
     }
 
@@ -508,6 +520,7 @@ async function startTask({
   agentProfileId,
   agentLabel,
   agentPermissionLevel,
+  agentModel,
   sessionMode,
   resumeCommand,
   agentSessionProvider,
@@ -544,6 +557,7 @@ async function startTask({
     agentProfileId,
     agentLabel,
     agentPermissionLevel,
+    agentModel: agentModel || modelFromCommand(command),
     sessionMode,
     resumeCommand,
     initialInstruction,
@@ -700,6 +714,95 @@ function clearActivePty(taskId) {
   activePtys.delete(taskId);
 }
 
+async function applyRuntimeModelSwitch(message, socket) {
+  const taskId = String(message.taskId || "").trim();
+  const model = String(message.model || "").trim();
+  const task = tasks.get(taskId);
+  const activePty = activePtys.get(taskId);
+
+  if (!task || !activePty || task.status !== TaskStatus.RUNNING) {
+    send(socket, { type: "error", message: "Select a running task before changing models." });
+    return;
+  }
+
+  if (!model || model === "default") {
+    send(socket, { type: "error", message: "Select a concrete model before applying it." });
+    return;
+  }
+
+  try {
+    const profile = await findAgentProfileForTask(task);
+    const modelOptions = modelOptionsForTask(task, profile);
+    const runtimeModelSwitchCommand = runtimeModelSwitchCommandForTask(task, profile);
+    if (!runtimeModelSwitchCommand || modelOptions.length === 0) {
+      send(socket, { type: "error", message: "This agent profile does not support runtime model switching." });
+      return;
+    }
+    if (!modelOptions.some((option) => option.id === model && option.id !== "default")) {
+      send(socket, { type: "error", message: "Selected model is not allowed for this agent profile." });
+      return;
+    }
+
+    const runtimeCommand = buildRuntimeModelSwitchCommand(runtimeModelSwitchCommand, model);
+    logInputDebug(taskId, runtimeCommand, "apply-model");
+    resetPendingInputPrompt(activePty);
+    writeOrQueuePtyInput(activePty, formatAgentInputForPty(runtimeCommand), "apply-model");
+    setTask({
+      ...task,
+      agentModel: model,
+      updatedAt: new Date().toISOString(),
+    });
+    broadcastTasks();
+  } catch (error) {
+    send(socket, { type: "error", message: error.message || "Unable to change model." });
+  }
+}
+
+async function findAgentProfileForTask(task) {
+  const profiles = await loadAgentProfiles();
+  return (
+    profiles.find((profile) => profile.id === task.agentProfileId) ??
+    profiles.find((profile) => profile.label === task.agentLabel) ??
+    null
+  );
+}
+
+function buildRuntimeModelSwitchCommand(template, model) {
+  const commandTemplate = String(template || "").trim();
+  const modelValue = String(model || "").trim();
+  const expandedCommand = commandTemplate
+    .replace(/\{\{\s*model\s*\}\}/g, modelValue)
+    .replace(/\{\s*model\s*\}/g, modelValue);
+  return expandedCommand === commandTemplate ? `${commandTemplate} ${modelValue}`.trim() : expandedCommand;
+}
+
+const codexFallbackModelOptions = [
+  { id: "default", label: "Default" },
+  { id: "gpt-5.5", label: "gpt-5.5" },
+  { id: "gpt-5.5-thinking", label: "gpt-5.5 Thinking" },
+];
+
+function modelOptionsForTask(task, profile) {
+  const configuredOptions = normalizeModelOptions(profile?.modelOptions);
+  if (configuredOptions.length > 0) {
+    return configuredOptions;
+  }
+  return isCodexRuntimeSwitchTask(task, profile) ? codexFallbackModelOptions : [];
+}
+
+function runtimeModelSwitchCommandForTask(task, profile) {
+  const configuredCommand = String(profile?.runtimeModelSwitchCommand || "").trim();
+  if (configuredCommand) {
+    return configuredCommand;
+  }
+  return isCodexRuntimeSwitchTask(task, profile) ? "/model {model}" : "";
+}
+
+function isCodexRuntimeSwitchTask(task, profile) {
+  const haystack = `${profile?.id || ""} ${profile?.label || ""} ${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command}`.toLowerCase();
+  return /\bcodex\b/.test(haystack);
+}
+
 async function resolveCwd(cwd, socket) {
   const validation = await validateCwd(cwd);
 
@@ -758,6 +861,11 @@ function formatAgentInputForPty(input) {
 
 function normalizeTerminalInput(input) {
   return String(input).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+function modelFromCommand(command) {
+  const match = String(command || "").match(/(?:^|\s)(?:--model|-m)\s+(?:"([^"]+)"|'([^']+)'|([^\s]+))/);
+  return match?.[1] || match?.[2] || match?.[3] || "";
 }
 
 function appendAttachmentContext(initialInstruction, attachments) {
@@ -819,6 +927,7 @@ async function buildCwdSuggestions() {
 function normalizeStoredTaskAgentState(task) {
   const normalizedTask = {
     ...task,
+    agentModel: String(task.agentModel || ""),
     agentState: task.agentState ?? inferAgentStateFromStatus(task),
     attachments: normalizeTaskAttachmentsForServer(task.attachments),
   };
@@ -2164,6 +2273,8 @@ function sanitizeAgentProfiles(rawProfiles) {
     const description = String(rawProfile?.description || "").trim();
     const diagnosticContainer = String(rawProfile?.diagnosticContainer || "").trim();
     const diagnosticWorkspace = String(rawProfile?.diagnosticWorkspace || "").trim();
+    const modelOptions = normalizeModelOptions(rawProfile?.modelOptions);
+    const runtimeModelSwitchCommand = String(rawProfile?.runtimeModelSwitchCommand || "").trim();
 
     if (!id || !label || seenIds.has(id)) {
       continue;
@@ -2176,11 +2287,31 @@ function sanitizeAgentProfiles(rawProfiles) {
       description,
       ...(diagnosticContainer ? { diagnosticContainer } : {}),
       ...(diagnosticWorkspace ? { diagnosticWorkspace } : {}),
+      ...(modelOptions.length ? { modelOptions } : {}),
+      ...(runtimeModelSwitchCommand ? { runtimeModelSwitchCommand } : {}),
     });
     seenIds.add(id);
   }
 
   return profiles;
+}
+
+function normalizeModelOptions(modelOptions) {
+  if (!Array.isArray(modelOptions)) {
+    return [];
+  }
+  const seenIds = new Set();
+  const options = [];
+  for (const option of modelOptions) {
+    const id = typeof option === "string" ? option.trim() : String(option?.id || "").trim();
+    const label = typeof option === "string" ? id : String(option?.label || id).trim();
+    if (!id || seenIds.has(id)) {
+      continue;
+    }
+    seenIds.add(id);
+    options.push({ id, label: label || id });
+  }
+  return options;
 }
 
 function filterContainerAgentProfiles(profiles) {

@@ -1,25 +1,44 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import type { AgentState, AttentionState, Task } from "../types";
+import { buildCodexResumeCommandForCommand } from "../codexPermissions";
+import type { AgentProfile, AgentState, AttentionState, ModelOption, Task } from "../types";
 
 type TaskFilter = "all" | "needs_you" | "not_now";
 
 type TaskListProps = {
+  actionError: string;
+  agentProfiles: AgentProfile[];
+  isConnected: boolean;
   tasks: Task[];
   selectedTaskId: string | null;
   runningTaskIds: string[];
   onClearTask: (taskId: string) => void;
   onClearTasks: () => void | Promise<void>;
+  onInterruptTask: (task: Task) => void;
+  onRerunTask: (task: Task) => void;
+  onResumeLastTask: (task: Task) => void;
+  onResumeTask: (task: Task) => void;
+  onApplyModel: (task: Task, model: string) => boolean;
   onRenameTask: (taskId: string, title: string) => Promise<boolean>;
+  pendingResumeKeys: string[];
   onSelectTask: (taskId: string) => void;
 };
 
 export function TaskList({
+  actionError,
+  agentProfiles,
+  isConnected,
   tasks,
   selectedTaskId,
   runningTaskIds,
   onClearTask,
   onClearTasks,
+  onInterruptTask,
+  onRerunTask,
+  onResumeLastTask,
+  onResumeTask,
+  onApplyModel,
   onRenameTask,
+  pendingResumeKeys,
   onSelectTask,
 }: TaskListProps) {
   const [filter, setFilter] = useState<TaskFilter>("all");
@@ -45,6 +64,10 @@ export function TaskList({
 
   const selectTask = (taskId: string) => {
     onSelectTask(taskId);
+  };
+
+  const confirmResumeLast = (task: Task) => {
+    onResumeLastTask(task);
   };
 
   const confirmClearAll = async () => {
@@ -126,6 +149,17 @@ export function TaskList({
           const isSelected = task.id === selectedTaskId;
           const isExpanded = expandedTaskIds.has(task.id);
           const resumeCommand = task.resumeCommand?.trim() || task.agentSessionResumeCommand?.trim() || "";
+          const resumeLastCommand = !resumeCommand && isCodexTask(task) ? buildCodexResumeLastCommandForTask(task) : "";
+          const isResumePending = resumeCommand
+            ? pendingResumeKeys.includes(resumeTaskKey(task.id, resumeCommand))
+            : false;
+          const isResumeLastPending = resumeLastCommand
+            ? pendingResumeKeys.includes(resumeTaskKey(task.id, resumeLastCommand))
+            : false;
+          const canRerun = isConnected && task.status !== "running" && runningTaskIds.length === 0;
+          const canResume = isConnected && Boolean(resumeCommand) && !isResumePending;
+          const canResumeLast = isConnected && Boolean(resumeLastCommand) && !isResumeLastPending;
+          const resumePreviewCommand = resumeCommand || resumeLastCommand;
           const bucket = supervisionBucket(task);
           const isEditingTitle = editingTaskId === task.id;
           return (
@@ -210,6 +244,7 @@ export function TaskList({
               </div>
               {isExpanded ? (
                 <div className="task-card-detail">
+                  {isSelected && actionError ? <p className="task-action-error">{actionError}</p> : null}
                   <dl className="task-detail-grid">
                     <Info label="Agent" value={task.agentLabel || agentOrCommandLabel(task.command)} />
                     {task.agentPermissionLevel ? (
@@ -266,16 +301,41 @@ export function TaskList({
                       </dd>
                     </div>
                   </dl>
-                  {isSelected ? (
-                    <>
-                      {resumeCommand ? (
-                        <p className="resume-command-preview" title={resumeCommand}>
-                          <span>Resume command:</span>
-                          <code>{resumeCommand}</code>
-                        </p>
-                      ) : null}
-                    </>
+                  <RuntimeModelControl
+                    agentProfiles={agentProfiles}
+                    isConnected={isConnected}
+                    task={task}
+                    onApplyModel={onApplyModel}
+                  />
+                  {resumePreviewCommand ? (
+                    <p className="resume-command-preview" title={resumePreviewCommand}>
+                      <span>Resume command:</span>
+                      <code>{resumePreviewCommand}</code>
+                    </p>
                   ) : null}
+                  <div className="task-detail-actions">
+                    <button disabled={!canRerun} onClick={() => onRerunTask(task)} type="button">
+                      Rerun command
+                    </button>
+                    <button disabled={!isConnected || task.status !== "running"} onClick={() => onInterruptTask(task)} type="button">
+                      Interrupt
+                    </button>
+                    {resumeCommand ? (
+                      <button disabled={!canResume} onClick={() => onResumeTask(task)} type="button">
+                        Resume saved
+                      </button>
+                    ) : null}
+                    {resumeLastCommand ? (
+                      <button
+                        data-priority="secondary"
+                        disabled={!canResumeLast}
+                        onClick={() => confirmResumeLast(task)}
+                        type="button"
+                      >
+                        Resume last
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               ) : null}
             </article>
@@ -336,6 +396,63 @@ function SectionLabel({ label }: { label: string }) {
     <div className="task-detail-section-label">
       <span>{label}</span>
     </div>
+  );
+}
+
+function RuntimeModelControl({
+  agentProfiles,
+  isConnected,
+  task,
+  onApplyModel,
+}: {
+  agentProfiles: AgentProfile[];
+  isConnected: boolean;
+  task: Task;
+  onApplyModel: (task: Task, model: string) => boolean;
+}) {
+  const modelOptions = useMemo(() => modelOptionsForTask(task, agentProfiles), [agentProfiles, task]);
+  const runtimeCommand = runtimeModelSwitchCommandForTask(task, agentProfiles);
+  const currentModel = currentTaskModel(task);
+  const [selectedModel, setSelectedModel] = useState(currentModel);
+
+  useEffect(() => {
+    setSelectedModel(currentModel);
+  }, [currentModel, task.id]);
+
+  if (task.status !== "running" || !runtimeCommand || modelOptions.length === 0) {
+    return null;
+  }
+
+  const canApply = isConnected && Boolean(selectedModel) && selectedModel !== "default" && selectedModel !== currentModel;
+
+  return (
+    <form
+      className="task-runtime-model-control"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (canApply) {
+          onApplyModel(task, selectedModel);
+        }
+      }}
+    >
+      <label>
+        <span>Model</span>
+        <select
+          aria-label="Runtime model"
+          value={selectedModel}
+          onChange={(event) => setSelectedModel(event.target.value)}
+        >
+          {modelOptions.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button disabled={!canApply} type="submit">
+        Apply
+      </button>
+    </form>
   );
 }
 
@@ -492,4 +609,81 @@ function formatDate(value: string | null) {
 function timestampForSort(value: string | null | undefined) {
   const timestamp = Date.parse(String(value || ""));
   return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+const codexFallbackModelOptions: ModelOption[] = [
+  { id: "default", label: "Default" },
+  { id: "gpt-5.5", label: "gpt-5.5" },
+  { id: "gpt-5.5-thinking", label: "gpt-5.5 Thinking" },
+];
+
+function modelOptionsForTask(task: Task, agentProfiles: AgentProfile[]) {
+  const profile = findAgentProfileForTask(task, agentProfiles);
+  const configuredOptions = normalizeModelOptions(profile?.modelOptions);
+  if (configuredOptions.length > 0) {
+    return configuredOptions;
+  }
+  return isCodexLikeTask(task, profile) ? codexFallbackModelOptions : [];
+}
+
+function normalizeModelOptions(modelOptions: unknown) {
+  if (!Array.isArray(modelOptions)) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  return modelOptions.reduce<ModelOption[]>((options, option) => {
+    const id = typeof option === "string" ? option.trim() : String(option?.id || "").trim();
+    const label = typeof option === "string" ? id : String(option?.label || id).trim();
+    if (!id || seen.has(id)) {
+      return options;
+    }
+    seen.add(id);
+    options.push({ id, label: label || id });
+    return options;
+  }, []);
+}
+
+function runtimeModelSwitchCommandForTask(task: Task, agentProfiles: AgentProfile[]) {
+  const profile = findAgentProfileForTask(task, agentProfiles);
+  const configuredCommand = String(profile?.runtimeModelSwitchCommand || "").trim();
+  if (configuredCommand) {
+    return configuredCommand;
+  }
+  return isCodexLikeTask(task, profile) ? "/model {model}" : "";
+}
+
+function findAgentProfileForTask(task: Task, agentProfiles: AgentProfile[]) {
+  return (
+    agentProfiles.find((profile) => profile.id === task.agentProfileId) ??
+    agentProfiles.find((profile) => profile.label === task.agentLabel) ??
+    null
+  );
+}
+
+function isCodexLikeTask(task: Task, profile: AgentProfile | null) {
+  const haystack = `${profile?.id || ""} ${profile?.label || ""} ${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command}`.toLowerCase();
+  return /\bcodex\b/.test(haystack);
+}
+
+function currentTaskModel(task: Task) {
+  return String(task.agentModel || modelFromCommand(task.command) || "default").trim() || "default";
+}
+
+function modelFromCommand(command: string) {
+  const match = String(command || "").match(/(?:^|\s)(?:--model|-m)\s+(?:"([^"]+)"|'([^']+)'|([^\s]+))/);
+  return match?.[1] || match?.[2] || match?.[3] || "";
+}
+
+function resumeTaskKey(taskId: string, resumeCommand: string) {
+  return `${taskId}:${resumeCommand}`;
+}
+
+function isCodexTask(task: Task) {
+  return isCodexLikeTask(task, null);
+}
+
+function buildCodexResumeLastCommandForTask(task: Task) {
+  const command = String(task.command || task.resumeCommand || task.agentSessionResumeCommand || "");
+  return buildCodexResumeCommandForCommand(command, task.agentPermissionLevel, "--last");
 }

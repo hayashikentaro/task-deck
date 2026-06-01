@@ -622,16 +622,35 @@ dd {
   background: var(--surface-raised);
 }
 
+.task-list-item[data-selected="true"] {
+  border-color: var(--status-selected);
+  background: #18201e;
+  box-shadow:
+    inset 3px 0 0 var(--status-selected),
+    0 0 0 1px rgb(94 148 143 / 22%),
+    0 8px 20px rgb(0 0 0 / 18%);
+}
+
 .task-list-item[data-selected="true"]::before {
   content: "";
   position: absolute;
   inset: 0 auto 0 0;
-  width: 4px;
+  width: 3px;
   background: var(--status-selected);
 }
 
 .task-list-item[data-selected="true"] .task-select-button {
   padding-left: 10px;
+}
+
+.task-list-item[data-selected="true"][data-tone="risk"],
+.task-list-item[data-selected="true"][data-tone="waiting_input"],
+.task-list-item[data-selected="true"][data-tone="waiting_approval"],
+.task-list-item[data-selected="true"][data-tone="review_ready"] {
+  box-shadow:
+    inset 3px 0 0 var(--status-selected),
+    0 0 0 1px rgb(94 148 143 / 24%),
+    0 8px 20px rgb(0 0 0 / 18%);
 }
 
 .task-list-item[data-tone="active"],
@@ -1265,7 +1284,6 @@ dd {
   overflow: auto;
 }
 
-.selected-session-panel,
 .diagnostics-panel {
   min-width: 0;
   margin-top: 12px;
@@ -1274,92 +1292,13 @@ dd {
   background: var(--panel);
 }
 
-.selected-session-panel .pane-heading,
 .diagnostics-panel .pane-heading,
 .diagnostics-body {
   padding: 12px;
 }
 
-.selected-session-panel .pane-heading,
 .diagnostics-panel .pane-heading {
   border-bottom: 1px solid var(--line);
-}
-
-.selected-session-body {
-  display: grid;
-  gap: 10px;
-  padding: 12px;
-}
-
-.selected-session-summary {
-  min-width: 0;
-  display: grid;
-  gap: 3px;
-}
-
-.selected-session-summary strong,
-.selected-session-summary span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.selected-session-summary span {
-  color: var(--status-muted);
-  font-size: 12px;
-}
-
-.selected-session-meta {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin: 0;
-}
-
-.selected-session-meta div {
-  min-width: 0;
-}
-
-.selected-session-meta dt {
-  margin-bottom: 3px;
-}
-
-.selected-session-meta dd {
-  overflow: hidden;
-  color: var(--text-secondary);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.selected-session-meta dd[data-tone="needs_you"] {
-  color: var(--status-needs-input);
-  font-weight: 700;
-}
-
-.selected-session-meta dd[data-tone="not_now"] {
-  color: var(--status-muted);
-}
-
-.selected-session-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.selected-session-actions button {
-  height: 32px;
-  padding: 0 8px;
-  font-size: 12px;
-}
-
-.selected-session-resume {
-  padding: 6px 8px;
-}
-
-.selected-session-confirmation {
-  padding: 8px;
 }
 
 .diagnostics-panel button {
@@ -1716,6 +1655,43 @@ dd {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
+}
+
+.task-runtime-model-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  padding: 8px;
+}
+
+.task-runtime-model-control label {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.task-runtime-model-control span {
+  color: var(--status-muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.task-runtime-model-control select {
+  height: 32px;
+  min-width: 0;
+  padding: 0 28px 0 8px;
+  font-size: 12px;
+}
+
+.task-runtime-model-control button {
+  height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
 }
 
 .task-detail-actions {

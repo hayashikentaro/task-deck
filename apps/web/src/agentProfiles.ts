@@ -8,6 +8,12 @@ export const defaultAgentProfiles: AgentProfile[] = [
     description: "Run Codex CLI inside the AI agent sandbox container",
     diagnosticContainer: "ai-agent-sandbox-agent-1",
     diagnosticWorkspace: "/workspace",
+    modelOptions: [
+      { id: "default", label: "Default" },
+      { id: "gpt-5.5", label: "gpt-5.5" },
+      { id: "gpt-5.5-thinking", label: "gpt-5.5 Thinking" },
+    ],
+    runtimeModelSwitchCommand: "/model {model}",
   },
   {
     id: "goose",

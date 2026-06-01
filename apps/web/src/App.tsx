@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DiagnosticsPane } from "./components/DiagnosticsPane";
-import { SelectedSessionPanel } from "./components/SelectedSessionPanel";
 import { TaskCreateForm } from "./components/TaskCreateForm";
 import { TaskList } from "./components/TaskList";
 import { TerminalPane } from "./components/TerminalPane";
@@ -224,26 +223,27 @@ export function App() {
     }
   };
 
-  const interruptTask = () => {
-    if (selectedTask) {
-      send({ type: "interrupt", taskId: selectedTask.id });
+  const interruptTask = (task = selectedTask) => {
+    if (task) {
+      send({ type: "interrupt", taskId: task.id });
     }
   };
 
-  const rerunTask = () => {
-    if (!selectedTask) {
+  const rerunTask = (task = selectedTask) => {
+    if (!task) {
       return;
     }
     const didStart = createTask({
-      title: taskDisplayName(selectedTask),
-      command: selectedTask.command,
-      cwd: selectedTask.cwd,
-      agentProfileId: selectedTask.agentProfileId,
-      agentLabel: selectedTask.agentLabel,
-      agentPermissionLevel: selectedTask.agentPermissionLevel,
-      sessionMode: selectedTask.sessionMode,
-      resumeCommand: selectedTask.resumeCommand,
-      initialInstruction: selectedTask.initialInstruction,
+      title: taskDisplayName(task),
+      command: task.command,
+      cwd: task.cwd,
+      agentProfileId: task.agentProfileId,
+      agentLabel: task.agentLabel,
+      agentPermissionLevel: task.agentPermissionLevel,
+      agentModel: task.agentModel,
+      sessionMode: task.sessionMode,
+      resumeCommand: task.resumeCommand,
+      initialInstruction: task.initialInstruction,
     });
     if (didStart) {
       setTaskActionError("");
@@ -265,6 +265,16 @@ export function App() {
     startResumeTask(task, buildCodexResumeLastCommandForTask(task), "resume_last");
   };
 
+  const applyModel = (task: Task, model: string) => {
+    const didSend = send({ type: "apply_model", taskId: task.id, model });
+    if (!didSend) {
+      setTaskActionError("TaskDeck is not connected.");
+      return false;
+    }
+    setTaskActionError("");
+    return true;
+  };
+
   const startResumeTask = (task: Task, resumeCommand: string, sessionMode: string) => {
     const resumeKey = resumeTaskKey(task.id, resumeCommand);
     if (pendingResumeKeys.includes(resumeKey)) {
@@ -278,6 +288,7 @@ export function App() {
       agentProfileId: task.agentProfileId,
       agentLabel: task.agentLabel,
       agentPermissionLevel: task.agentPermissionLevel,
+      agentModel: task.agentModel,
       sessionMode,
       resumeCommand,
     });
@@ -332,12 +343,21 @@ export function App() {
     <main className="app-shell">
       <section className="workspace-grid">
         <TaskList
+          actionError={taskActionError}
+          agentProfiles={taskDeckContext?.agentProfiles ?? []}
+          isConnected={connectionState === "connected"}
           tasks={tasks}
           selectedTaskId={selectedTaskId}
           runningTaskIds={runningTaskIds}
           onClearTask={clearTask}
           onClearTasks={clearTasks}
+          onInterruptTask={interruptTask}
+          onRerunTask={rerunTask}
+          onResumeLastTask={resumeLastTask}
+          onResumeTask={resumeTask}
+          onApplyModel={applyModel}
           onRenameTask={renameTask}
+          pendingResumeKeys={pendingResumeKeys}
           onSelectTask={setSelectedTaskId}
         />
         <TerminalPane
@@ -353,17 +373,6 @@ export function App() {
             savedCodexSessions={savedCodexSessions}
             onCreateTask={createTask}
             onRenameSavedSession={renameSavedSession}
-          />
-          <SelectedSessionPanel
-            actionError={taskActionError}
-            isConnected={connectionState === "connected"}
-            task={selectedTask}
-            runningTaskIds={runningTaskIds}
-            pendingResumeKeys={pendingResumeKeys}
-            onInterruptTask={interruptTask}
-            onRerunTask={rerunTask}
-            onResumeLastTask={resumeLastTask}
-            onResumeTask={resumeTask}
           />
           <DiagnosticsPane isConnected={connectionState === "connected"} onCreateTask={createTask} />
         </aside>

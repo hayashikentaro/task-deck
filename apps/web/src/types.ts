@@ -50,6 +50,7 @@ export type Task = {
   agentProfileId?: string;
   agentLabel?: string;
   agentPermissionLevel?: string;
+  agentModel?: string;
   sessionMode?: string;
   resumeCommand?: string;
   agentSessionId?: string;
@@ -105,6 +106,7 @@ export type CreateTaskInput = {
   agentProfileId?: string;
   agentLabel?: string;
   agentPermissionLevel?: string;
+  agentModel?: string;
   sessionMode?: string;
   resumeCommand?: string;
   agentSessionProvider?: string;
@@ -118,6 +120,11 @@ export type CreateTaskInput = {
 
 export type TaskPreset = CreateTaskInput;
 
+export type ModelOption = {
+  id: string;
+  label: string;
+};
+
 export type AgentProfile = {
   id: string;
   label: string;
@@ -125,6 +132,8 @@ export type AgentProfile = {
   description: string;
   diagnosticContainer?: string;
   diagnosticWorkspace?: string;
+  modelOptions?: ModelOption[];
+  runtimeModelSwitchCommand?: string;
 };
 
 export type DiagnosticWorkspace = {
