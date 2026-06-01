@@ -1,5 +1,7 @@
 # TaskDeck
 
+![Attached TaskDeck screenshot](docs/assets/readme-attached-image.png)
+
 TaskDeck is a supervision UI for AI agent tasks. This MVP uses PTYs as a compatibility layer: a local React UI and Node server can start container-backed agent sessions, stream output to xterm.js in the browser, accept keyboard input, and show task/attention state.
 
 ## Getting Started
@@ -105,5 +107,3 @@ TaskDeck also stores the 10 most recent task presets by `command` and `cwd` so c
 Agent profiles can be changed without editing application code. TaskDeck merges profiles by `id`: built-in defaults are loaded first, then `taskdeck.config.json`, then ignored `taskdeck.local.json`, then `TASKDECK_CONFIG`. Later files override matching ids and append new ids, but the server only exposes profiles with Docker-backed commands and diagnostic containers. For machine-local profiles, copy `taskdeck.local.example.json` to `taskdeck.local.json`; that local file is ignored by Git. To point TaskDeck at another profile file, start the server with `TASKDECK_CONFIG=/path/to/taskdeck.profiles.json npm run dev`.
 
 Each profile supports `id`, `label`, `command`, `description`, optional `diagnosticContainer`, optional `diagnosticWorkspace`, optional `modelOptions`, and optional `runtimeModelSwitchCommand`. The diagnostics panel uses the diagnostic fields to inspect/start configured Docker containers and check whether expected container workspace directories exist. When `modelOptions` and `runtimeModelSwitchCommand` are set, expanded running task cards can send a runtime model switch command to the task PTY; `{model}` or `{{model}}` in the command is replaced with the selected option. The committed profiles are `codex` and `goose`, both running inside `ai-agent-sandbox-agent-1`.
-
-![Attached TaskDeck screenshot](docs/assets/readme-attached-image.png)
