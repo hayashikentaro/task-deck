@@ -347,6 +347,7 @@ dd {
   padding: 0;
   display: grid;
   place-items: center;
+  color: var(--text-secondary);
 }
 
 .add-context-button svg,
@@ -595,6 +596,7 @@ dd {
 .task-filters button {
   flex: 0 0 auto;
   padding: 5px 5px;
+  color: var(--text-secondary);
   font-size: 10px;
   line-height: 1;
   white-space: nowrap;
@@ -1339,6 +1341,10 @@ dd {
   border-bottom: 1px solid var(--line);
 }
 
+.codex-status-heading h2 {
+  color: var(--text-secondary);
+}
+
 .codex-status-heading button {
   width: 30px;
   height: 30px;
@@ -1457,6 +1463,10 @@ dd {
 
 .tools-panel .pane-heading {
   border-bottom: 1px solid var(--line);
+}
+
+.tools-panel .pane-heading h2 {
+  color: var(--text-secondary);
 }
 
 .tools-panel button,
