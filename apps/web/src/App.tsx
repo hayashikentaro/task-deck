@@ -169,12 +169,11 @@ export function App() {
     if (!parsedStatus) {
       return;
     }
-    setCodexStatusSnapshot((current) => ({
-      ...(current?.taskId === task.id ? current : {}),
+    setCodexStatusSnapshot({
       ...parsedStatus,
       taskId: task.id,
       updatedAt: new Date().toISOString(),
-    }));
+    });
   }, [lastOutput, tasks]);
 
   const send = useCallback((payload: unknown) => {
@@ -370,12 +369,15 @@ function stripTerminalControlSequences(value: string) {
 }
 
 function parseCodexStatusOutput(output: string): Omit<CodexStatusSnapshot, "taskId" | "updatedAt"> | null {
-  const context = parsePercentLine(output, "Context window");
-  const fiveHour = parsePercentLine(output, "5h limit");
-  const weekly = parsePercentLine(output, "Weekly limit");
-  if (!context && !fiveHour && !weekly) {
+  const statusBlock = latestCompleteCodexStatusBlock(output);
+  if (!statusBlock) {
     return null;
   }
+
+  const context = parseCodexStatusLine(statusBlock.contextLine, "Context window");
+  const fiveHour = parseCodexStatusLine(statusBlock.fiveHourLine, "5h limit");
+  const weekly = parseCodexStatusLine(statusBlock.weeklyLine, "Weekly limit");
+
   return {
     ...(context ? { context: { remainingPercent: context.percent } } : {}),
     ...(fiveHour ? { fiveHour: { remainingPercent: fiveHour.percent, resetLabel: fiveHour.resetLabel } } : {}),
@@ -383,24 +385,64 @@ function parseCodexStatusOutput(output: string): Omit<CodexStatusSnapshot, "task
   };
 }
 
-function parsePercentLine(output: string, label: string) {
-  const labelPattern = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
-  const matches = Array.from(
-    output.matchAll(new RegExp(`${labelPattern}\\s*:\\s*(\\d{1,3})%\\s+left(?:\\s*\\(([^)]*)\\))?`, "gi")),
-  );
-  const match = matches.at(-1);
+function latestCompleteCodexStatusBlock(output: string) {
+  const lines = output
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  for (let weeklyIndex = lines.length - 1; weeklyIndex >= 0; weeklyIndex -= 1) {
+    if (!statusLineHasLabel(lines[weeklyIndex], "Weekly limit")) {
+      continue;
+    }
+
+    const fiveHourIndex = findPreviousStatusLineIndex(lines, weeklyIndex - 1, "5h limit");
+    if (fiveHourIndex === -1) {
+      continue;
+    }
+
+    const contextIndex = findPreviousStatusLineIndex(lines, fiveHourIndex - 1, "Context window");
+    if (contextIndex === -1) {
+      continue;
+    }
+
+    return {
+      contextLine: lines[contextIndex],
+      fiveHourLine: lines[fiveHourIndex],
+      weeklyLine: lines[weeklyIndex],
+    };
+  }
+
+  return null;
+}
+
+function findPreviousStatusLineIndex(lines: string[], startIndex: number, label: string) {
+  for (let index = startIndex; index >= 0; index -= 1) {
+    if (statusLineHasLabel(lines[index], label)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function statusLineHasLabel(line: string, label: string) {
+  return new RegExp(`^${labelPatternForRegex(label)}\\s*:`, "i").test(line);
+}
+
+function parseCodexStatusLine(line: string, label: string) {
+  const labelPattern = labelPatternForRegex(label);
+  const match = line.match(new RegExp(`^${labelPattern}\\s*:\\s+.*?(\\d{1,3})%\\s+left(?:\\s+\\(resets\\s+([^)]+)\\))?`, "i"));
   if (!match) {
     return null;
   }
   return {
     percent: clampPercent(Number(match[1])),
-    resetLabel: parseResetLabel(match[2] || ""),
+    resetLabel: String(match[2] || "").trim(),
   };
 }
 
-function parseResetLabel(details: string) {
-  const resetMatch = details.match(/\bresets\s+(.+)$/i);
-  return resetMatch ? resetMatch[1].trim() : "";
+function labelPatternForRegex(label: string) {
+  return label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
 }
 
 function compactWeeklyResetLabel(resetLabel: string | undefined) {

@@ -49,7 +49,7 @@ export function CodexStatusPanel({ canRefresh, selectedTask, snapshot, onRefresh
               >
                 <span style={{ width: metric ? `${metric.remainingPercent}%` : "0%" }} />
               </span>
-              <span className="codex-status-percent">{metric ? `${metric.remainingPercent}%` : "--"}</span>
+              <span className="codex-status-percent">{metric ? `${metric.remainingPercent}%` : "—"}</span>
               <span className="codex-status-reset">{resetLabel}</span>
             </div>
           );
