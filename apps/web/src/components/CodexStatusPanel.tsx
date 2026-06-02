@@ -1,8 +1,9 @@
-import type { CodexStatusSnapshot, Task } from "../types";
+import type { CodexStatusSnapshot } from "../types";
 
 type CodexStatusPanelProps = {
   canRefresh: boolean;
-  selectedTask: Task | null;
+  errorMessage: string;
+  isRefreshing: boolean;
   snapshot: CodexStatusSnapshot | null;
   onRefresh: () => void;
 };
@@ -10,14 +11,19 @@ type CodexStatusPanelProps = {
 type MetricTone = "green" | "yellow" | "red" | "empty";
 
 const metricRows = [
-  { key: "context", label: "Context" },
   { key: "fiveHour", label: "5h" },
   { key: "weekly", label: "Weekly" },
 ] as const;
 
-export function CodexStatusPanel({ canRefresh, selectedTask, snapshot, onRefresh }: CodexStatusPanelProps) {
+export function CodexStatusPanel({
+  canRefresh,
+  errorMessage,
+  isRefreshing,
+  snapshot,
+  onRefresh,
+}: CodexStatusPanelProps) {
   const hasSnapshot = Boolean(snapshot);
-  const unavailableText = statusUnavailableText(selectedTask, hasSnapshot);
+  const unavailableText = errorMessage || (hasSnapshot ? "" : "No Codex status yet");
 
   return (
     <section className="codex-status-panel" aria-label="Codex status">
@@ -25,7 +31,8 @@ export function CodexStatusPanel({ canRefresh, selectedTask, snapshot, onRefresh
         <h2>Codex status</h2>
         <button
           aria-label="Refresh Codex status"
-          disabled={!canRefresh}
+          data-loading={isRefreshing ? "true" : undefined}
+          disabled={!canRefresh || isRefreshing}
           onClick={onRefresh}
           title="Refresh Codex status"
           type="button"
@@ -70,36 +77,12 @@ function resetLabelFor(snapshot: CodexStatusSnapshot | null, key: (typeof metric
   return "";
 }
 
-function statusUnavailableText(selectedTask: Task | null, hasSnapshot: boolean) {
-  if (!selectedTask) {
-    return "Select a running Codex task";
-  }
-  if (selectedTask.status !== "running" || !isCodexTask(selectedTask)) {
-    return "Codex task required";
-  }
-  if (!hasSnapshot) {
-    return "No Codex status yet";
-  }
-  return "";
-}
-
 function metricTone(key: (typeof metricRows)[number]["key"], percent: number | undefined): MetricTone {
   if (typeof percent !== "number") {
     return "empty";
-  }
-  if (key === "context") {
-    return percent >= 50 ? "green" : percent >= 20 ? "yellow" : "red";
   }
   if (key === "fiveHour") {
     return percent >= 40 ? "green" : percent >= 15 ? "yellow" : "red";
   }
   return percent >= 30 ? "green" : percent >= 10 ? "yellow" : "red";
-}
-
-function isCodexTask(task: Task) {
-  if (task.sessionMode === "diagnostic") {
-    return false;
-  }
-  const text = `${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command || ""}`.toLowerCase();
-  return /\bcodex\b/.test(text);
 }

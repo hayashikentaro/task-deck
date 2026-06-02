@@ -100,11 +100,7 @@ export type OutputEvent = {
 };
 
 export type CodexStatusSnapshot = {
-  taskId: string;
   updatedAt: string;
-  context?: {
-    remainingPercent: number;
-  };
   fiveHour?: {
     remainingPercent: number;
     resetLabel?: string;

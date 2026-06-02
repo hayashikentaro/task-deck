@@ -92,6 +92,7 @@ const terminalEnter = "\r";
 const bracketedPasteStart = "\x1b[200~";
 const bracketedPasteEnd = "\x1b[201~";
 const codexInputHoldMs = 5000;
+const codexStatusRefreshTimeoutMs = 16_000;
 const inputPromptStabilizationMs = 750;
 const ptyActivityWindowMs = 3000;
 const maxPtyActivityFrames = 40;
@@ -132,6 +133,16 @@ app.get("/api/context", async (_request, response) => {
 
 app.get("/api/diagnostics", async (_request, response) => {
   response.json(await buildDiagnostics());
+});
+
+app.post("/api/codex-status/refresh", async (_request, response) => {
+  try {
+    response.json({
+      status: await refreshCodexStatusInHiddenSession(),
+    });
+  } catch (error) {
+    response.status(500).json({ error: error.message || "Unable to refresh Codex status." });
+  }
 });
 
 app.post("/api/diagnostics/containers/:containerName/start", async (request, response) => {
@@ -966,6 +977,190 @@ function formatAgentInputForPty(input) {
 
 function normalizeTerminalInput(input) {
   return String(input).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+async function refreshCodexStatusInHiddenSession() {
+  const profile = await findCodexStatusProfile();
+  if (!profile) {
+    throw new Error("No Codex container profile is configured.");
+  }
+
+  const status = await queryCodexStatusWithHiddenPty(profile.command);
+  return {
+    ...status,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+async function findCodexStatusProfile() {
+  const profiles = await loadAgentProfiles();
+  return (
+    profiles.find((profile) => profile.id === "codex" && isCodexStatusProfile(profile)) ??
+    profiles.find((profile) => isCodexStatusProfile(profile)) ??
+    null
+  );
+}
+
+function isCodexStatusProfile(profile) {
+  const haystack = `${profile.id || ""} ${profile.label || ""} ${profile.command || ""}`.toLowerCase();
+  return Boolean(profile.diagnosticContainer) && /\bcodex\b/.test(haystack) && /\bdocker\b[\s\S]*\bexec\b/.test(profile.command || "");
+}
+
+function queryCodexStatusWithHiddenPty(command) {
+  return new Promise((resolve, reject) => {
+    let output = "";
+    let settled = false;
+    let terminalProcess;
+    const inputTimers = [];
+
+    const settle = (error, status) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeoutTimer);
+      inputTimers.forEach((timer) => clearTimeout(timer));
+      if (terminalProcess) {
+        try {
+          terminalProcess.kill();
+        } catch {
+          // Hidden status sessions are best-effort and may already have exited.
+        }
+      }
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(status);
+    };
+
+    const timeoutTimer = setTimeout(() => {
+      settle(new Error("Codex status refresh timed out."));
+    }, codexStatusRefreshTimeoutMs);
+
+    try {
+      terminalProcess = pty.spawn(shell, ["-lc", command], {
+        name: "xterm-256color",
+        cols: 100,
+        rows: 28,
+        cwd: repoRoot,
+        env: {
+          ...process.env,
+          TERM: "xterm-256color",
+        },
+      });
+    } catch (error) {
+      settle(error);
+      return;
+    }
+
+    terminalProcess.onData((data) => {
+      output = `${output}${data}`.slice(-16_000);
+      const status = parseCodexStatusOutput(output);
+      if (status?.fiveHour && status?.weekly) {
+        settle(null, status);
+      }
+    });
+
+    terminalProcess.onExit(() => {
+      const status = parseCodexStatusOutput(output);
+      if (status?.fiveHour && status?.weekly) {
+        settle(null, status);
+        return;
+      }
+      settle(new Error("Codex status output was unavailable."));
+    });
+
+    for (const delayMs of [1_500, 4_000]) {
+      inputTimers.push(
+        setTimeout(() => {
+          if (!settled && terminalProcess) {
+            terminalProcess.write(formatAgentInputForPty("/status"));
+          }
+        }, delayMs),
+      );
+    }
+  });
+}
+
+function parseCodexStatusOutput(output) {
+  const statusBlock = latestCompleteCodexStatusBlock(output);
+  if (!statusBlock) {
+    return null;
+  }
+
+  const fiveHour = parseCodexStatusLine(statusBlock.fiveHourLine, "5h limit");
+  const weekly = parseCodexStatusLine(statusBlock.weeklyLine, "Weekly limit");
+
+  return {
+    ...(fiveHour ? { fiveHour: { remainingPercent: fiveHour.percent, resetLabel: fiveHour.resetLabel } } : {}),
+    ...(weekly ? { weekly: { remainingPercent: weekly.percent, resetLabel: weekly.resetLabel } } : {}),
+  };
+}
+
+function latestCompleteCodexStatusBlock(output) {
+  const lines = stripTerminalControlSequences(String(output))
+    .split("\n")
+    .map((line) => removeTerminalBoxDrawing(line).replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  for (let weeklyIndex = lines.length - 1; weeklyIndex >= 0; weeklyIndex -= 1) {
+    if (!statusLineHasLabel(lines[weeklyIndex], "Weekly limit")) {
+      continue;
+    }
+
+    const fiveHourIndex = findPreviousStatusLineIndex(lines, weeklyIndex - 1, "5h limit");
+    if (fiveHourIndex === -1) {
+      continue;
+    }
+
+    return {
+      fiveHourLine: lines[fiveHourIndex],
+      weeklyLine: lines[weeklyIndex],
+    };
+  }
+
+  return null;
+}
+
+function findPreviousStatusLineIndex(lines, startIndex, label) {
+  for (let index = startIndex; index >= 0; index -= 1) {
+    if (statusLineHasLabel(lines[index], label)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function statusLineHasLabel(line, label) {
+  return new RegExp(`${labelPatternForRegex(label)}\\s*:`, "i").test(line);
+}
+
+function parseCodexStatusLine(line, label) {
+  const labelPattern = labelPatternForRegex(label);
+  const match = line.match(new RegExp(`${labelPattern}\\s*:\\s*.*?(\\d{1,3})%\\s+left(?:\\s+\\(resets\\s+([^)]+)\\))?`, "i"));
+  if (!match) {
+    return null;
+  }
+  return {
+    percent: clampPercent(Number(match[1])),
+    resetLabel: String(match[2] || "").trim(),
+  };
+}
+
+function labelPatternForRegex(label) {
+  return label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+}
+
+function removeTerminalBoxDrawing(value) {
+  return String(value).replace(/[\u2500-\u257f]/g, " ");
+}
+
+function clampPercent(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.min(100, Math.max(0, Math.round(value)));
 }
 
 function modelFromCommand(command) {

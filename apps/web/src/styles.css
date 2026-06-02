@@ -1345,6 +1345,16 @@ dd {
   stroke-width: 1.8;
 }
 
+.codex-status-heading button[data-loading="true"] svg {
+  animation: codex-status-spin 0.9s linear infinite;
+}
+
+@keyframes codex-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .codex-status-body {
   display: grid;
   gap: 8px;
@@ -1354,7 +1364,7 @@ dd {
 .codex-status-row {
   min-width: 0;
   display: grid;
-  grid-template-columns: 56px minmax(38px, 1fr) 38px 46px;
+  grid-template-columns: 48px minmax(24px, 1fr) 34px minmax(58px, auto);
   gap: 7px;
   align-items: center;
   color: var(--text-secondary);

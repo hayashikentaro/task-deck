@@ -30,11 +30,12 @@ export function App() {
   const [taskDeckContext, setTaskDeckContext] = useState<TaskDeckContext | null>(null);
   const [composerValue, setComposerValue] = useState("");
   const [codexStatusSnapshot, setCodexStatusSnapshot] = useState<CodexStatusSnapshot | null>(null);
+  const [codexStatusError, setCodexStatusError] = useState("");
+  const [isCodexStatusRefreshing, setIsCodexStatusRefreshing] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
   const outputSeqRef = useRef(0);
   const selectedTaskIdRef = useRef<string | null>(null);
   const runningTaskIdsRef = useRef<string[]>([]);
-  const codexStatusOutputBuffersRef = useRef(new Map<string, string>());
 
   useEffect(() => {
     selectedTaskIdRef.current = selectedTaskId;
@@ -147,34 +148,7 @@ export function App() {
     () => tasks.find((task) => task.id === selectedTaskId) ?? null,
     [selectedTaskId, tasks],
   );
-  const selectedCodexStatusSnapshot = codexStatusSnapshot?.taskId === selectedTask?.id ? codexStatusSnapshot : null;
-  const canRefreshCodexStatus = Boolean(
-    connectionState === "connected" && selectedTask?.status === "running" && isCodexTask(selectedTask),
-  );
-
-  useEffect(() => {
-    if (!lastOutput) {
-      return;
-    }
-    const task = tasks.find((candidate) => candidate.id === lastOutput.taskId);
-    if (!task || !isCodexTask(task)) {
-      return;
-    }
-
-    const buffers = codexStatusOutputBuffersRef.current;
-    const nextBuffer = `${buffers.get(task.id) || ""}${stripTerminalControlSequences(lastOutput.data)}`.slice(-8000);
-    buffers.set(task.id, nextBuffer);
-
-    const parsedStatus = parseCodexStatusOutput(nextBuffer);
-    if (!parsedStatus) {
-      return;
-    }
-    setCodexStatusSnapshot({
-      ...parsedStatus,
-      taskId: task.id,
-      updatedAt: new Date().toISOString(),
-    });
-  }, [lastOutput, tasks]);
+  const canRefreshCodexStatus = connectionState === "connected";
 
   const send = useCallback((payload: unknown) => {
     const socket = socketRef.current;
@@ -190,16 +164,25 @@ export function App() {
     return didSend;
   };
 
-  const refreshCodexStatus = () => {
-    if (!selectedTask || !canRefreshCodexStatus) {
+  const refreshCodexStatus = async () => {
+    if (!canRefreshCodexStatus || isCodexStatusRefreshing) {
       return;
     }
-    send({
-      type: "input",
-      taskId: selectedTask.id,
-      data: formatAgentInputForPty("/status"),
-      source: "codex-status",
-    });
+
+    setIsCodexStatusRefreshing(true);
+    setCodexStatusError("");
+    try {
+      const response = await fetch("/api/codex-status/refresh", { method: "POST" });
+      const payload = (await response.json()) as { status?: CodexStatusSnapshot; error?: string };
+      if (!response.ok || !payload.status) {
+        throw new Error(payload.error || "Unable to refresh Codex status.");
+      }
+      setCodexStatusSnapshot(codexStatusSnapshotForDisplay(payload.status));
+    } catch (error) {
+      setCodexStatusError(error instanceof Error ? error.message : "Unable to refresh Codex status.");
+    } finally {
+      setIsCodexStatusRefreshing(false);
+    }
   };
 
   const renameTask = async (taskId: string, title: string) => {
@@ -320,8 +303,9 @@ export function App() {
           />
           <CodexStatusPanel
             canRefresh={canRefreshCodexStatus}
-            selectedTask={selectedTask}
-            snapshot={selectedCodexStatusSnapshot}
+            errorMessage={codexStatusError}
+            isRefreshing={isCodexStatusRefreshing}
+            snapshot={codexStatusSnapshot}
             onRefresh={refreshCodexStatus}
           />
           <ToolsPane
@@ -344,109 +328,26 @@ function getRunningTaskIdsFromMessage(message: { runningTaskId?: string | null; 
   return message.runningTaskId ? [message.runningTaskId] : [];
 }
 
-const terminalEnter = "\r";
-const bracketedPasteStart = "\x1b[200~";
-const bracketedPasteEnd = "\x1b[201~";
-
-function formatAgentInputForPty(input: string) {
-  const text = input.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  return `${bracketedPasteStart}${text}${bracketedPasteEnd}${terminalEnter}`;
-}
-
-function isCodexTask(task: Task) {
-  if (task.sessionMode === "diagnostic") {
-    return false;
-  }
-  const text = `${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command || ""}`.toLowerCase();
-  return /\bcodex\b/.test(text);
-}
-
-function stripTerminalControlSequences(value: string) {
-  return value
-    .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "")
-    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
-    .replace(/\r/g, "\n");
-}
-
-function parseCodexStatusOutput(output: string): Omit<CodexStatusSnapshot, "taskId" | "updatedAt"> | null {
-  const statusBlock = latestCompleteCodexStatusBlock(output);
-  if (!statusBlock) {
-    return null;
-  }
-
-  const context = parseCodexStatusLine(statusBlock.contextLine, "Context window");
-  const fiveHour = parseCodexStatusLine(statusBlock.fiveHourLine, "5h limit");
-  const weekly = parseCodexStatusLine(statusBlock.weeklyLine, "Weekly limit");
-
+function codexStatusSnapshotForDisplay(status: CodexStatusSnapshot): CodexStatusSnapshot {
   return {
-    ...(context ? { context: { remainingPercent: context.percent } } : {}),
-    ...(fiveHour ? { fiveHour: { remainingPercent: fiveHour.percent, resetLabel: localFiveHourResetLabel(fiveHour.resetLabel) } } : {}),
-    ...(weekly ? { weekly: { remainingPercent: weekly.percent, resetLabel: localWeeklyResetLabel(weekly.resetLabel) } } : {}),
+    updatedAt: status.updatedAt,
+    ...(status.fiveHour
+      ? {
+          fiveHour: {
+            remainingPercent: status.fiveHour.remainingPercent,
+            resetLabel: localFiveHourResetLabel(status.fiveHour.resetLabel),
+          },
+        }
+      : {}),
+    ...(status.weekly
+      ? {
+          weekly: {
+            remainingPercent: status.weekly.remainingPercent,
+            resetLabel: localWeeklyResetLabel(status.weekly.resetLabel),
+          },
+        }
+      : {}),
   };
-}
-
-function latestCompleteCodexStatusBlock(output: string) {
-  const lines = output
-    .split("\n")
-    .map((line) => removeTerminalBoxDrawing(line).replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-
-  for (let weeklyIndex = lines.length - 1; weeklyIndex >= 0; weeklyIndex -= 1) {
-    if (!statusLineHasLabel(lines[weeklyIndex], "Weekly limit")) {
-      continue;
-    }
-
-    const fiveHourIndex = findPreviousStatusLineIndex(lines, weeklyIndex - 1, "5h limit");
-    if (fiveHourIndex === -1) {
-      continue;
-    }
-
-    const contextIndex = findPreviousStatusLineIndex(lines, fiveHourIndex - 1, "Context window");
-    if (contextIndex === -1) {
-      continue;
-    }
-
-    return {
-      contextLine: lines[contextIndex],
-      fiveHourLine: lines[fiveHourIndex],
-      weeklyLine: lines[weeklyIndex],
-    };
-  }
-
-  return null;
-}
-
-function findPreviousStatusLineIndex(lines: string[], startIndex: number, label: string) {
-  for (let index = startIndex; index >= 0; index -= 1) {
-    if (statusLineHasLabel(lines[index], label)) {
-      return index;
-    }
-  }
-  return -1;
-}
-
-function statusLineHasLabel(line: string, label: string) {
-  return new RegExp(`${labelPatternForRegex(label)}\\s*:`, "i").test(line);
-}
-
-function parseCodexStatusLine(line: string, label: string) {
-  const labelPattern = labelPatternForRegex(label);
-  const match = line.match(new RegExp(`${labelPattern}\\s*:\\s*.*?(\\d{1,3})%\\s+left(?:\\s+\\(resets\\s+([^)]+)\\))?`, "i"));
-  if (!match) {
-    return null;
-  }
-  return {
-    percent: clampPercent(Number(match[1])),
-    resetLabel: String(match[2] || "").trim(),
-  };
-}
-
-function labelPatternForRegex(label: string) {
-  return label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
-}
-
-function removeTerminalBoxDrawing(value: string) {
-  return value.replace(/[\u2500-\u257f]/g, " ");
 }
 
 function localFiveHourResetLabel(resetLabel: string | undefined) {
