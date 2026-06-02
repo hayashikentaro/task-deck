@@ -141,6 +141,15 @@ app.post("/api/codex-status/refresh", async (_request, response) => {
       status: await refreshCodexStatusInHiddenSession(),
     });
   } catch (error) {
+    if (error instanceof CodexStatusRefreshError) {
+      console.warn("TaskDeck hidden Codex status refresh failed:", {
+        message: error.message,
+        ...error.debug,
+      });
+      response.status(500).json({ error: error.message, debug: error.debug });
+      return;
+    }
+    console.warn(`TaskDeck hidden Codex status refresh failed: ${error.message || error}`);
     response.status(500).json({ error: error.message || "Unable to refresh Codex status." });
   }
 });
@@ -1006,12 +1015,29 @@ function isCodexStatusProfile(profile) {
   return Boolean(profile.diagnosticContainer) && /\bcodex\b/.test(haystack) && /\bdocker\b[\s\S]*\bexec\b/.test(profile.command || "");
 }
 
+class CodexStatusRefreshError extends Error {
+  constructor(message, debug) {
+    super(message);
+    this.name = "CodexStatusRefreshError";
+    this.debug = debug;
+  }
+}
+
 function queryCodexStatusWithHiddenPty(command) {
   return new Promise((resolve, reject) => {
     let output = "";
     let settled = false;
     let terminalProcess;
-    const inputTimers = [];
+    let exited = false;
+    let timedOut = false;
+    let sentStatusCount = 0;
+    const timers = [];
+
+    const buildDebug = () => codexStatusDebug(output, {
+      sentStatusCount,
+      exited,
+      timedOut,
+    });
 
     const settle = (error, status) => {
       if (settled) {
@@ -1019,7 +1045,7 @@ function queryCodexStatusWithHiddenPty(command) {
       }
       settled = true;
       clearTimeout(timeoutTimer);
-      inputTimers.forEach((timer) => clearTimeout(timer));
+      timers.forEach((timer) => clearTimeout(timer));
       if (terminalProcess) {
         try {
           terminalProcess.kill();
@@ -1035,7 +1061,8 @@ function queryCodexStatusWithHiddenPty(command) {
     };
 
     const timeoutTimer = setTimeout(() => {
-      settle(new Error("Codex status refresh timed out."));
+      timedOut = true;
+      settle(new CodexStatusRefreshError("Codex status refresh timed out.", buildDebug()));
     }, codexStatusRefreshTimeoutMs);
 
     try {
@@ -1050,37 +1077,80 @@ function queryCodexStatusWithHiddenPty(command) {
         },
       });
     } catch (error) {
-      settle(error);
+      settle(new CodexStatusRefreshError(error.message || "Unable to start hidden Codex status session.", buildDebug()));
       return;
     }
+
+    const sendStatus = (reason) => {
+      if (settled || !terminalProcess || sentStatusCount >= 2) {
+        return;
+      }
+      sentStatusCount += 1;
+      if (inputDebugEnabled) {
+        console.log(`[TaskDeck codex-status] sent /status reason=${reason} count=${sentStatusCount}`);
+      }
+      terminalProcess.write(formatAgentInputForPty("/status"));
+    };
 
     terminalProcess.onData((data) => {
       output = `${output}${data}`.slice(-16_000);
       const status = parseCodexStatusOutput(output);
       if (status?.fiveHour && status?.weekly) {
         settle(null, status);
+        return;
+      }
+      if (sentStatusCount === 0 && hiddenCodexOutputLooksReady(output)) {
+        sendStatus("ready-output");
       }
     });
 
     terminalProcess.onExit(() => {
+      exited = true;
       const status = parseCodexStatusOutput(output);
       if (status?.fiveHour && status?.weekly) {
         settle(null, status);
         return;
       }
-      settle(new Error("Codex status output was unavailable."));
+      settle(new CodexStatusRefreshError("Codex status output was unavailable.", buildDebug()));
     });
 
-    for (const delayMs of [1_500, 4_000]) {
-      inputTimers.push(
-        setTimeout(() => {
-          if (!settled && terminalProcess) {
-            terminalProcess.write(formatAgentInputForPty("/status"));
-          }
-        }, delayMs),
-      );
-    }
+    timers.push(
+      setTimeout(() => sendStatus("startup-fallback"), 3_000),
+      setTimeout(() => {
+        if (!parseCodexStatusOutput(output)) {
+          sendStatus("retry-no-status");
+        }
+      }, 8_000),
+    );
   });
+}
+
+function hiddenCodexOutputLooksReady(output) {
+  const text = normalizeCodexStatusOutput(output).toLowerCase();
+  return (
+    /\bcodex\b/.test(text) &&
+    (/(input|prompt|type|enter|ready)/.test(text) || /(?:^|\n)\s*[>›]\s*$/.test(text) || text.length > 800)
+  );
+}
+
+function codexStatusDebug(output, details) {
+  const normalizedOutput = normalizeCodexStatusOutput(output);
+  return {
+    outputTail: normalizedOutput.slice(-1500),
+    sawFiveHour: /5h\s+limit\s*:/i.test(normalizedOutput),
+    sawWeekly: /weekly\s+limit\s*:/i.test(normalizedOutput),
+    sentStatusCount: details.sentStatusCount,
+    exited: details.exited,
+    timedOut: details.timedOut,
+  };
+}
+
+function normalizeCodexStatusOutput(output) {
+  return stripTerminalControlSequences(String(output))
+    .split("\n")
+    .map((line) => removeTerminalBoxDrawing(line).replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
 }
 
 function parseCodexStatusOutput(output) {
@@ -1099,10 +1169,7 @@ function parseCodexStatusOutput(output) {
 }
 
 function latestCompleteCodexStatusBlock(output) {
-  const lines = stripTerminalControlSequences(String(output))
-    .split("\n")
-    .map((line) => removeTerminalBoxDrawing(line).replace(/\s+/g, " ").trim())
-    .filter(Boolean);
+  const lines = normalizeCodexStatusOutput(output).split("\n").filter(Boolean);
 
   for (let weeklyIndex = lines.length - 1; weeklyIndex >= 0; weeklyIndex -= 1) {
     if (!statusLineHasLabel(lines[weeklyIndex], "Weekly limit")) {
