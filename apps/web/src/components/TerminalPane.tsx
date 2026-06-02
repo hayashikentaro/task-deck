@@ -5,9 +5,11 @@ import { InputComposer } from "./InputComposer";
 import type { OutputEvent, Task } from "../types";
 
 type TerminalPaneProps = {
+  composerValue: string;
   isConnected: boolean;
   task: Task | null;
   lastOutput: OutputEvent | null;
+  onComposerValueChange: (value: string) => void;
   send: (payload: unknown) => boolean;
 };
 
@@ -15,7 +17,14 @@ const logTailLength = 200_000;
 const terminalFontSizeStorageKey = "taskdeck.terminalFontSize";
 const terminalFontSizes = [11, 12, 13, 14, 15, 16, 18];
 
-export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPaneProps) {
+export function TerminalPane({
+  composerValue,
+  isConnected,
+  task,
+  lastOutput,
+  onComposerValueChange,
+  send,
+}: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -247,7 +256,13 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
       </div>
       {terminalMessage ? <p className="terminal-message">{terminalMessage}</p> : null}
       <div className="terminal-host" ref={hostRef} />
-      <InputComposer isConnected={isConnected} task={task} send={send} />
+      <InputComposer
+        isConnected={isConnected}
+        task={task}
+        value={composerValue}
+        onValueChange={onComposerValueChange}
+        send={send}
+      />
     </section>
   );
 }

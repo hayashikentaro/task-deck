@@ -4,6 +4,8 @@ import type { PendingTaskAttachment, Task } from "../types";
 type InputComposerProps = {
   isConnected: boolean;
   task: Task | null;
+  value: string;
+  onValueChange: (value: string) => void;
   send: (payload: unknown) => boolean;
 };
 
@@ -16,8 +18,7 @@ type SelectedImageAttachment = {
   file: File;
 };
 
-export function InputComposer({ isConnected, task, send }: InputComposerProps) {
-  const [value, setValue] = useState("");
+export function InputComposer({ isConnected, task, value, onValueChange, send }: InputComposerProps) {
   const [isComposing, setIsComposing] = useState(false);
   const [selectedImages, setSelectedImages] = useState<SelectedImageAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState("");
@@ -104,7 +105,7 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
       const input = appendAttachmentContext(value, uploadedAttachments);
       const didSend = sendAgentInput(input);
       if (didSend) {
-        setValue("");
+        onValueChange("");
         setSelectedImages([]);
       }
     } catch (error) {
@@ -171,7 +172,7 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
           autoComplete="off"
           autoCorrect="off"
           disabled={!canSend}
-          onChange={(event) => setValue(event.target.value)}
+          onChange={(event) => onValueChange(event.target.value)}
           onCompositionEnd={() => setIsComposing(false)}
           onCompositionStart={() => setIsComposing(true)}
           onKeyDown={handleKeyDown}

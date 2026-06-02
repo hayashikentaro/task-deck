@@ -27,6 +27,7 @@ export function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [lastOutput, setLastOutput] = useState<OutputEvent | null>(null);
   const [taskDeckContext, setTaskDeckContext] = useState<TaskDeckContext | null>(null);
+  const [composerValue, setComposerValue] = useState("");
   const socketRef = useRef<WebSocket | null>(null);
   const outputSeqRef = useRef(0);
   const selectedTaskIdRef = useRef<string | null>(null);
@@ -259,9 +260,11 @@ export function App() {
           onSelectTask={setSelectedTaskId}
         />
         <TerminalPane
+          composerValue={composerValue}
           isConnected={connectionState === "connected"}
           task={selectedTask}
           lastOutput={lastOutput}
+          onComposerValueChange={setComposerValue}
           send={send}
         />
         <aside className="right-rail">
@@ -272,7 +275,13 @@ export function App() {
             onCreateTask={createTask}
             onRenameSavedSession={renameSavedSession}
           />
-          <ToolsPane context={taskDeckContext} isConnected={connectionState === "connected"} onCreateTask={createTask} />
+          <ToolsPane
+            context={taskDeckContext}
+            isConnected={connectionState === "connected"}
+            selectedTask={selectedTask}
+            onCreateTask={createTask}
+            onInsertComposerText={setComposerValue}
+          />
         </aside>
       </section>
     </main>

@@ -1,19 +1,34 @@
 import { useMemo, useState } from "react";
 import { defaultAgentProfiles } from "../agentProfiles";
-import type { AgentProfile, CreateTaskInput, TaskDeckContext } from "../types";
+import type { AgentProfile, CreateTaskInput, Task, TaskDeckContext } from "../types";
 
 type ToolsPaneProps = {
   context: TaskDeckContext | null;
   isConnected: boolean;
+  selectedTask: Task | null;
   onCreateTask: (input: CreateTaskInput) => boolean;
+  onInsertComposerText: (text: string) => void;
 };
 
-export function ToolsPane({ context, isConnected, onCreateTask }: ToolsPaneProps) {
+const sessionCommands = [
+  { label: "Status", command: "/status" },
+  { label: "5.5 Thinking", command: "/model gpt-5.5-thinking" },
+  { label: "5.5", command: "/model gpt-5.5" },
+];
+
+export function ToolsPane({
+  context,
+  isConnected,
+  selectedTask,
+  onCreateTask,
+  onInsertComposerText,
+}: ToolsPaneProps) {
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isRestartConfirmOpen, setIsRestartConfirmOpen] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
   const codexContainers = useMemo(() => getCodexToolContainers(context), [context]);
+  const canInsertSessionCommand = Boolean(isConnected && selectedTask?.status === "running");
 
   const startCodexAuthTask = (containerName: string, action: "logout" | "device-login") => {
     const isDeviceLogin = action === "device-login";
@@ -62,25 +77,40 @@ export function ToolsPane({ context, isConnected, onCreateTask }: ToolsPaneProps
         <h2>Tools</h2>
       </div>
       <div className="tools-body">
-        <div className="tool-actions" aria-label="Codex auth actions">
-          {codexContainers.map((containerName) => (
-            <div className="tool-action-group" key={containerName}>
+        <div className="tool-section" aria-labelledby="tools-account-title">
+          <h3 id="tools-account-title">Account</h3>
+          <div className="tool-actions" aria-label="Codex auth actions">
+            {codexContainers.map((containerName) => (
+              <div className="tool-action-group" data-layout="single" key={containerName}>
+                <button
+                  disabled={!isConnected}
+                  type="button"
+                  onClick={() => startCodexAuthTask(containerName, "device-login")}
+                >
+                  Codex login
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="tool-section" aria-labelledby="tools-current-session-title">
+          <h3 id="tools-current-session-title">To current session</h3>
+          <div className="tool-action-group" data-layout="single">
+            {sessionCommands.map((sessionCommand) => (
               <button
-                disabled={!isConnected}
+                disabled={!canInsertSessionCommand}
+                key={sessionCommand.command}
                 type="button"
-                onClick={() => startCodexAuthTask(containerName, "device-login")}
+                onClick={() => onInsertComposerText(sessionCommand.command)}
               >
-                Codex login
+                {sessionCommand.label}
               </button>
-              <button
-                disabled={!isConnected}
-                type="button"
-                onClick={() => startCodexAuthTask(containerName, "logout")}
-              >
-                Codex logout
-              </button>
-            </div>
-          ))}
+            ))}
+          </div>
+          {!canInsertSessionCommand ? <p className="tool-hint">Select a running task</p> : null}
+        </div>
+        <div className="tool-section" aria-labelledby="tools-system-title">
+          <h3 id="tools-system-title">System</h3>
           <div className="tool-action-group" data-layout="single">
             <button disabled={!isConnected || isRestarting} type="button" onClick={() => setIsRestartConfirmOpen(true)}>
               Restart TaskDeck
