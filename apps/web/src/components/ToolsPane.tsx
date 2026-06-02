@@ -12,7 +12,7 @@ type ToolsPaneProps = {
   onInsertComposerText: (text: string) => void;
 };
 
-const sessionCommands = [
+const modelShortcutCommands = [
   { label: "5.5 Thinking", command: "/model gpt-5.5-thinking" },
   { label: "5.5", command: "/model gpt-5.5" },
   { label: "5.4 Codex", command: "/model gpt-5.4-codex" },
@@ -32,7 +32,7 @@ export function ToolsPane({
   const [isRestartConfirmOpen, setIsRestartConfirmOpen] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
   const codexContainers = useMemo(() => getCodexToolContainers(context), [context]);
-  const canInsertSessionCommand = Boolean(isConnected && selectedTask?.status === "running");
+  const canInsertModelCommand = Boolean(isConnected && selectedTask?.status === "running");
 
   const openDirectInput = () => {
     const directInputUrl = new URL(window.location.href);
@@ -111,21 +111,27 @@ export function ToolsPane({
             ))}
           </div>
         </div>
-        <div className="tool-section" aria-labelledby="tools-current-session-title">
-          <h3 id="tools-current-session-title">To current session</h3>
+        <div className="tool-section" aria-labelledby="tools-model-shortcuts-title">
+          <h3 id="tools-model-shortcuts-title">Model shortcuts</h3>
           <div className="tool-action-group" data-layout="single">
-            {sessionCommands.map((sessionCommand) => (
+            {modelShortcutCommands.map((modelCommand) => (
               <button
-                disabled={!canInsertSessionCommand}
-                key={sessionCommand.command}
+                aria-label={`Insert ${modelCommand.command} into composer`}
+                disabled={!canInsertModelCommand}
+                key={modelCommand.command}
+                title={`Insert ${modelCommand.command} into composer`}
                 type="button"
-                onClick={() => onInsertComposerText(sessionCommand.command)}
+                onClick={() => onInsertComposerText(modelCommand.command)}
               >
-                {sessionCommand.label}
+                {modelCommand.label}
               </button>
             ))}
           </div>
-          {!canInsertSessionCommand ? <p className="tool-hint">Select a running task</p> : null}
+          <p className="tool-hint">
+            {canInsertModelCommand
+              ? "Inserts a /model command into the composer."
+              : "Select a running task to insert a model command."}
+          </p>
         </div>
         <div className="tool-section" aria-labelledby="tools-log-title">
           <h3 id="tools-log-title">Log</h3>
