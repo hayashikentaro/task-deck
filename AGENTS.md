@@ -84,6 +84,16 @@ Keep state, risk, diffs, review, and agent supervision central. Terminal/PTY int
 - Use `docs/issues/` for deferred product decisions, domain-model questions, and implementation tradeoffs that should stay close to the codebase. Treat these files as decision records rather than a general TODO backlog.
 - For icon-only controls such as disclosure, close, clear, expand/collapse, and directional buttons, use vector icons such as inline SVG instead of text glyphs. Keep dimensions fixed and rotate/reuse one vector when representing state changes so the visual size does not shift.
 
+## Prompt Handoff Convention
+
+Agents working in this repository should read and follow this `AGENTS.md` before making changes.
+
+Future implementation prompts may intentionally omit repeated repository boilerplate that is already defined here, including repository-boundary checks, preservation rules, verification commands, commit/push expectations, and handoff reporting format.
+
+When a prompt says to follow `AGENTS.md`, treat the standing rules in this file as active requirements. The prompt should focus on the task-specific change, scope, and acceptance criteria rather than restating this entire file.
+
+If a task-specific user instruction conflicts with this file, stop and report the conflict unless the user's instruction clearly and safely overrides a non-safety process preference.
+
 ## Implementation Cautions
 
 - Task persistence must keep old stored tasks loadable.
