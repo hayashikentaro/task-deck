@@ -9,7 +9,8 @@
     "packages/core"
   ],
   "scripts": {
-    "dev": "npm --workspace @taskdeck/server run dev",
+    "dev": "node scripts/dev-supervisor.js",
+    "dev:server": "npm --workspace @taskdeck/server run dev",
     "build": "npm --workspace @taskdeck/web run build",
     "start": "npm --workspace @taskdeck/server run start"
   }

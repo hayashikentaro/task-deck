@@ -10,6 +10,9 @@ type ToolsPaneProps = {
 
 export function ToolsPane({ context, isConnected, onCreateTask }: ToolsPaneProps) {
   const [statusMessage, setStatusMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isRestartConfirmOpen, setIsRestartConfirmOpen] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
   const codexContainers = useMemo(() => getCodexToolContainers(context), [context]);
 
   const startCodexAuthTask = (containerName: string, action: "logout" | "device-login") => {
@@ -29,6 +32,28 @@ export function ToolsPane({ context, isConnected, onCreateTask }: ToolsPaneProps
         ? `Started ${isDeviceLogin ? "Codex device login" : "Codex logout"} in ${containerName}.`
         : "TaskDeck is not connected.",
     );
+    setErrorMessage("");
+  };
+
+  const requestRestart = async () => {
+    setIsRestarting(true);
+    setStatusMessage("Restarting TaskDeck...");
+    setErrorMessage("");
+
+    try {
+      const response = await fetch("/api/server/restart", { method: "POST" });
+      const payload = (await response.json()) as { error?: string; message?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to restart TaskDeck.");
+      }
+      setIsRestartConfirmOpen(false);
+      setStatusMessage(payload.message || "Restarting TaskDeck...");
+      setIsRestarting(false);
+    } catch (error) {
+      setStatusMessage("");
+      setErrorMessage(error instanceof Error ? error.message : "Unable to restart TaskDeck.");
+      setIsRestarting(false);
+    }
   };
 
   return (
@@ -56,9 +81,39 @@ export function ToolsPane({ context, isConnected, onCreateTask }: ToolsPaneProps
               </button>
             </div>
           ))}
+          <div className="tool-action-group" data-layout="single">
+            <button disabled={!isConnected || isRestarting} type="button" onClick={() => setIsRestartConfirmOpen(true)}>
+              Restart TaskDeck
+            </button>
+          </div>
         </div>
         {statusMessage ? <p className="tool-status">{statusMessage}</p> : null}
+        {errorMessage ? <p className="tool-status" data-tone="error">{errorMessage}</p> : null}
       </div>
+      {isRestartConfirmOpen ? (
+        <div aria-labelledby="restart-taskdeck-title" aria-modal="true" className="modal-backdrop" role="dialog">
+          <div className="confirmation-modal">
+            <h3 id="restart-taskdeck-title">Restart TaskDeck?</h3>
+            <p>
+              Restarting TaskDeck will restart the backend server. Active PTY sessions such as Codex, Goose, or zsh may
+              be interrupted.
+            </p>
+            <div className="confirmation-actions">
+              <button
+                data-priority="secondary"
+                disabled={isRestarting}
+                onClick={() => setIsRestartConfirmOpen(false)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button data-priority="danger" disabled={isRestarting} onClick={requestRestart} type="button">
+                Restart TaskDeck
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

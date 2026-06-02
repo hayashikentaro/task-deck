@@ -1328,6 +1328,10 @@ dd {
   gap: 8px;
 }
 
+.tool-action-group[data-layout="single"] {
+  grid-template-columns: 1fr;
+}
+
 .tool-action-group button {
   min-width: 0;
   padding: 0 8px;
@@ -1339,6 +1343,10 @@ dd {
 
 .tool-status {
   color: var(--status-muted);
+}
+
+.tool-status[data-tone="error"] {
+  color: var(--status-failed);
 }
 
 .task-create-panel {
