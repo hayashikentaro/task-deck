@@ -587,6 +587,7 @@ async function startTask({
     return;
   }
 
+  const processCwd = await serverAccessiblePathForHostCwd(resolvedCwd);
   const effectiveCommand = await commandForTaskCwd(command, resolvedCwd, sessionMode);
   const detectedAgentSession = detectInitialAgentSession(effectiveCommand, agentProfileId, agentLabel);
   const explicitAgentSession = normalizeExplicitAgentSession({
@@ -632,7 +633,7 @@ async function startTask({
       name: "xterm-256color",
       cols: 100,
       rows: 28,
-      cwd: resolvedCwd,
+      cwd: processCwd,
       env: {
         ...process.env,
         TERM: "xterm-256color",
@@ -854,9 +855,10 @@ async function resolveCwd(cwd, socket) {
 async function validateCwd(cwd) {
   const inputCwd = String(cwd || "").trim();
   const resolvedCwd = inputCwd ? path.resolve(repoRoot, inputCwd) : repoRoot;
+  const statCwd = await serverAccessiblePathForHostCwd(resolvedCwd);
 
   try {
-    const stat = await fs.stat(resolvedCwd);
+    const stat = await fs.stat(statCwd);
     if (!stat.isDirectory()) {
       return {
         ok: false,
@@ -875,7 +877,7 @@ async function validateCwd(cwd) {
       resolvedCwd,
       exists: true,
       isDirectory: true,
-      isGitRepo: await cwdIsGitRepo(resolvedCwd),
+      isGitRepo: await cwdIsGitRepo(statCwd),
       message: inputCwd ? "Working directory is valid." : "Using repository root.",
     };
   } catch {
@@ -1022,25 +1024,39 @@ async function buildProjectSuggestions(projectRoots = null) {
   const suggestions = [];
   for (const projectRoot of roots) {
     let entries = [];
+    let readableProjectRoot = projectRoot;
     try {
-      entries = await fs.readdir(projectRoot, { withFileTypes: true });
+      entries = await fs.readdir(readableProjectRoot, { withFileTypes: true });
     } catch (error) {
-      if (error.code !== "ENOENT") {
-        console.warn(`TaskDeck could not read project root ${projectRoot}: ${error.message}`);
+      readableProjectRoot = serverAccessibleProjectRootForHostRoot(projectRoot);
+      if (readableProjectRoot) {
+        try {
+          entries = await fs.readdir(readableProjectRoot, { withFileTypes: true });
+        } catch (fallbackError) {
+          if (fallbackError.code !== "ENOENT") {
+            console.warn(`TaskDeck could not read project root ${readableProjectRoot}: ${fallbackError.message}`);
+          }
+          entries = [];
+        }
+      } else {
+        if (error.code !== "ENOENT") {
+          console.warn(`TaskDeck could not read project root ${projectRoot}: ${error.message}`);
+        }
+        continue;
       }
-      continue;
     }
 
     for (const entry of entries) {
       if (!entry.isDirectory() || shouldExcludeProjectDirectory(entry.name)) {
         continue;
       }
-      suggestions.push(await buildProjectSuggestion(path.join(projectRoot, entry.name)));
+      suggestions.push(await buildProjectSuggestion(path.join(projectRoot, entry.name), path.join(readableProjectRoot, entry.name)));
     }
   }
 
   if (suggestions.length === 0) {
-    suggestions.push(await buildProjectSuggestion(repoRoot));
+    const defaultProjectRoot = roots[0] || repoRoot;
+    suggestions.push(await buildProjectSuggestion(hostProjectPathForRepoRoot(defaultProjectRoot), repoRoot));
   }
 
   return dedupeProjectSuggestions(suggestions).sort((left, right) => {
@@ -1052,18 +1068,21 @@ async function buildProjectSuggestions(projectRoots = null) {
 }
 
 function selectDefaultProjectCwd(projectSuggestions, defaultProjectRoot) {
+  const hostRepoRoot = hostProjectPathForRepoRoot(defaultProjectRoot);
   return (
-    projectSuggestions.find((project) => project.path === repoRoot)?.path ??
+    projectSuggestions.find((project) => project.path === hostRepoRoot)?.path ??
+    projectSuggestions.find((project) => project.label === path.basename(repoRoot))?.path ??
     projectSuggestions[0]?.path ??
+    hostRepoRoot ??
     defaultProjectRoot
   );
 }
 
-async function buildProjectSuggestion(projectPath) {
+async function buildProjectSuggestion(projectPath, accessibleProjectPath = projectPath) {
   return {
     label: path.basename(projectPath) || projectPath,
     path: projectPath,
-    isGitRepo: await cwdIsGitRepo(projectPath),
+    isGitRepo: await cwdIsGitRepo(accessibleProjectPath),
   };
 }
 
@@ -1192,6 +1211,43 @@ async function directoryExists(directoryPath) {
   } catch {
     return false;
   }
+}
+
+function hostProjectPathForRepoRoot(projectRoot) {
+  const resolvedProjectRoot = path.resolve(String(projectRoot || ""));
+  if (isPathWithin(repoRoot, resolvedProjectRoot)) {
+    return repoRoot;
+  }
+  return path.join(resolvedProjectRoot, path.basename(repoRoot));
+}
+
+function serverAccessibleProjectRootForHostRoot(projectRoot) {
+  const resolvedProjectRoot = path.resolve(String(projectRoot || ""));
+  if (isPathWithin(repoRoot, resolvedProjectRoot)) {
+    return resolvedProjectRoot;
+  }
+  return path.dirname(repoRoot);
+}
+
+async function serverAccessiblePathForHostCwd(hostCwd) {
+  const resolvedHostCwd = path.resolve(String(hostCwd || ""));
+  if (await directoryExists(resolvedHostCwd)) {
+    return resolvedHostCwd;
+  }
+
+  const projectRoots = await resolveProjectRoots();
+  const matchingProjectRoot = projectRoots
+    .map((projectRoot) => path.resolve(projectRoot))
+    .filter((projectRoot) => isPathWithin(resolvedHostCwd, projectRoot))
+    .sort((left, right) => right.length - left.length)[0];
+
+  if (!matchingProjectRoot) {
+    return resolvedHostCwd;
+  }
+
+  const readableProjectRoot = serverAccessibleProjectRootForHostRoot(matchingProjectRoot);
+  const relativePath = path.relative(matchingProjectRoot, resolvedHostCwd);
+  return path.join(readableProjectRoot, relativePath);
 }
 
 function normalizeStoredTaskAgentState(task) {
@@ -1990,7 +2046,7 @@ async function listSavedCodexSessions() {
   const sessionsByKey = new Map();
 
   for (const task of tasks.values()) {
-    const session = savedCodexSessionFromTask(task);
+    const session = await savedCodexSessionFromTask(task);
     if (!session) {
       continue;
     }
@@ -2169,7 +2225,41 @@ function mapContainerPathToHostPath(containerPath, mounts) {
   return "";
 }
 
-function savedCodexSessionFromTask(task) {
+async function mapKnownContainerPathToHostPath(containerPath) {
+  const normalizedContainerPath = path.posix.normalize(String(containerPath || ""));
+  if (!normalizedContainerPath || normalizedContainerPath === ".") {
+    return "";
+  }
+
+  const projectRoots = await resolveProjectRoots();
+  for (const projectRoot of projectRoots) {
+    const containerProjectRoot = serverAccessibleProjectRootForHostRoot(projectRoot).split(path.sep).join(path.posix.sep);
+    const normalizedContainerProjectRoot = path.posix.normalize(containerProjectRoot);
+    if (
+      normalizedContainerPath !== normalizedContainerProjectRoot &&
+      !normalizedContainerPath.startsWith(`${normalizedContainerProjectRoot}/`)
+    ) {
+      continue;
+    }
+    const relativePath = normalizedContainerPath.slice(normalizedContainerProjectRoot.length).replace(/^\/+/, "");
+    return path.join(projectRoot, relativePath);
+  }
+
+  return "";
+}
+
+async function hostCwdForSavedSessionTask(task) {
+  const cwd = String(task.cwd || "").trim();
+  if (!cwd) {
+    const projectRoots = await resolveProjectRoots();
+    return hostProjectPathForRepoRoot(projectRoots[0] || repoRoot);
+  }
+
+  const mappedCwd = await mapKnownContainerPathToHostPath(cwd);
+  return mappedCwd || cwd;
+}
+
+async function savedCodexSessionFromTask(task) {
   if (task.agentSessionProvider !== "codex" || !String(task.agentSessionId || "").trim()) {
     return null;
   }
@@ -2196,7 +2286,7 @@ function savedCodexSessionFromTask(task) {
     source: String(task.agentSessionSource || ""),
     resumeCommand,
     title: sessionLabelForKey(key) || normalizeSavedSessionTitle(task.title),
-    cwd: String(task.cwd || repoRoot),
+    cwd: await hostCwdForSavedSessionTask(task),
     agentProfileId,
     agentLabel,
     commandEnvironment,
