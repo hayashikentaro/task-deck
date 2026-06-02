@@ -22,19 +22,18 @@ export function CodexStatusPanel({
   snapshot,
   onRefresh,
 }: CodexStatusPanelProps) {
-  const hasSnapshot = Boolean(snapshot);
-  const unavailableText = errorMessage || (hasSnapshot ? "" : "No Codex status yet");
+  const unavailableText = errorMessage || "";
 
   return (
-    <section className="codex-status-panel" aria-label="Codex status">
+    <section className="codex-status-panel" aria-label="Codex usage">
       <div className="codex-status-heading">
-        <h2>Codex status</h2>
+        <h2>Codex Usage</h2>
         <button
-          aria-label="Refresh Codex status"
+          aria-label="Refresh Codex usage"
           data-loading={isRefreshing ? "true" : undefined}
           disabled={!canRefresh || isRefreshing}
           onClick={onRefresh}
-          title="Refresh Codex status"
+          title="Refresh Codex usage"
           type="button"
         >
           <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">

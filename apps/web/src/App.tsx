@@ -178,8 +178,8 @@ export function App() {
         throw new Error(payload.error || "Unable to refresh Codex status.");
       }
       setCodexStatusSnapshot(codexStatusSnapshotForDisplay(payload.status));
-    } catch (error) {
-      setCodexStatusError(error instanceof Error ? error.message : "Unable to refresh Codex status.");
+    } catch {
+      setCodexStatusError("Unable to refresh");
     } finally {
       setIsCodexStatusRefreshing(false);
     }
