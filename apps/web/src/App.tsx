@@ -233,30 +233,6 @@ export function App() {
     }
   };
 
-  const renameSavedSession = async (sessionKey: string, label: string) => {
-    try {
-      const response = await fetch(`/api/agent-sessions/${encodeURIComponent(sessionKey)}/label`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label }),
-      });
-      const payload = (await response.json()) as { error?: string; tasks?: Task[]; sessions?: SavedCodexSession[] };
-      if (!response.ok) {
-        throw new Error(payload.error || "Unable to update TaskDeck display name.");
-      }
-      if (payload.tasks) {
-        setTasks(payload.tasks);
-      }
-      if (payload.sessions) {
-        setSavedCodexSessions(payload.sessions);
-      }
-      return true;
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : "Unable to update TaskDeck display name.");
-      return false;
-    }
-  };
-
   const clearTasks = async () => {
     const response = await fetch("/api/tasks", { method: "DELETE" });
     const payload = (await response.json()) as {
@@ -338,7 +314,6 @@ export function App() {
             disabled={connectionState !== "connected"}
             savedCodexSessions={savedCodexSessions}
             onCreateTask={createTask}
-            onRenameSavedSession={renameSavedSession}
           />
           <CodexStatusPanel
             canRefresh={canRefreshCodexStatus}
