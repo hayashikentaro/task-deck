@@ -333,10 +333,7 @@ function executionCwdForSessionMode(
   if (sessionMode === "saved_codex" && savedSession) {
     return savedSession.cwd;
   }
-  if (sessionMode === "resume_last") {
-    return defaultCwd || selectedProjectPath;
-  }
-  return selectedProjectPath;
+  return selectedProjectPath || defaultCwd || "";
 }
 
 function buildCodexResumeLastCommand(profile: AgentProfile, codexPermissionLevel: CodexPermissionLevel) {
