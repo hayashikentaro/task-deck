@@ -36,6 +36,8 @@ export function App() {
   const outputSeqRef = useRef(0);
   const selectedTaskIdRef = useRef<string | null>(null);
   const runningTaskIdsRef = useRef<string[]>([]);
+  const hasAutoRefreshedCodexUsageRef = useRef(false);
+  const isCodexStatusRefreshingRef = useRef(false);
 
   useEffect(() => {
     selectedTaskIdRef.current = selectedTaskId;
@@ -164,11 +166,12 @@ export function App() {
     return didSend;
   };
 
-  const refreshCodexStatus = async () => {
-    if (!canRefreshCodexStatus || isCodexStatusRefreshing) {
+  const refreshCodexStatus = useCallback(async () => {
+    if (!canRefreshCodexStatus || isCodexStatusRefreshingRef.current) {
       return;
     }
 
+    isCodexStatusRefreshingRef.current = true;
     setIsCodexStatusRefreshing(true);
     setCodexStatusError("");
     try {
@@ -181,9 +184,26 @@ export function App() {
     } catch {
       setCodexStatusError("Unable to refresh");
     } finally {
+      isCodexStatusRefreshingRef.current = false;
       setIsCodexStatusRefreshing(false);
     }
-  };
+  }, [canRefreshCodexStatus]);
+
+  useEffect(() => {
+    if (connectionState !== "connected" || hasAutoRefreshedCodexUsageRef.current) {
+      return undefined;
+    }
+
+    const refreshTimer = window.setTimeout(() => {
+      if (hasAutoRefreshedCodexUsageRef.current) {
+        return;
+      }
+      hasAutoRefreshedCodexUsageRef.current = true;
+      refreshCodexStatus();
+    }, 0);
+
+    return () => window.clearTimeout(refreshTimer);
+  }, [connectionState, refreshCodexStatus]);
 
   const renameTask = async (taskId: string, title: string) => {
     try {
@@ -367,7 +387,7 @@ function localWeeklyResetLabel(resetLabel: string | undefined) {
   }
 
   const resetDate = utcDateForWeeklyReset(label);
-  return resetDate ? localMonthDayTimeLabel(resetDate) : label;
+  return resetDate ? localMonthDayLabel(resetDate) : label;
 }
 
 function utcDateForTimeOnlyReset(resetLabel: string) {
@@ -411,13 +431,10 @@ function localTimeLabel(value: Date) {
   }).format(value);
 }
 
-function localMonthDayTimeLabel(value: Date) {
+function localMonthDayLabel(value: Date) {
   return new Intl.DateTimeFormat(undefined, {
-    month: "short",
+    month: "numeric",
     day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
   }).format(value);
 }
 
