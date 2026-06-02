@@ -63,6 +63,14 @@ const defaultAgentProfiles = [
     diagnosticContainer: "ai-agent-sandbox-agent-1",
     diagnosticWorkspace: "/workspace",
   },
+  {
+    id: "zsh",
+    label: "zsh",
+    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'exec zsh || exec bash || exec sh'",
+    description: "Plain interactive zsh shell",
+    diagnosticContainer: "ai-agent-sandbox-agent-1",
+    diagnosticWorkspace: "/workspace",
+  },
 ];
 
 const app = express();
