@@ -96,6 +96,7 @@ const inputPromptStabilizationMs = 750;
 const ptyActivityWindowMs = 3000;
 const maxPtyActivityFrames = 40;
 const quietAttentionMs = 5000;
+const defaultContainerWorkspaceRoot = "/workspace";
 const imageAttachmentMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
 const imageAttachmentExtensions = new Map([
   ["image/png", ".png"],
@@ -903,7 +904,7 @@ async function commandForTaskCwd(command, resolvedCwd, sessionMode) {
     return command;
   }
 
-  const containerCwd = await containerCwdForHostCwd(resolvedCwd, dockerWorkdir);
+  const containerCwd = await containerCwdForHostCwd(resolvedCwd, defaultContainerWorkspaceRoot);
   if (!containerCwd || containerCwd === dockerWorkdir) {
     return command;
   }
