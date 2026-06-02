@@ -110,6 +110,8 @@ app.get("/api/context", async (_request, response) => {
     pathSeparator: path.sep,
     isGitRepo: await cwdIsGitRepo(repoRoot),
     cwdSuggestions: await buildCwdSuggestions(),
+    projectRoots: await buildProjectRoots(),
+    projectSuggestions: await buildProjectSuggestions(),
     agentProfiles: await loadAgentProfiles(),
     agentProfileConfig: await getAgentProfileConfigSummary(),
   });
@@ -585,7 +587,6 @@ async function startTask({
     ...explicitAgentSession,
   });
   const finalizedAttachments = await finalizePendingAttachments(attachments, baseTask.id);
-  const launchInitialInstruction = appendAttachmentContext(initialInstruction, finalizedAttachments);
 
   const task = markTaskRunning({
     ...baseTask,
@@ -635,15 +636,6 @@ async function startTask({
       updateAgentStateFromPtyOutput(activePty, data);
       broadcast({ type: "output", taskId: task.id, data });
     });
-
-    if (launchInitialInstruction) {
-      setTimeout(() => {
-        const activePty = activePtys.get(task.id);
-        if (activePty) {
-          writeOrQueuePtyInput(activePty, formatAgentInputForPty(launchInitialInstruction), "initial-instruction");
-        }
-      }, 350);
-    }
 
     terminalProcess.onExit(({ exitCode, signal }) => {
       const currentTask = tasks.get(task.id);
@@ -888,19 +880,6 @@ function modelFromCommand(command) {
   return match?.[1] || match?.[2] || match?.[3] || "";
 }
 
-function appendAttachmentContext(initialInstruction, attachments) {
-  if (!attachments.length) {
-    return initialInstruction;
-  }
-
-  const attachmentBlock = [
-    "Attached images:",
-    ...attachments.map((attachment) => `- ${attachment.path}`),
-  ].join("\n");
-  const instruction = String(initialInstruction || "").trim();
-  return instruction ? `${instruction}\n\n${attachmentBlock}` : attachmentBlock;
-}
-
 function logInputDebug(taskId, data, source) {
   if (!inputDebugEnabled) {
     return;
@@ -942,6 +921,142 @@ async function buildCwdSuggestions() {
     }
   }
   return suggestions;
+}
+
+async function buildProjectRoots() {
+  const configuredRoots = await loadConfiguredProjectRoots();
+  return configuredRoots.length ? configuredRoots : [repoRoot];
+}
+
+async function buildProjectSuggestions() {
+  const configuredRoots = await loadConfiguredProjectRoots();
+  if (configuredRoots.length === 0) {
+    return [await buildProjectSuggestion(repoRoot)];
+  }
+
+  const suggestions = [];
+  for (const projectRoot of configuredRoots) {
+    let entries = [];
+    try {
+      entries = await fs.readdir(projectRoot, { withFileTypes: true });
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        console.warn(`TaskDeck could not read project root ${projectRoot}: ${error.message}`);
+      }
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || shouldExcludeProjectDirectory(entry.name)) {
+        continue;
+      }
+      suggestions.push(await buildProjectSuggestion(path.join(projectRoot, entry.name)));
+    }
+  }
+
+  if (suggestions.length === 0) {
+    suggestions.push(await buildProjectSuggestion(repoRoot));
+  }
+
+  return dedupeProjectSuggestions(suggestions).sort((left, right) => {
+    if (left.isGitRepo !== right.isGitRepo) {
+      return left.isGitRepo ? -1 : 1;
+    }
+    return left.label.localeCompare(right.label);
+  });
+}
+
+async function buildProjectSuggestion(projectPath) {
+  return {
+    label: path.basename(projectPath) || projectPath,
+    path: projectPath,
+    isGitRepo: await cwdIsGitRepo(projectPath),
+  };
+}
+
+function shouldExcludeProjectDirectory(name) {
+  const excludedNames = new Set([
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    "target",
+    "out",
+    "tmp",
+    "temp",
+    "cache",
+    ".cache",
+    ".next",
+    ".nuxt",
+    ".turbo",
+  ]);
+  return name.startsWith(".") || excludedNames.has(name);
+}
+
+function dedupeProjectSuggestions(suggestions) {
+  const seenPaths = new Set();
+  return suggestions.filter((suggestion) => {
+    if (seenPaths.has(suggestion.path)) {
+      return false;
+    }
+    seenPaths.add(suggestion.path);
+    return true;
+  });
+}
+
+async function loadConfiguredProjectRoots() {
+  const roots = [];
+  for (const configCandidate of getAgentProfileConfigCandidates()) {
+    try {
+      const rawContents = await fs.readFile(configCandidate.path, "utf8");
+      roots.push(...normalizeProjectRoots(JSON.parse(rawContents)));
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        console.warn(`TaskDeck could not read ${configCandidate.path}: ${error.message}`);
+      }
+    }
+  }
+  roots.push(...normalizeProjectRootsFromEnv());
+  return dedupeProjectRoots(roots);
+}
+
+function normalizeProjectRoots(config) {
+  const values = [];
+  if (typeof config?.projectRoot === "string") {
+    values.push(config.projectRoot);
+  }
+  if (Array.isArray(config?.projectRoots)) {
+    values.push(...config.projectRoots);
+  }
+  return values
+    .map((projectRoot) => String(projectRoot || "").trim())
+    .filter(Boolean)
+    .map((projectRoot) => path.resolve(projectRoot));
+}
+
+function normalizeProjectRootsFromEnv() {
+  const values = [];
+  if (process.env.TASKDECK_PROJECT_ROOT) {
+    values.push(process.env.TASKDECK_PROJECT_ROOT);
+  }
+  if (process.env.TASKDECK_PROJECT_ROOTS) {
+    values.push(...process.env.TASKDECK_PROJECT_ROOTS.split(path.delimiter));
+  }
+  return values
+    .map((projectRoot) => projectRoot.trim())
+    .filter(Boolean)
+    .map((projectRoot) => path.resolve(projectRoot));
+}
+
+function dedupeProjectRoots(projectRoots) {
+  const seenRoots = new Set();
+  return projectRoots.filter((projectRoot) => {
+    if (!projectRoot || seenRoots.has(projectRoot)) {
+      return false;
+    }
+    seenRoots.add(projectRoot);
+    return true;
+  });
 }
 
 function normalizeStoredTaskAgentState(task) {
@@ -2225,7 +2340,9 @@ async function loadAgentProfileConfig() {
         });
         continue;
       }
-      console.warn(`TaskDeck ignored ${configCandidate.path} because it did not contain valid agentProfiles.`);
+      if (Object.prototype.hasOwnProperty.call(parsed || {}, "agentProfiles")) {
+        console.warn(`TaskDeck ignored agentProfiles in ${configCandidate.path} because it did not contain valid profiles.`);
+      }
     } catch (error) {
       if (error.code !== "ENOENT") {
         console.warn(`TaskDeck could not read ${configCandidate.path}: ${error.message}`);

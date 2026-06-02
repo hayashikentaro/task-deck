@@ -239,6 +239,7 @@ dd {
 }
 
 .agent-picker select,
+.project-field select,
 .session-mode-field select,
 .saved-session-field select {
   height: 40px;
@@ -251,6 +252,7 @@ dd {
 }
 
 .session-mode-field,
+.project-field,
 .saved-session-field,
 .custom-resume-field,
 .custom-command-field {
@@ -336,16 +338,6 @@ dd {
 .saved-session-empty {
   color: var(--status-muted);
   font-size: 12px;
-}
-
-.instruction-field {
-  min-width: 0;
-  display: grid;
-  gap: 7px;
-}
-
-.instruction-field input {
-  height: 42px;
 }
 
 .add-context-button {
@@ -1262,10 +1254,6 @@ dd {
     justify-content: start;
   }
 
-  .instruction-field {
-    grid-column: auto;
-  }
-
   .terminal-controls {
     flex-wrap: wrap;
   }
@@ -1519,7 +1507,8 @@ dd {
 }
 
 .task-create-form label,
-.agent-picker {
+.agent-picker,
+.project-field {
   min-width: 0;
 }
 

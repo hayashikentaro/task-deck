@@ -243,7 +243,6 @@ export function App() {
       agentModel: task.agentModel,
       sessionMode: task.sessionMode,
       resumeCommand: task.resumeCommand,
-      initialInstruction: task.initialInstruction,
     });
     if (didStart) {
       setTaskActionError("");

@@ -176,6 +176,12 @@ export type CwdSuggestion = {
   value: string;
 };
 
+export type ProjectSuggestion = {
+  label: string;
+  path: string;
+  isGitRepo: boolean;
+};
+
 export type TaskDeckContext = {
   repoRoot: string;
   defaultCwd: string;
@@ -184,6 +190,8 @@ export type TaskDeckContext = {
   pathSeparator: string;
   isGitRepo: boolean;
   cwdSuggestions: CwdSuggestion[];
+  projectRoots?: string[];
+  projectSuggestions?: ProjectSuggestion[];
   agentProfiles: AgentProfile[];
   agentProfileConfig?: AgentProfileConfigSummary;
 };
