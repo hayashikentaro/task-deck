@@ -102,9 +102,21 @@ export function TaskList({
 
   return (
     <aside className="task-list" aria-label="Tasks">
-      <div className="pane-heading">
-        <h2>Tasks</h2>
-        <div className="pane-actions">
+      <div className="task-list-toolbar">
+        <div className="task-filters" aria-label="Task filters">
+          {(["all", "needs_you", "not_now"] as TaskFilter[]).map((nextFilter) => (
+            <button
+              aria-pressed={filter === nextFilter}
+              data-active={filter === nextFilter}
+              key={nextFilter}
+              onClick={() => setFilter(nextFilter)}
+              type="button"
+            >
+              {filterLabel(nextFilter)}
+            </button>
+          ))}
+        </div>
+        <div className="task-management-actions">
           <span>{tasks.length}</span>
           <button disabled={tasks.length === 0} onClick={() => setIsClearAllConfirmOpen(true)} type="button">
             Clear
@@ -127,19 +139,6 @@ export function TaskList({
           </div>
         </div>
       ) : null}
-      <div className="task-filters" aria-label="Task filters">
-        {(["all", "needs_you", "not_now"] as TaskFilter[]).map((nextFilter) => (
-          <button
-            aria-pressed={filter === nextFilter}
-            data-active={filter === nextFilter}
-            key={nextFilter}
-            onClick={() => setFilter(nextFilter)}
-            type="button"
-          >
-            {filterLabel(nextFilter)}
-          </button>
-        ))}
-      </div>
       <div className="task-list-items">
         {tasks.length === 0 ? <p className="empty-state">No tasks yet.</p> : null}
         {tasks.length > 0 && visibleTasks.length === 0 ? (

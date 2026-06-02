@@ -579,25 +579,63 @@ dd {
 .task-list {
   min-height: 0;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.task-list-toolbar {
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
 }
 
 .task-filters {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 10px;
-  border-bottom: 1px solid var(--line);
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  gap: 3px;
+  min-width: 0;
 }
 
 .task-filters button {
-  padding: 5px 8px;
-  font-size: 12px;
+  flex: 0 0 auto;
+  padding: 5px 5px;
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .task-filters button[data-active="true"] {
   border-color: var(--status-focus);
   color: var(--status-focus);
+}
+
+.task-management-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 5px;
+  align-items: center;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+
+.task-management-actions span {
+  min-width: 1.5ch;
+  color: var(--status-muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.task-management-actions button {
+  padding: 5px 7px;
+  border-color: var(--line);
+  background: transparent;
+  color: var(--status-muted);
+  font-size: 10px;
+  line-height: 1;
 }
 
 .task-list-items {
