@@ -380,8 +380,8 @@ function parseCodexStatusOutput(output: string): Omit<CodexStatusSnapshot, "task
 
   return {
     ...(context ? { context: { remainingPercent: context.percent } } : {}),
-    ...(fiveHour ? { fiveHour: { remainingPercent: fiveHour.percent, resetLabel: fiveHour.resetLabel } } : {}),
-    ...(weekly ? { weekly: { remainingPercent: weekly.percent, resetLabel: compactWeeklyResetLabel(weekly.resetLabel) } } : {}),
+    ...(fiveHour ? { fiveHour: { remainingPercent: fiveHour.percent, resetLabel: localFiveHourResetLabel(fiveHour.resetLabel) } } : {}),
+    ...(weekly ? { weekly: { remainingPercent: weekly.percent, resetLabel: localWeeklyResetLabel(weekly.resetLabel) } } : {}),
   };
 }
 
@@ -445,18 +445,75 @@ function labelPatternForRegex(label: string) {
   return label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
 }
 
-function compactWeeklyResetLabel(resetLabel: string | undefined) {
+function localFiveHourResetLabel(resetLabel: string | undefined) {
   const label = String(resetLabel || "").trim();
-  const dateMatch = label.match(/(?:\d{1,2}:\d{2}\s+)?(?:on\s+)?(\d{1,2})\s+([A-Za-z]{3,})/i);
-  if (!dateMatch) {
-    return label;
+  if (!label) {
+    return "";
   }
-  return `${capitalizeMonth(dateMatch[2])} ${Number(dateMatch[1])}`;
+
+  const resetDate = utcDateForTimeOnlyReset(label);
+  return resetDate ? localTimeLabel(resetDate) : label;
 }
 
-function capitalizeMonth(value: string) {
-  const normalized = value.slice(0, 3).toLowerCase();
-  return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
+function localWeeklyResetLabel(resetLabel: string | undefined) {
+  const label = String(resetLabel || "").trim();
+  if (!label) {
+    return "";
+  }
+
+  const resetDate = utcDateForWeeklyReset(label);
+  return resetDate ? localMonthDayTimeLabel(resetDate) : label;
+}
+
+function utcDateForTimeOnlyReset(resetLabel: string) {
+  const match = resetLabel.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) {
+    return null;
+  }
+
+  const now = new Date();
+  const resetDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), Number(match[1]), Number(match[2])));
+  return Number.isNaN(resetDate.getTime()) ? null : resetDate;
+}
+
+function utcDateForWeeklyReset(resetLabel: string) {
+  const match = resetLabel.match(/^(\d{1,2}):(\d{2})\s+on\s+(\d{1,2})\s+([A-Za-z]{3,})$/i);
+  if (!match) {
+    return null;
+  }
+
+  const monthIndex = monthIndexFromLabel(match[4]);
+  if (monthIndex === -1) {
+    return null;
+  }
+
+  const now = new Date();
+  const resetDate = new Date(Date.UTC(now.getUTCFullYear(), monthIndex, Number(match[3]), Number(match[1]), Number(match[2])));
+  return Number.isNaN(resetDate.getTime()) ? null : resetDate;
+}
+
+function monthIndexFromLabel(value: string) {
+  return ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"].indexOf(
+    value.slice(0, 3).toLowerCase(),
+  );
+}
+
+function localTimeLabel(value: Date) {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(value);
+}
+
+function localMonthDayTimeLabel(value: Date) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(value);
 }
 
 function clampPercent(value: number) {
