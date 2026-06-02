@@ -661,13 +661,12 @@ dd {
 }
 
 .task-list-item[data-selected="true"] {
-  border-color: #7fab9f;
-  background: #19231f;
+  filter: brightness(1.08);
   box-shadow:
-    inset 5px 0 0 var(--status-selected),
-    inset 0 0 0 1px rgb(94 148 143 / 58%),
-    0 0 0 1px rgb(94 148 143 / 30%),
-    0 10px 24px rgb(0 0 0 / 24%);
+    inset 5px 0 0 rgb(238 231 214 / 72%),
+    inset 0 0 0 1px rgb(238 231 214 / 42%),
+    0 0 0 1px rgb(238 231 214 / 18%),
+    0 10px 24px rgb(0 0 0 / 28%);
 }
 
 .task-list-item[data-selected="true"]::before {
@@ -675,7 +674,7 @@ dd {
   position: absolute;
   inset: 0 auto 0 0;
   width: 5px;
-  background: var(--status-selected);
+  background: rgb(238 231 214 / 72%);
 }
 
 .task-list-item[data-selected="true"] .task-select-button {
@@ -687,10 +686,10 @@ dd {
 .task-list-item[data-selected="true"][data-tone="waiting_approval"],
 .task-list-item[data-selected="true"][data-tone="review_ready"] {
   box-shadow:
-    inset 5px 0 0 var(--status-selected),
-    inset 0 0 0 1px rgb(94 148 143 / 58%),
-    0 0 0 1px rgb(94 148 143 / 30%),
-    0 10px 24px rgb(0 0 0 / 24%);
+    inset 5px 0 0 rgb(238 231 214 / 72%),
+    inset 0 0 0 1px rgb(238 231 214 / 42%),
+    0 0 0 1px rgb(238 231 214 / 18%),
+    0 10px 24px rgb(0 0 0 / 28%);
 }
 
 .task-list-item[data-tone="active"],
@@ -743,17 +742,11 @@ dd {
   opacity: 0.82;
 }
 
-.task-list-item[data-selected="true"] {
-  border-color: #7fab9f;
-}
-
 .task-list-item[data-selected="true"][data-tone="risk"],
 .task-list-item[data-selected="true"][data-tone="waiting_input"],
 .task-list-item[data-selected="true"][data-tone="waiting_approval"],
 .task-list-item[data-selected="true"][data-tone="review_ready"] {
-  background:
-    linear-gradient(90deg, rgb(94 148 143 / 20%), transparent 42%),
-    var(--tone-risk-bg);
+  filter: brightness(1.12);
 }
 
 .task-select-button {
