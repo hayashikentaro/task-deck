@@ -15,6 +15,7 @@ type ToolsPaneProps = {
 const sessionCommands = [
   { label: "5.5 Thinking", command: "/model gpt-5.5-thinking" },
   { label: "5.5", command: "/model gpt-5.5" },
+  { label: "5.4 Codex", command: "/model gpt-5.4-codex" },
 ];
 
 export function ToolsPane({
@@ -32,6 +33,12 @@ export function ToolsPane({
   const [isRestarting, setIsRestarting] = useState(false);
   const codexContainers = useMemo(() => getCodexToolContainers(context), [context]);
   const canInsertSessionCommand = Boolean(isConnected && selectedTask?.status === "running");
+
+  const openDirectInput = () => {
+    const directInputUrl = new URL(window.location.href);
+    directInputUrl.searchParams.set("directInput", "1");
+    window.open(directInputUrl.toString(), "_blank", "noopener,noreferrer");
+  };
 
   const startCodexAuthTask = (containerName: string, action: "logout" | "device-login") => {
     const isDeviceLogin = action === "device-login";
@@ -80,6 +87,14 @@ export function ToolsPane({
         <h2>Tools</h2>
       </div>
       <div className="tools-body">
+        <div className="tool-section" aria-labelledby="tools-terminal-title">
+          <h3 id="tools-terminal-title">Terminal</h3>
+          <div className="tool-action-group" data-layout="single">
+            <button type="button" onClick={openDirectInput}>
+              Open Direct Input
+            </button>
+          </div>
+        </div>
         <div className="tool-section" aria-labelledby="tools-account-title">
           <h3 id="tools-account-title">Account</h3>
           <div className="tool-actions" aria-label="Codex auth actions">
