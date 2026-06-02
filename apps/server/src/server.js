@@ -806,7 +806,7 @@ async function applyRuntimeModelSwitch(message, socket) {
     const runtimeCommand = buildRuntimeModelSwitchCommand(runtimeModelSwitchCommand, model);
     logInputDebug(taskId, runtimeCommand, "apply-model");
     resetPendingInputPrompt(activePty);
-    writeOrQueuePtyInput(activePty, formatRawTerminalInputForPty(runtimeCommand), "apply-model");
+    writeOrQueuePtyInput(activePty, formatRuntimeModelSwitchInputForPty(runtimeCommand), "apply-model");
     setTask({
       ...task,
       agentModel: model,
@@ -987,6 +987,10 @@ function formatAgentInputForPty(input) {
 
 function formatRawTerminalInputForPty(input) {
   return `${normalizeTerminalInput(input).trim()}${terminalEnter}`;
+}
+
+function formatRuntimeModelSwitchInputForPty(command) {
+  return `\x15${formatRawTerminalInputForPty(command)}`;
 }
 
 function normalizeTerminalInput(input) {
