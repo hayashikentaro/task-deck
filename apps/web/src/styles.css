@@ -261,7 +261,7 @@ dd {
 
 .saved-session-preview {
   display: grid;
-  gap: 5px;
+  gap: 7px;
   margin: 0;
   padding: 9px;
   border: 1px solid var(--line);
@@ -269,31 +269,11 @@ dd {
   background: var(--surface);
 }
 
-.saved-session-preview div {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
-  gap: 8px;
-}
-
-.saved-session-preview dt {
+.saved-session-preview > span:first-child {
   color: var(--status-muted);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-}
-
-.saved-session-preview dd {
-  overflow: hidden;
-  color: var(--text-secondary);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.saved-session-preview .session-label-cell {
-  overflow: visible;
-  white-space: normal;
 }
 
 .session-label-display {

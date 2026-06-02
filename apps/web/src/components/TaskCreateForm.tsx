@@ -208,72 +208,42 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
         {sessionMode === "saved_codex" ? (
           <div className="saved-session-field">
             {selectedSavedSession ? (
-              <dl className="saved-session-preview">
-                <div>
-                  <dt>Session</dt>
-                  <dd>{selectedSavedSession.sessionId}</dd>
-                </div>
-                <div>
-                  <dt>TaskDeck label</dt>
-                  <dd className="session-label-cell">
-                    {isEditingSessionLabel ? (
-                      <form className="session-label-edit-form" onSubmit={submitSessionLabel}>
-                        <input
-                          aria-label="TaskDeck display name"
-                          autoFocus
-                          value={sessionLabelInput}
-                          onChange={(event) => setSessionLabelInput(event.target.value)}
-                        />
-                        <div>
-                          <button disabled={isRenamingSession || !sessionLabelInput.trim()} type="submit">
-                            Save
-                          </button>
-                          <button
-                            data-priority="secondary"
-                            disabled={isRenamingSession}
-                            onClick={() => {
-                              setSessionLabelInput(selectedSavedSession.title);
-                              setIsEditingSessionLabel(false);
-                            }}
-                            type="button"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </form>
-                    ) : (
-                      <span className="session-label-display">
-                        <span>{selectedSavedSession.title}</span>
-                        <button onClick={() => setIsEditingSessionLabel(true)} type="button">
-                          Edit
-                        </button>
-                      </span>
-                    )}
-                  </dd>
-                </div>
-                {selectedSavedSession.source ? (
-                  <div>
-                    <dt>Source</dt>
-                    <dd>{selectedSavedSession.source}</dd>
-                  </div>
-                ) : null}
-                <div>
-                  <dt>Detected</dt>
-                  <dd>{selectedSavedSession.detectedAt || selectedSavedSession.updatedAt}</dd>
-                </div>
-                <div>
-                  <dt>Command</dt>
-                  <dd>{launchCommand.resumeCommand}</dd>
-                </div>
-                <div>
-                  <dt>Environment</dt>
-                  <dd>{sessionEnvironmentLabel(selectedSavedSession)}</dd>
-                </div>
-                <div>
-                  <dt>Workspace</dt>
-                  <dd>{selectedSavedSession.cwd}</dd>
-                </div>
-              </dl>
+              <div className="saved-session-preview">
+                <span>Saved session</span>
+                {isEditingSessionLabel ? (
+                  <form className="session-label-edit-form" onSubmit={submitSessionLabel}>
+                    <input
+                      aria-label="TaskDeck display name"
+                      autoFocus
+                      value={sessionLabelInput}
+                      onChange={(event) => setSessionLabelInput(event.target.value)}
+                    />
+                    <div>
+                      <button disabled={isRenamingSession || !sessionLabelInput.trim()} type="submit">
+                        Save
+                      </button>
+                      <button
+                        data-priority="secondary"
+                        disabled={isRenamingSession}
+                        onClick={() => {
+                          setSessionLabelInput(selectedSavedSession.title);
+                          setIsEditingSessionLabel(false);
+                        }}
+                        type="button"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <span className="session-label-display">
+                    <span title={selectedSavedSession.title}>{selectedSavedSession.title}</span>
+                    <button onClick={() => setIsEditingSessionLabel(true)} type="button">
+                      Edit
+                    </button>
+                  </span>
+                )}
+              </div>
             ) : null}
           </div>
         ) : null}
@@ -381,12 +351,9 @@ function buildTaskTitle(
 }
 
 function savedSessionLabel(session: SavedCodexSession) {
-  const detectedAt = session.detectedAt || session.updatedAt;
-  const date = Number.isFinite(Date.parse(detectedAt)) ? new Date(detectedAt).toLocaleString() : "saved";
   const projectName = basename(session.cwd) || "workspace";
   const taskTitle = session.title || "Codex session";
-  const agentLabel = session.agentLabel || "Codex";
-  return `${projectName} · ${taskTitle} · ${agentLabel} · ${sessionEnvironmentLabel(session)} · ${date} · ${compactSessionId(session.sessionId)}`;
+  return `${projectName} · ${taskTitle}`;
 }
 
 function savedSessionMatchesAgent(session: SavedCodexSession, agent: AgentProfile) {
@@ -394,14 +361,6 @@ function savedSessionMatchesAgent(session: SavedCodexSession, agent: AgentProfil
     return session.agentProfileId === agent.id;
   }
   return sessionEnvironment(session) === agentCommandEnvironment(agent);
-}
-
-function sessionEnvironmentLabel(session: SavedCodexSession) {
-  const environment = sessionEnvironment(session);
-  if (environment === "local") {
-    return "Local";
-  }
-  return environment;
 }
 
 function sessionEnvironment(session: SavedCodexSession) {
@@ -429,11 +388,4 @@ function savedSessionOptionValue(sessionKey: string) {
 
 function basename(value: string) {
   return value.split(/[\\/]/).filter(Boolean).pop() ?? "";
-}
-
-function compactSessionId(sessionId: string) {
-  if (sessionId.length <= 12) {
-    return sessionId;
-  }
-  return `${sessionId.slice(0, 6)}...${sessionId.slice(-4)}`;
 }
