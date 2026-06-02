@@ -1004,12 +1004,29 @@ dd {
 }
 
 .terminal-controls button {
+  width: 28px;
+  height: 28px;
+  display: inline-grid;
+  place-items: center;
   border-color: transparent;
   background: transparent;
-  padding: 4px 7px;
+  padding: 0;
   color: var(--status-muted);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.terminal-controls button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.terminal-controls button path {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 
 .terminal-font-size {

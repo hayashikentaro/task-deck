@@ -6,7 +6,9 @@ type ToolsPaneProps = {
   context: TaskDeckContext | null;
   isConnected: boolean;
   selectedTask: Task | null;
+  canCopyLog: boolean;
   onCreateTask: (input: CreateTaskInput) => boolean;
+  onCopyLog: () => void;
   onInsertComposerText: (text: string) => void;
 };
 
@@ -19,7 +21,9 @@ export function ToolsPane({
   context,
   isConnected,
   selectedTask,
+  canCopyLog,
   onCreateTask,
+  onCopyLog,
   onInsertComposerText,
 }: ToolsPaneProps) {
   const [statusMessage, setStatusMessage] = useState("");
@@ -107,6 +111,14 @@ export function ToolsPane({
             ))}
           </div>
           {!canInsertSessionCommand ? <p className="tool-hint">Select a running task</p> : null}
+        </div>
+        <div className="tool-section" aria-labelledby="tools-log-title">
+          <h3 id="tools-log-title">Log</h3>
+          <div className="tool-action-group" data-layout="single">
+            <button disabled={!canCopyLog} type="button" onClick={onCopyLog}>
+              Copy log
+            </button>
+          </div>
         </div>
         <div className="tool-section" aria-labelledby="tools-system-title">
           <h3 id="tools-system-title">System</h3>

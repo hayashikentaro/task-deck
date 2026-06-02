@@ -9,7 +9,10 @@ type TerminalPaneProps = {
   isConnected: boolean;
   task: Task | null;
   lastOutput: OutputEvent | null;
+  terminalMessage: string;
   onComposerValueChange: (value: string) => void;
+  onLogBufferChange: (value: string) => void;
+  onTerminalMessageChange: (value: string) => void;
   send: (payload: unknown) => boolean;
 };
 
@@ -22,7 +25,10 @@ export function TerminalPane({
   isConnected,
   task,
   lastOutput,
+  terminalMessage,
   onComposerValueChange,
+  onLogBufferChange,
+  onTerminalMessageChange,
   send,
 }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -32,12 +38,22 @@ export function TerminalPane({
   const directInputDebugRef = useRef(isDirectInputDebugEnabled());
   const [logBuffer, setLogBuffer] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [terminalMessage, setTerminalMessage] = useState("");
   const [terminalFontSize, setTerminalFontSize] = useState(readStoredTerminalFontSize);
 
   const directInputDebug = directInputDebugRef.current;
   const taskId = task?.id ?? null;
   const searchMatchCount = useMemo(() => countMatches(logBuffer, searchTerm), [logBuffer, searchTerm]);
+
+  const updateTerminalMessage = useCallback(
+    (value: string) => {
+      onTerminalMessageChange(value);
+    },
+    [onTerminalMessageChange],
+  );
+
+  useEffect(() => {
+    onLogBufferChange(logBuffer);
+  }, [logBuffer, onLogBufferChange]);
 
   useEffect(() => {
     if (terminalRef.current) {
@@ -136,7 +152,7 @@ export function TerminalPane({
     }
 
     terminal.reset();
-    setTerminalMessage("");
+    updateTerminalMessage("");
     setLogBuffer("");
 
     if (!nextTask) {
@@ -167,18 +183,18 @@ export function TerminalPane({
           terminal.scrollToBottom();
         });
         setLogBuffer(logs);
-        setTerminalMessage(payload.truncated ? `Showing last ${logTailLength.toLocaleString()} characters.` : "");
+        updateTerminalMessage(payload.truncated ? `Showing last ${logTailLength.toLocaleString()} characters.` : "");
       })
       .catch((error) => {
         if (abortController.signal.aborted) {
           return;
         }
         terminal.writeln("[TaskDeck] Unable to load task logs.");
-        setTerminalMessage(error instanceof Error ? error.message : "Unable to load task logs.");
+        updateTerminalMessage(error instanceof Error ? error.message : "Unable to load task logs.");
       });
 
     return () => abortController.abort();
-  }, []);
+  }, [updateTerminalMessage]);
 
   useEffect(() => {
     selectedTaskIdRef.current = taskId;
@@ -198,20 +214,6 @@ export function TerminalPane({
 
   const reloadLog = () => {
     loadPersistedLog(task);
-  };
-
-  const copyLog = async () => {
-    if (!logBuffer) {
-      setTerminalMessage("No terminal content to copy.");
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(logBuffer);
-      setTerminalMessage("Copied terminal content.");
-    } catch {
-      setTerminalMessage("Copy failed in this browser context.");
-    }
   };
 
   return (
@@ -246,11 +248,10 @@ export function TerminalPane({
               {searchMatchCount} match{searchMatchCount === 1 ? "" : "es"}
             </span>
           ) : null}
-          <button disabled={!task} onClick={reloadLog} type="button">
-            Reload log
-          </button>
-          <button disabled={!task || logBuffer.length === 0} onClick={copyLog} type="button">
-            Copy log
+          <button aria-label="Reload log" disabled={!task} onClick={reloadLog} title="Reload log" type="button">
+            <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+              <path d="M13 8a5 5 0 1 1-1.46-3.54M13 2.5v4h-4" />
+            </svg>
           </button>
         </div>
       </div>

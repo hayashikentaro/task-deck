@@ -32,6 +32,8 @@ export function App() {
   const [codexStatusSnapshot, setCodexStatusSnapshot] = useState<CodexStatusSnapshot | null>(null);
   const [codexStatusError, setCodexStatusError] = useState("");
   const [isCodexStatusRefreshing, setIsCodexStatusRefreshing] = useState(false);
+  const [selectedLogBuffer, setSelectedLogBuffer] = useState("");
+  const [terminalMessage, setTerminalMessage] = useState("");
   const socketRef = useRef<WebSocket | null>(null);
   const outputSeqRef = useRef(0);
   const selectedTaskIdRef = useRef<string | null>(null);
@@ -278,6 +280,20 @@ export function App() {
     applyTaskList(payload.tasks, getRunningTaskIdsFromMessage(payload));
   };
 
+  const copySelectedLog = async () => {
+    if (!selectedLogBuffer) {
+      setTerminalMessage("No terminal content to copy.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(selectedLogBuffer);
+      setTerminalMessage("Copied terminal content.");
+    } catch {
+      setTerminalMessage("Copy failed in this browser context.");
+    }
+  };
+
   const applyTaskList = (nextTasks: Task[], nextRunningTaskIds: string[]) => {
     setTasks(nextTasks);
     setRunningTaskIds(nextRunningTaskIds);
@@ -310,7 +326,10 @@ export function App() {
           isConnected={connectionState === "connected"}
           task={selectedTask}
           lastOutput={lastOutput}
+          terminalMessage={terminalMessage}
           onComposerValueChange={setComposerValue}
+          onLogBufferChange={setSelectedLogBuffer}
+          onTerminalMessageChange={setTerminalMessage}
           send={send}
         />
         <aside className="right-rail">
@@ -332,8 +351,10 @@ export function App() {
             context={taskDeckContext}
             isConnected={connectionState === "connected"}
             selectedTask={selectedTask}
+            canCopyLog={Boolean(selectedTask && selectedLogBuffer.length)}
             onCreateTask={createTask}
             onInsertComposerText={setComposerValue}
+            onCopyLog={copySelectedLog}
           />
         </aside>
       </section>
