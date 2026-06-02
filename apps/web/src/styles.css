@@ -661,19 +661,20 @@ dd {
 }
 
 .task-list-item[data-selected="true"] {
-  border-color: var(--status-selected);
-  background: #18201e;
+  border-color: #7fab9f;
+  background: #19231f;
   box-shadow:
-    inset 3px 0 0 var(--status-selected),
-    0 0 0 1px rgb(94 148 143 / 22%),
-    0 8px 20px rgb(0 0 0 / 18%);
+    inset 5px 0 0 var(--status-selected),
+    inset 0 0 0 1px rgb(94 148 143 / 58%),
+    0 0 0 1px rgb(94 148 143 / 30%),
+    0 10px 24px rgb(0 0 0 / 24%);
 }
 
 .task-list-item[data-selected="true"]::before {
   content: "";
   position: absolute;
   inset: 0 auto 0 0;
-  width: 3px;
+  width: 5px;
   background: var(--status-selected);
 }
 
@@ -686,9 +687,10 @@ dd {
 .task-list-item[data-selected="true"][data-tone="waiting_approval"],
 .task-list-item[data-selected="true"][data-tone="review_ready"] {
   box-shadow:
-    inset 3px 0 0 var(--status-selected),
-    0 0 0 1px rgb(94 148 143 / 24%),
-    0 8px 20px rgb(0 0 0 / 18%);
+    inset 5px 0 0 var(--status-selected),
+    inset 0 0 0 1px rgb(94 148 143 / 58%),
+    0 0 0 1px rgb(94 148 143 / 30%),
+    0 10px 24px rgb(0 0 0 / 24%);
 }
 
 .task-list-item[data-tone="active"],
@@ -739,6 +741,19 @@ dd {
 
 .task-list-item[data-tone="subdued"] {
   opacity: 0.82;
+}
+
+.task-list-item[data-selected="true"] {
+  border-color: #7fab9f;
+}
+
+.task-list-item[data-selected="true"][data-tone="risk"],
+.task-list-item[data-selected="true"][data-tone="waiting_input"],
+.task-list-item[data-selected="true"][data-tone="waiting_approval"],
+.task-list-item[data-selected="true"][data-tone="review_ready"] {
+  background:
+    linear-gradient(90deg, rgb(94 148 143 / 20%), transparent 42%),
+    var(--tone-risk-bg);
 }
 
 .task-select-button {
