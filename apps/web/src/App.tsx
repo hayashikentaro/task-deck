@@ -168,6 +168,10 @@ export function App() {
     return didSend;
   };
 
+  const applyModel = (taskId: string, model: string) => {
+    return send({ type: "apply_model", taskId, model });
+  };
+
   const refreshCodexStatus = useCallback(async () => {
     if (!canRefreshCodexStatus || isCodexStatusRefreshingRef.current) {
       return;
@@ -328,7 +332,7 @@ export function App() {
             selectedTask={selectedTask}
             canCopyLog={Boolean(selectedTask && selectedLogBuffer.length)}
             onCreateTask={createTask}
-            onInsertComposerText={setComposerValue}
+            onApplyModel={applyModel}
             onCopyLog={copySelectedLog}
           />
         </aside>

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { defaultAgentProfiles } from "../agentProfiles";
-import type { AgentProfile, CreateTaskInput, Task, TaskDeckContext } from "../types";
+import type { AgentProfile, CreateTaskInput, ModelOption, Task, TaskDeckContext } from "../types";
 
 type ToolsPaneProps = {
   context: TaskDeckContext | null;
@@ -9,13 +9,14 @@ type ToolsPaneProps = {
   canCopyLog: boolean;
   onCreateTask: (input: CreateTaskInput) => boolean;
   onCopyLog: () => void;
-  onInsertComposerText: (text: string) => void;
+  onApplyModel: (taskId: string, model: string) => boolean;
 };
 
-const modelShortcutCommands = [
-  { label: "5.5 Thinking", command: "/model gpt-5.5-thinking" },
-  { label: "5.5", command: "/model gpt-5.5" },
-  { label: "5.4 Codex", command: "/model gpt-5.4-codex" },
+const codexFallbackModelOptions: ModelOption[] = [
+  { id: "default", label: "Default" },
+  { id: "gpt-5.5", label: "gpt-5.5" },
+  { id: "gpt-5.5-thinking", label: "gpt-5.5 Thinking" },
+  { id: "gpt-5.4-codex", label: "gpt-5.4 Codex" },
 ];
 
 export function ToolsPane({
@@ -25,14 +26,24 @@ export function ToolsPane({
   canCopyLog,
   onCreateTask,
   onCopyLog,
-  onInsertComposerText,
+  onApplyModel,
 }: ToolsPaneProps) {
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isRestartConfirmOpen, setIsRestartConfirmOpen] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
   const codexContainers = useMemo(() => getCodexToolContainers(context), [context]);
-  const canInsertModelCommand = Boolean(isConnected && selectedTask?.status === "running");
+  const selectedTaskProfile = useMemo(() => findAgentProfileForTask(context, selectedTask), [context, selectedTask]);
+  const modelOptions = useMemo(
+    () => modelOptionsForTask(selectedTask, selectedTaskProfile).filter((option) => option.id !== "default"),
+    [selectedTask, selectedTaskProfile],
+  );
+  const canSwitchModel = Boolean(
+    isConnected &&
+      selectedTask?.status === "running" &&
+      runtimeModelSwitchCommandForTask(selectedTask, selectedTaskProfile) &&
+      modelOptions.length > 0,
+  );
 
   const openDirectInput = () => {
     const directInputUrl = new URL(window.location.href);
@@ -57,6 +68,15 @@ export function ToolsPane({
         ? `Started ${isDeviceLogin ? "Codex device login" : "Codex logout"} in ${containerName}.`
         : "TaskDeck is not connected.",
     );
+    setErrorMessage("");
+  };
+
+  const applyModel = (model: string) => {
+    if (!selectedTask || !canSwitchModel) {
+      return;
+    }
+    const didSend = onApplyModel(selectedTask.id, model);
+    setStatusMessage(didSend ? `Switching model to ${model}.` : "TaskDeck is not connected.");
     setErrorMessage("");
   };
 
@@ -111,26 +131,24 @@ export function ToolsPane({
             ))}
           </div>
         </div>
-        <div className="tool-section" aria-labelledby="tools-model-shortcuts-title">
-          <h3 id="tools-model-shortcuts-title">Model shortcuts</h3>
+        <div className="tool-section" aria-labelledby="tools-model-title">
+          <h3 id="tools-model-title">Switch model</h3>
           <div className="tool-action-group" data-layout="single">
-            {modelShortcutCommands.map((modelCommand) => (
+            {modelOptions.map((modelOption) => (
               <button
-                aria-label={`Insert ${modelCommand.command} into composer`}
-                disabled={!canInsertModelCommand}
-                key={modelCommand.command}
-                title={`Insert ${modelCommand.command} into composer`}
+                aria-label={`Switch model to ${modelOption.label}`}
+                disabled={!canSwitchModel}
+                key={modelOption.id}
+                title={`Switch model to ${modelOption.label}`}
                 type="button"
-                onClick={() => onInsertComposerText(modelCommand.command)}
+                onClick={() => applyModel(modelOption.id)}
               >
-                {modelCommand.label}
+                {modelOption.label}
               </button>
             ))}
           </div>
           <p className="tool-hint">
-            {canInsertModelCommand
-              ? "Inserts a /model command into the composer."
-              : "Select a running task to insert a model command."}
+            {canSwitchModel ? "Sends TaskDeck's model-switch action to the selected task." : "Select a running Codex task to switch models."}
           </p>
         </div>
         <div className="tool-section" aria-labelledby="tools-log-title">
@@ -190,6 +208,39 @@ function getCodexToolContainers(context: TaskDeckContext | null) {
         .filter((containerName): containerName is string => Boolean(containerName)),
     ),
   );
+}
+
+function findAgentProfileForTask(context: TaskDeckContext | null, task: Task | null) {
+  if (!task) {
+    return null;
+  }
+  const agentProfiles = context?.agentProfiles.length ? context.agentProfiles : defaultAgentProfiles;
+  return (
+    agentProfiles.find((profile) => profile.id === task.agentProfileId) ??
+    agentProfiles.find((profile) => profile.label === task.agentLabel) ??
+    null
+  );
+}
+
+function modelOptionsForTask(task: Task | null, profile: AgentProfile | null) {
+  const configuredOptions = profile?.modelOptions?.filter((option) => option.id && option.label) ?? [];
+  if (configuredOptions.length > 0) {
+    return configuredOptions;
+  }
+  return task && isCodexRuntimeSwitchTask(task, profile) ? codexFallbackModelOptions : [];
+}
+
+function runtimeModelSwitchCommandForTask(task: Task | null, profile: AgentProfile | null) {
+  const configuredCommand = profile?.runtimeModelSwitchCommand?.trim() ?? "";
+  if (configuredCommand) {
+    return configuredCommand;
+  }
+  return task && isCodexRuntimeSwitchTask(task, profile) ? "/model {model}" : "";
+}
+
+function isCodexRuntimeSwitchTask(task: Task, profile: AgentProfile | null) {
+  const haystack = `${profile?.id || ""} ${profile?.label || ""} ${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command}`.toLowerCase();
+  return /\bcodex\b/.test(haystack);
 }
 
 function isCodexProfile(profile: AgentProfile) {
