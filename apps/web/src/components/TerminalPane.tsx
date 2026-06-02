@@ -21,6 +21,8 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
   const fitAddonRef = useRef<FitAddon | null>(null);
   const selectedTaskIdRef = useRef<string | null>(null);
   const directInputDebugRef = useRef(isDirectInputDebugEnabled());
+  const followOutputRef = useRef(true);
+  const [followOutput, setFollowOutput] = useState(true);
   const [logBuffer, setLogBuffer] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [terminalMessage, setTerminalMessage] = useState("");
@@ -28,6 +30,7 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
 
   const directInputDebug = directInputDebugRef.current;
   const taskId = task?.id ?? null;
+  const terminalMode = getTerminalMode(task, isConnected);
   const searchMatchCount = useMemo(() => countMatches(logBuffer, searchTerm), [logBuffer, searchTerm]);
 
   useEffect(() => {
@@ -35,6 +38,10 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
       terminalRef.current.options.disableStdin = !(directInputDebug && task?.status === "running" && isConnected);
     }
   }, [directInputDebug, isConnected, task?.status]);
+
+  useEffect(() => {
+    followOutputRef.current = followOutput;
+  }, [followOutput]);
 
   useEffect(() => {
     if (!hostRef.current || terminalRef.current) {
@@ -155,7 +162,9 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
           terminal.writeln(`[TaskDeck] Showing last ${logTailLength.toLocaleString()} characters of persisted log.`);
         }
         terminal.write(logs, () => {
-          terminal.scrollToBottom();
+          if (followOutputRef.current) {
+            terminal.scrollToBottom();
+          }
         });
         setLogBuffer(logs);
         setTerminalMessage(payload.truncated ? `Showing last ${logTailLength.toLocaleString()} characters.` : "");
@@ -183,9 +192,17 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
     }
     setLogBuffer((current) => `${current}${lastOutput.data}`.slice(-logTailLength));
     terminalRef.current?.write(lastOutput.data, () => {
-      terminalRef.current?.scrollToBottom();
+      if (followOutputRef.current) {
+        terminalRef.current?.scrollToBottom();
+      }
     });
   }, [lastOutput, task?.id]);
+
+  const clearTerminalView = () => {
+    terminalRef.current?.reset();
+    setLogBuffer("");
+    setTerminalMessage("Terminal view cleared. Reload to restore persisted log.");
+  };
 
   const reloadLog = () => {
     loadPersistedLog(task);
@@ -208,7 +225,21 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
   return (
     <section className="terminal-pane" aria-label="Terminal">
       <div className="terminal-toolbar">
+        <div className="terminal-title-group">
+          <h2>Terminal</h2>
+          <strong data-mode={modeTone(terminalMode)}>{terminalMode}</strong>
+          <span>{task ? task.agentState.replace(/_/g, " ") : "idle"}</span>
+          {directInputDebug ? <span>direct input debug</span> : null}
+        </div>
         <div className="terminal-controls">
+          <button
+            aria-pressed={followOutput}
+            data-active={followOutput}
+            onClick={() => setFollowOutput((current) => !current)}
+            type="button"
+          >
+            Follow {followOutput ? "on" : "off"}
+          </button>
           <label className="terminal-font-size">
             <span>Font</span>
             <select
@@ -232,16 +263,17 @@ export function TerminalPane({ isConnected, task, lastOutput, send }: TerminalPa
               value={searchTerm}
             />
           </label>
-          {searchTerm ? (
-            <span className="terminal-search-count">
-              {searchMatchCount} match{searchMatchCount === 1 ? "" : "es"}
-            </span>
-          ) : null}
+          <span className="terminal-search-count">
+            {searchTerm ? `${searchMatchCount} match${searchMatchCount === 1 ? "" : "es"}` : "No search"}
+          </span>
+          <button disabled={!task} onClick={clearTerminalView} type="button">
+            Clear
+          </button>
           <button disabled={!task} onClick={reloadLog} type="button">
-            Reload log
+            Reload
           </button>
           <button disabled={!task || logBuffer.length === 0} onClick={copyLog} type="button">
-            Copy log
+            Copy
           </button>
         </div>
       </div>
@@ -272,6 +304,32 @@ function countMatches(value: string, searchTerm: string) {
   }
 
   return count;
+}
+
+function getTerminalMode(task: Task | null, isConnected: boolean) {
+  if (!task) {
+    return "No task selected";
+  }
+  if (!isConnected) {
+    return "Disconnected";
+  }
+  if (task.status === "running") {
+    return "Interactive PTY";
+  }
+  return "Read-only log";
+}
+
+function modeTone(mode: string) {
+  if (mode === "Interactive PTY") {
+    return "interactive";
+  }
+  if (mode === "Disconnected") {
+    return "disconnected";
+  }
+  if (mode === "Read-only log") {
+    return "readonly";
+  }
+  return "none";
 }
 
 function isDirectInputDebugEnabled() {
