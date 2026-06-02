@@ -1,5 +1,4 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { defaultAgentProfiles } from "../agentProfiles";
 import {
   applyCodexPermissionToCommand,
   buildCodexResumeCommandForCommand,
@@ -35,14 +34,13 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
     }
   }, [context?.defaultCwd, projectSuggestions, selectedProjectPath]);
 
-  const agentProfiles = context?.agentProfiles.length ? context.agentProfiles : defaultAgentProfiles;
+  const agentProfiles = context?.agentProfiles ?? [];
   const selectedAgent =
     agentProfiles.find((profile) => profile.id === selectedAgentId) ??
-    findDefaultAgentProfile(agentProfiles) ??
-    defaultAgentProfiles[0];
-  const selectedAgentIsCodex = isCodexProfile(selectedAgent);
+    findDefaultAgentProfile(agentProfiles);
+  const selectedAgentIsCodex = Boolean(selectedAgent && isCodexProfile(selectedAgent));
   const matchingSavedCodexSessions = useMemo(
-    () => (selectedAgentIsCodex ? savedCodexSessions.filter((session) => savedSessionMatchesAgent(session, selectedAgent)) : []),
+    () => (selectedAgentIsCodex && selectedAgent ? savedCodexSessions.filter((session) => savedSessionMatchesAgent(session, selectedAgent)) : []),
     [savedCodexSessions, selectedAgent, selectedAgentIsCodex],
   );
   const selectedSavedSession =
@@ -51,19 +49,16 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
     null;
   const sessionSelectValue =
     sessionMode === "saved_codex" && selectedSavedSession ? savedSessionOptionValue(selectedSavedSession.key) : sessionMode;
-  const launchCommand = buildLaunchCommand(
-    selectedAgent,
-    sessionMode,
-    selectedSavedSession,
-    codexPermissionLevel,
-  );
+  const launchCommand = selectedAgent
+    ? buildLaunchCommand(selectedAgent, sessionMode, selectedSavedSession, codexPermissionLevel)
+    : { command: "", resumeCommand: "" };
   const command = launchCommand.command;
   const effectiveCwd = executionCwdForSessionMode(sessionMode, selectedProjectPath, selectedSavedSession, context?.defaultCwd);
-  const canStart = !disabled && Boolean(effectiveCwd) && Boolean(command);
+  const canStart = !disabled && Boolean(selectedAgent) && Boolean(effectiveCwd) && Boolean(command);
 
   useEffect(() => {
     if (!agentProfiles.some((profile) => profile.id === selectedAgentId)) {
-      setSelectedAgentId(findDefaultAgentProfile(agentProfiles)?.id ?? defaultAgentProfileId);
+      setSelectedAgentId(findDefaultAgentProfile(agentProfiles)?.id ?? "");
     }
   }, [agentProfiles, selectedAgentId]);
 
@@ -105,11 +100,11 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
     }
 
     onCreateTask({
-      title: buildTaskTitle(selectedAgent.label, sessionMode, effectiveCwd, selectedSavedSession),
+      title: buildTaskTitle(selectedAgent?.label || "Agent", sessionMode, effectiveCwd, selectedSavedSession),
       command,
       cwd: effectiveCwd,
-      agentProfileId: sessionMode === "saved_codex" ? selectedSavedSession?.agentProfileId || "codex" : selectedAgent.id,
-      agentLabel: sessionMode === "saved_codex" ? selectedSavedSession?.agentLabel || "Codex CLI" : selectedAgent.label,
+      agentProfileId: sessionMode === "saved_codex" ? selectedSavedSession?.agentProfileId || "codex" : selectedAgent?.id || "",
+      agentLabel: sessionMode === "saved_codex" ? selectedSavedSession?.agentLabel || "Codex CLI" : selectedAgent?.label || "Agent",
       agentPermissionLevel: selectedAgentIsCodex ? codexPermissionLevel : undefined,
       sessionMode,
       resumeCommand: launchCommand.resumeCommand || undefined,
@@ -128,7 +123,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
       <form className="task-create-form" onSubmit={handleSubmit}>
         <div className="agent-picker" aria-label="Agent profiles">
           <span>Agent</span>
-          <select value={selectedAgent.id} onChange={(event) => setSelectedAgentId(event.target.value)}>
+          <select disabled={!agentProfiles.length} value={selectedAgent?.id ?? ""} onChange={(event) => setSelectedAgentId(event.target.value)}>
             {agentProfiles.map((profile) => (
               <option key={profile.id} value={profile.id}>
                 {profile.label}

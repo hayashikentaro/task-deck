@@ -840,6 +840,7 @@ const codexFallbackModelOptions = [
   { id: "default", label: "Default" },
   { id: "gpt-5.5", label: "gpt-5.5" },
   { id: "gpt-5.5-thinking", label: "gpt-5.5 Thinking" },
+  { id: "gpt-5.4-codex", label: "gpt-5.4 Codex" },
 ];
 
 function modelOptionsForTask(task, profile) {

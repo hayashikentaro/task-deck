@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
-import { defaultAgentProfiles } from "../agentProfiles";
-import type { AgentProfile, CreateTaskInput, ModelOption, Task, TaskDeckContext } from "../types";
+import type { AgentProfile, CreateTaskInput, Task, TaskDeckContext } from "../types";
 
 type ToolsPaneProps = {
   context: TaskDeckContext | null;
@@ -11,13 +10,6 @@ type ToolsPaneProps = {
   onCopyLog: () => void;
   onApplyModel: (taskId: string, model: string) => boolean;
 };
-
-const codexFallbackModelOptions: ModelOption[] = [
-  { id: "default", label: "Default" },
-  { id: "gpt-5.5", label: "gpt-5.5" },
-  { id: "gpt-5.5-thinking", label: "gpt-5.5 Thinking" },
-  { id: "gpt-5.4-codex", label: "gpt-5.4 Codex" },
-];
 
 export function ToolsPane({
   context,
@@ -199,7 +191,7 @@ export function ToolsPane({
 }
 
 function getCodexToolContainers(context: TaskDeckContext | null) {
-  const agentProfiles = context?.agentProfiles.length ? context.agentProfiles : defaultAgentProfiles;
+  const agentProfiles = context?.agentProfiles ?? [];
   return Array.from(
     new Set(
       agentProfiles
@@ -214,7 +206,7 @@ function findAgentProfileForTask(context: TaskDeckContext | null, task: Task | n
   if (!task) {
     return null;
   }
-  const agentProfiles = context?.agentProfiles.length ? context.agentProfiles : defaultAgentProfiles;
+  const agentProfiles = context?.agentProfiles ?? [];
   return (
     agentProfiles.find((profile) => profile.id === task.agentProfileId) ??
     agentProfiles.find((profile) => profile.label === task.agentLabel) ??
@@ -222,25 +214,17 @@ function findAgentProfileForTask(context: TaskDeckContext | null, task: Task | n
   );
 }
 
-function modelOptionsForTask(task: Task | null, profile: AgentProfile | null) {
+function modelOptionsForTask(_task: Task | null, profile: AgentProfile | null) {
   const configuredOptions = profile?.modelOptions?.filter((option) => option.id && option.label) ?? [];
-  if (configuredOptions.length > 0) {
-    return configuredOptions;
-  }
-  return task && isCodexRuntimeSwitchTask(task, profile) ? codexFallbackModelOptions : [];
+  return configuredOptions;
 }
 
-function runtimeModelSwitchCommandForTask(task: Task | null, profile: AgentProfile | null) {
+function runtimeModelSwitchCommandForTask(_task: Task | null, profile: AgentProfile | null) {
   const configuredCommand = profile?.runtimeModelSwitchCommand?.trim() ?? "";
   if (configuredCommand) {
     return configuredCommand;
   }
-  return task && isCodexRuntimeSwitchTask(task, profile) ? "/model {model}" : "";
-}
-
-function isCodexRuntimeSwitchTask(task: Task, profile: AgentProfile | null) {
-  const haystack = `${profile?.id || ""} ${profile?.label || ""} ${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command}`.toLowerCase();
-  return /\bcodex\b/.test(haystack);
+  return "";
 }
 
 function isCodexProfile(profile: AgentProfile) {
