@@ -136,38 +136,10 @@ export type AgentProfile = {
   runtimeModelSwitchCommand?: string;
 };
 
-export type DiagnosticWorkspace = {
-  path: string;
-  exists: boolean;
-  status: string;
-  error?: string;
-};
-
-export type DiagnosticContainer = {
-  name: string;
-  present: boolean;
-  running: boolean;
-  status: string;
-  image: string;
-  workspaces?: DiagnosticWorkspace[];
-  error?: string;
-};
-
 export type AgentProfileConfigSummary = {
   source: string;
   path: string;
   message: string;
-};
-
-export type TaskDeckDiagnostics = {
-  checkedAt: string;
-  config: AgentProfileConfigSummary;
-  docker: {
-    ok: boolean;
-    message: string;
-    version?: string;
-  };
-  containers: DiagnosticContainer[];
 };
 
 export type CwdSuggestion = {

@@ -1284,7 +1284,7 @@ dd {
   overflow: auto;
 }
 
-.diagnostics-panel {
+.tools-panel {
   min-width: 0;
   margin-top: 12px;
   border: 1px solid var(--line);
@@ -1292,80 +1292,43 @@ dd {
   background: var(--panel);
 }
 
-.diagnostics-panel .pane-heading,
-.diagnostics-body {
+.tools-panel .pane-heading,
+.tools-body {
   padding: 12px;
 }
 
-.diagnostics-panel .pane-heading {
+.tools-panel .pane-heading {
   border-bottom: 1px solid var(--line);
 }
 
-.diagnostics-panel button {
+.tools-panel button {
   height: 32px;
   padding: 0 10px;
 }
 
-.diagnostics-body {
+.tools-body {
   display: grid;
   gap: 10px;
   color: var(--text-secondary);
   font-size: 12px;
 }
 
-.diagnostics-body p {
+.tools-body p {
   margin: 0;
 }
 
-.diagnostic-summary-grid {
+.tool-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.tool-action-group {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
-.diagnostic-summary-item {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface-raised);
-  padding: 8px;
-}
-
-.diagnostic-summary-item span {
-  overflow: hidden;
-  color: var(--status-muted);
-  font-size: 10px;
-  font-weight: 800;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.diagnostic-summary-item strong {
-  overflow: hidden;
-  color: var(--text-secondary);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.diagnostic-summary-item strong[data-state="ok"] {
-  color: var(--status-done);
-}
-
-.diagnostic-summary-item strong[data-state="warn"] {
-  color: var(--status-risk-medium);
-}
-
-.diagnostic-auth-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.diagnostic-auth-actions button {
+.tool-action-group button {
   min-width: 0;
   padding: 0 8px;
   overflow: hidden;
@@ -1374,119 +1337,8 @@ dd {
   white-space: nowrap;
 }
 
-.diagnostic-details {
-  display: grid;
-  gap: 8px;
-}
-
-.diagnostic-details summary {
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.diagnostic-details-body {
-  display: grid;
-  gap: 10px;
-  padding-top: 8px;
-}
-
-.diagnostic-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.diagnostic-row span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.diagnostic-row strong {
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  padding: 2px 8px;
+.tool-status {
   color: var(--status-muted);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.diagnostic-row strong[data-state="ok"] {
-  border-color: var(--status-done-border);
-  color: var(--status-done);
-}
-
-.diagnostic-row strong[data-state="warn"] {
-  border-color: var(--status-risk-medium);
-  color: var(--status-risk-medium);
-}
-
-.diagnostic-container {
-  display: grid;
-  gap: 4px;
-  border-top: 1px solid var(--line);
-  padding-top: 10px;
-}
-
-.diagnostic-disclosure {
-  display: grid;
-  gap: 6px;
-}
-
-.diagnostic-disclosure summary {
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.diagnostic-workspaces {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.diagnostic-workspaces span {
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  padding: 2px 7px;
-  color: var(--status-muted);
-  font-size: 11px;
-}
-
-.diagnostic-workspaces span[data-state="ok"] {
-  border-color: var(--status-done-border);
-  color: var(--status-done);
-}
-
-.diagnostic-workspaces span[data-state="warn"] {
-  border-color: var(--status-risk-medium);
-  color: var(--status-risk-medium);
-}
-
-.diagnostic-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.diagnostic-actions button {
-  height: 28px;
-  padding: 0 8px;
-  font-size: 12px;
-}
-
-.diagnostic-container small,
-.diagnostic-note {
-  color: var(--status-muted);
-}
-
-.diagnostic-note code {
-  color: var(--text-secondary);
 }
 
 .task-create-panel {

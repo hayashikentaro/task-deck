@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DiagnosticsPane } from "./components/DiagnosticsPane";
 import { TaskCreateForm } from "./components/TaskCreateForm";
 import { TaskList } from "./components/TaskList";
 import { TerminalPane } from "./components/TerminalPane";
+import { ToolsPane } from "./components/ToolsPane";
 import type { CreateTaskInput, OutputEvent, SavedCodexSession, Task, TaskDeckContext } from "./types";
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
@@ -272,7 +272,7 @@ export function App() {
             onCreateTask={createTask}
             onRenameSavedSession={renameSavedSession}
           />
-          <DiagnosticsPane isConnected={connectionState === "connected"} onCreateTask={createTask} />
+          <ToolsPane context={taskDeckContext} isConnected={connectionState === "connected"} onCreateTask={createTask} />
         </aside>
       </section>
     </main>
