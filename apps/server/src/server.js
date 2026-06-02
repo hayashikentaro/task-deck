@@ -469,12 +469,23 @@ wss.on("connection", (socket) => {
     }
 
     if (message.type === "interrupt") {
-      const activePty = activePtys.get(message.taskId);
-      if (activePty) {
-        resetPendingInputPrompt(activePty);
-        clearQueuedPtyInput(activePty);
-        activePty.process.write("\x03");
+      const taskId = String(message.taskId || "").trim();
+      const task = tasks.get(taskId);
+      const activePty = activePtys.get(taskId);
+      if (!task || task.status !== TaskStatus.RUNNING) {
+        send(socket, { type: "error", message: "Select a running task before canceling the current instruction." });
+        return;
       }
+      if (!activePty) {
+        send(socket, { type: "error", message: "No active PTY is available for the selected task." });
+        return;
+      }
+      resetPendingInputPrompt(activePty);
+      clearQueuedPtyInput(activePty);
+      activePty.process.write("\x03");
+      const marker = "\r\n[TaskDeck] Sent interrupt to running PTY.\r\n";
+      appendLog(taskId, marker);
+      broadcast({ type: "output", taskId, data: marker });
       return;
     }
 

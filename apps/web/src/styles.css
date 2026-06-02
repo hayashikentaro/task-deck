@@ -995,59 +995,12 @@ dd {
   min-width: 0;
   display: flex;
   grid-row: 1;
-  justify-content: space-between;
+  justify-content: end;
   gap: 12px;
   align-items: center;
   padding: 7px 10px;
   border-bottom: 1px solid var(--line);
   background: var(--surface-raised);
-}
-
-.terminal-title-group {
-  min-width: 0;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.terminal-title-group h2 {
-  flex: 0 0 auto;
-}
-
-.terminal-title-group span {
-  overflow: hidden;
-  color: var(--status-muted);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.terminal-title-group strong {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 2px 7px;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.terminal-title-group strong[data-mode="interactive"] {
-  border-color: var(--status-active);
-  color: var(--status-active);
-}
-
-.terminal-title-group strong[data-mode="readonly"] {
-  color: var(--status-readonly);
-}
-
-.terminal-title-group strong[data-mode="disconnected"] {
-  border-color: var(--status-disconnected);
-  color: var(--status-disconnected);
-}
-
-.terminal-title-group strong[data-mode="none"] {
-  color: var(--status-muted);
 }
 
 .terminal-controls {
@@ -1066,12 +1019,6 @@ dd {
   font-size: 12px;
   white-space: nowrap;
 }
-
-.terminal-controls button[data-active="true"] {
-  border-color: var(--status-focus);
-  color: var(--status-focus);
-}
-
 
 .terminal-font-size {
   display: flex;
@@ -1218,7 +1165,7 @@ dd {
 .input-composer-inner {
   min-width: 0;
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) auto;
+  grid-template-columns: 40px minmax(0, 1fr) 42px auto;
   gap: 8px;
   align-items: end;
 }
@@ -1241,6 +1188,25 @@ dd {
 
 .input-composer-inner > .input-attach-button {
   padding: 0;
+}
+
+.input-composer-inner > .input-cancel-button {
+  width: 42px;
+  padding: 0;
+  border-color: var(--line);
+  background: transparent;
+  color: var(--status-muted);
+}
+
+.input-cancel-button svg {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+}
+
+.input-cancel-button:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  color: var(--text-secondary);
 }
 
 .input-attachment-chip-list {
@@ -1311,7 +1277,7 @@ dd {
   }
 
   .input-composer-inner {
-    grid-template-columns: 40px minmax(0, 1fr) auto;
+    grid-template-columns: 40px minmax(0, 1fr) 42px auto;
   }
 }
 

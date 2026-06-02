@@ -75,6 +75,13 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
     setSelectedImages((current) => current.filter((image) => image.id !== imageId));
   };
 
+  const cancelCurrentInstruction = () => {
+    if (!task || !canSend) {
+      return;
+    }
+    send({ type: "interrupt", taskId: task.id });
+  };
+
   const sendValue = async () => {
     if (!hasComposerContent || isUploadingAttachments) {
       return;
@@ -163,6 +170,18 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
           spellCheck={false}
           value={value}
         />
+        <button
+          aria-label="Cancel current instruction"
+          className="input-cancel-button"
+          disabled={!canSend}
+          onClick={cancelCurrentInstruction}
+          title="Cancel current instruction"
+          type="button"
+        >
+          <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+            <rect height="8" rx="1.2" width="8" x="4" y="4" />
+          </svg>
+        </button>
         <button disabled={!canSubmit} type="submit">
           {isUploadingAttachments ? "Sending..." : "Send"}
         </button>
