@@ -62,7 +62,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
     codexPermissionLevel,
   );
   const command = launchCommand.command;
-  const effectiveCwd = sessionMode === "saved_codex" && selectedSavedSession ? selectedSavedSession.cwd : selectedProjectPath;
+  const effectiveCwd = executionCwdForSessionMode(sessionMode, selectedProjectPath, selectedSavedSession, context?.defaultCwd);
   const canStart = !disabled && Boolean(effectiveCwd) && Boolean(command);
 
   useEffect(() => {
@@ -148,9 +148,6 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
 
   return (
     <section className="task-create-panel" aria-label="New agent session">
-      <div className="pane-heading">
-        <h2>New Agent Session</h2>
-      </div>
       <form className="task-create-form" onSubmit={handleSubmit}>
         <div className="agent-picker" aria-label="Agent profiles">
           <span>Agent</span>
@@ -281,7 +278,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
           </div>
         ) : null}
         <button disabled={!canStart} type="submit">
-          Start
+          Start Session
         </button>
       </form>
     </section>
@@ -312,7 +309,7 @@ function buildLaunchCommand(
   codexPermissionLevel: CodexPermissionLevel,
 ) {
   if (sessionMode === "saved_codex") {
-    const resumeCommand = applyCodexPermissionToCommand(savedSession?.resumeCommand.trim() || "", codexPermissionLevel);
+    const resumeCommand = savedSession?.resumeCommand.trim() || "";
     return { command: resumeCommand, resumeCommand };
   }
 
@@ -325,6 +322,21 @@ function buildLaunchCommand(
     ? applyCodexPermissionToCommand(profile.command.trim(), codexPermissionLevel)
     : profile.command.trim();
   return { command, resumeCommand: "" };
+}
+
+function executionCwdForSessionMode(
+  sessionMode: SessionMode,
+  selectedProjectPath: string,
+  savedSession: SavedCodexSession | null,
+  defaultCwd?: string,
+) {
+  if (sessionMode === "saved_codex" && savedSession) {
+    return savedSession.cwd;
+  }
+  if (sessionMode === "resume_last") {
+    return defaultCwd || selectedProjectPath;
+  }
+  return selectedProjectPath;
 }
 
 function buildCodexResumeLastCommand(profile: AgentProfile, codexPermissionLevel: CodexPermissionLevel) {

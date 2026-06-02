@@ -27,6 +27,8 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
   const canSend = Boolean(task && task.status === "running" && isConnected);
   const hasComposerContent = Boolean(value || selectedImages.length);
   const canSubmit = canSend && hasComposerContent && !isUploadingAttachments;
+  const canCancelCurrentInstruction = Boolean(canSend && task?.agentState === "working" && !taskNeedsUserAttention(task));
+  const actionLabel = canCancelCurrentInstruction ? "Cancel current instruction" : "Send input to running PTY";
   const modeText = getComposerMode(task, isConnected);
 
   useLayoutEffect(() => {
@@ -40,6 +42,14 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
+    sendValue();
+  };
+
+  const handlePrimaryAction = () => {
+    if (canCancelCurrentInstruction) {
+      cancelCurrentInstruction();
+      return;
+    }
     sendValue();
   };
 
@@ -165,25 +175,28 @@ export function InputComposer({ isConnected, task, send }: InputComposerProps) {
           onCompositionEnd={() => setIsComposing(false)}
           onCompositionStart={() => setIsComposing(true)}
           onKeyDown={handleKeyDown}
-          placeholder={canSend ? "Send input to running PTY" : modeText}
+          placeholder={canSend ? "Input to running PTY" : modeText}
           rows={1}
           spellCheck={false}
           value={value}
         />
         <button
-          aria-label="Cancel current instruction"
-          className="input-cancel-button"
-          disabled={!canSend}
-          onClick={cancelCurrentInstruction}
-          title="Cancel current instruction"
+          aria-label={actionLabel}
+          className="input-primary-action-button"
+          disabled={canCancelCurrentInstruction ? !canSend : !canSubmit}
+          onClick={handlePrimaryAction}
+          title={actionLabel}
           type="button"
         >
-          <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
-            <rect height="8" rx="1.2" width="8" x="4" y="4" />
-          </svg>
-        </button>
-        <button disabled={!canSubmit} type="submit">
-          {isUploadingAttachments ? "Sending..." : "Send"}
+          {canCancelCurrentInstruction ? (
+            <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+              <rect height="8" rx="1.2" width="8" x="4" y="4" />
+            </svg>
+          ) : (
+            <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+              <path d="M8 13V3M4 7l4-4 4 4" />
+            </svg>
+          )}
         </button>
       </div>
     </form>
@@ -306,4 +319,8 @@ function getComposerMode(task: Task | null, isConnected: boolean) {
     return "Read-only log";
   }
   return "Interactive PTY";
+}
+
+function taskNeedsUserAttention(task: Task | null) {
+  return Boolean(task?.attentionState && task.attentionState !== "none");
 }

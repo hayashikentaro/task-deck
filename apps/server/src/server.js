@@ -110,16 +110,20 @@ let persistSessionLabelsQueue = Promise.resolve();
 app.use(express.json());
 
 app.get("/api/context", async (_request, response) => {
+  const projectRoots = await buildProjectRoots();
+  const projectSuggestions = await buildProjectSuggestions(projectRoots);
+  const defaultProjectRoot = projectRoots[0] || repoRoot;
   response.json({
     repoRoot,
-    defaultCwd: repoRoot,
+    projectRoot: defaultProjectRoot,
+    defaultCwd: selectDefaultProjectCwd(projectSuggestions, defaultProjectRoot),
     serverCwd: process.cwd(),
     shell,
     pathSeparator: path.sep,
     isGitRepo: await cwdIsGitRepo(repoRoot),
     cwdSuggestions: await buildCwdSuggestions(),
-    projectRoots: await buildProjectRoots(),
-    projectSuggestions: await buildProjectSuggestions(),
+    projectRoots,
+    projectSuggestions,
     agentProfiles: await loadAgentProfiles(),
     agentProfileConfig: await getAgentProfileConfigSummary(),
   });
@@ -583,7 +587,8 @@ async function startTask({
     return;
   }
 
-  const detectedAgentSession = detectInitialAgentSession(command, agentProfileId, agentLabel);
+  const effectiveCommand = await commandForTaskCwd(command, resolvedCwd, sessionMode);
+  const detectedAgentSession = detectInitialAgentSession(effectiveCommand, agentProfileId, agentLabel);
   const explicitAgentSession = normalizeExplicitAgentSession({
     agentSessionProvider,
     agentSessionId,
@@ -594,12 +599,12 @@ async function startTask({
   const taskTitle = buildUniqueNewSessionTitle(title, sessionMode);
   const baseTask = createTask({
     title: taskTitle,
-    command,
+    command: effectiveCommand,
     cwd: resolvedCwd,
     agentProfileId,
     agentLabel,
     agentPermissionLevel,
-    agentModel: agentModel || modelFromCommand(command),
+    agentModel: agentModel || modelFromCommand(effectiveCommand),
     sessionMode,
     resumeCommand,
     initialInstruction,
@@ -623,7 +628,7 @@ async function startTask({
   writeTaskLog(task.id, "");
 
   try {
-    const terminalProcess = pty.spawn(shell, ["-lc", command], {
+    const terminalProcess = pty.spawn(shell, ["-lc", effectiveCommand], {
       name: "xterm-256color",
       cols: 100,
       rows: 28,
@@ -886,6 +891,71 @@ async function validateCwd(cwd) {
   }
 }
 
+async function commandForTaskCwd(command, resolvedCwd, sessionMode) {
+  if (sessionMode !== "new") {
+    return command;
+  }
+
+  const dockerWorkdir = extractDockerExecWorkdir(command);
+  if (!dockerWorkdir) {
+    return command;
+  }
+
+  const containerCwd = await containerCwdForHostCwd(resolvedCwd, dockerWorkdir);
+  if (!containerCwd || containerCwd === dockerWorkdir) {
+    return command;
+  }
+
+  return replaceDockerExecWorkdir(command, containerCwd);
+}
+
+function extractDockerExecWorkdir(command) {
+  const match = String(command || "").match(/\bdocker\s+exec\b[\s\S]*?\s-w\s+("[^"]+"|'[^']+'|[^\s]+)/);
+  return match ? unquoteShellToken(match[1]) : "";
+}
+
+function replaceDockerExecWorkdir(command, containerCwd) {
+  return String(command || "").replace(
+    /(\bdocker\s+exec\b[\s\S]*?\s-w\s+)("[^"]+"|'[^']+'|[^\s]+)/,
+    `$1${quoteShellToken(containerCwd)}`,
+  );
+}
+
+async function containerCwdForHostCwd(hostCwd, containerWorkspaceRoot) {
+  const projectRoots = await resolveProjectRoots();
+  const matchingProjectRoot = projectRoots
+    .map((projectRoot) => path.resolve(projectRoot))
+    .filter((projectRoot) => isPathWithin(hostCwd, projectRoot))
+    .sort((left, right) => right.length - left.length)[0];
+
+  if (!matchingProjectRoot) {
+    return "";
+  }
+
+  const relativePath = path.relative(matchingProjectRoot, hostCwd);
+  return path.posix.join(
+    path.posix.normalize(containerWorkspaceRoot),
+    ...relativePath.split(path.sep).filter(Boolean),
+  );
+}
+
+function isPathWithin(candidatePath, parentPath) {
+  const relativePath = path.relative(parentPath, candidatePath);
+  return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
+}
+
+function unquoteShellToken(token) {
+  const value = String(token || "");
+  if ((value.startsWith("'") && value.endsWith("'")) || (value.startsWith("\"") && value.endsWith("\""))) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
+
+function quoteShellToken(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
 function formatAgentInputForPty(input) {
   const text = normalizeTerminalInput(input);
   return `${bracketedPasteStart}${text}${bracketedPasteEnd}${terminalEnter}`;
@@ -944,18 +1014,13 @@ async function buildCwdSuggestions() {
 }
 
 async function buildProjectRoots() {
-  const configuredRoots = await loadConfiguredProjectRoots();
-  return configuredRoots.length ? configuredRoots : [repoRoot];
+  return resolveProjectRoots();
 }
 
-async function buildProjectSuggestions() {
-  const configuredRoots = await loadConfiguredProjectRoots();
-  if (configuredRoots.length === 0) {
-    return [await buildProjectSuggestion(repoRoot)];
-  }
-
+async function buildProjectSuggestions(projectRoots = null) {
+  const roots = projectRoots ?? await resolveProjectRoots();
   const suggestions = [];
-  for (const projectRoot of configuredRoots) {
+  for (const projectRoot of roots) {
     let entries = [];
     try {
       entries = await fs.readdir(projectRoot, { withFileTypes: true });
@@ -986,6 +1051,14 @@ async function buildProjectSuggestions() {
   });
 }
 
+function selectDefaultProjectCwd(projectSuggestions, defaultProjectRoot) {
+  return (
+    projectSuggestions.find((project) => project.path === repoRoot)?.path ??
+    projectSuggestions[0]?.path ??
+    defaultProjectRoot
+  );
+}
+
 async function buildProjectSuggestion(projectPath) {
   return {
     label: path.basename(projectPath) || projectPath,
@@ -996,19 +1069,25 @@ async function buildProjectSuggestion(projectPath) {
 
 function shouldExcludeProjectDirectory(name) {
   const excludedNames = new Set([
+    ".git",
     "node_modules",
     "dist",
     "build",
     "coverage",
+    "vendor",
     "target",
     "out",
+    "output",
     "tmp",
     "temp",
     "cache",
+    ".parcel-cache",
+    ".pytest_cache",
     ".cache",
     ".next",
     ".nuxt",
     ".turbo",
+    ".vite",
   ]);
   return name.startsWith(".") || excludedNames.has(name);
 }
@@ -1024,20 +1103,47 @@ function dedupeProjectSuggestions(suggestions) {
   });
 }
 
+async function resolveProjectRoots() {
+  const configuredRoots = await loadConfiguredProjectRoots();
+  if (configuredRoots.length > 0) {
+    return configuredRoots;
+  }
+
+  const documentsRoot = "/Users/hayashikentarou/Documents";
+  if (await directoryExists(documentsRoot)) {
+    return [documentsRoot];
+  }
+
+  return [repoRoot];
+}
+
 async function loadConfiguredProjectRoots() {
-  const roots = [];
-  for (const configCandidate of getAgentProfileConfigCandidates()) {
+  const envRoots = normalizeProjectRootsFromEnv();
+  if (envRoots.length > 0) {
+    return dedupeProjectRoots(envRoots);
+  }
+
+  const explicitConfigCandidates = [
+    { source: "taskdeck.local.json", path: localConfigPath },
+    { source: "TASKDECK_CONFIG", path: envConfigPath },
+    { source: "taskdeck.config.json", path: defaultConfigPath },
+  ].filter((configCandidate) => configCandidate.path);
+
+  for (const configCandidate of explicitConfigCandidates) {
     try {
       const rawContents = await fs.readFile(configCandidate.path, "utf8");
-      roots.push(...normalizeProjectRoots(JSON.parse(rawContents)));
+      const roots = normalizeProjectRoots(JSON.parse(rawContents));
+      if (roots.length > 0) {
+        return dedupeProjectRoots(roots);
+      }
     } catch (error) {
       if (error.code !== "ENOENT") {
         console.warn(`TaskDeck could not read ${configCandidate.path}: ${error.message}`);
       }
     }
   }
-  roots.push(...normalizeProjectRootsFromEnv());
-  return dedupeProjectRoots(roots);
+
+  return [];
 }
 
 function normalizeProjectRoots(config) {
@@ -1077,6 +1183,15 @@ function dedupeProjectRoots(projectRoots) {
     seenRoots.add(projectRoot);
     return true;
   });
+}
+
+async function directoryExists(directoryPath) {
+  try {
+    const stat = await fs.stat(directoryPath);
+    return stat.isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 function normalizeStoredTaskAgentState(task) {
@@ -1762,14 +1877,15 @@ function extractCodexResumeId(command) {
   return normalizeDetectedSessionId(match?.[1]);
 }
 
-function buildCodexSessionResumeCommand(task, sessionId) {
+function buildCodexSessionResumeCommand(task, sessionId, options = {}) {
   const command = String(task.command || "");
   const codexCommand = `codex ${codexPermissionArgsForTask(task)} resume ${sessionId}`;
+  const dockerWorkdir = String(options.containerCwd || extractDockerExecWorkdir(command) || "/workspace").trim();
   if (task.agentProfileId === "ai-dev-container-codex" || /\bdocker\b[\s\S]*\bai-agent-sandbox-agent-1\b/.test(command)) {
-    return `docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color ${codexCommand}'`;
+    return `docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w ${quoteShellToken(dockerWorkdir)} ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color ${codexCommand}'`;
   }
   if (/\bdocker\b[\s\S]*\bai-agent-sandbox-codex-1\b/.test(command)) {
-    return `docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-codex-1 sh -lc 'TERM=xterm-256color ${codexCommand}'`;
+    return `docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w ${quoteShellToken(dockerWorkdir)} ai-agent-sandbox-codex-1 sh -lc 'TERM=xterm-256color ${codexCommand}'`;
   }
   return codexCommand;
 }
@@ -1985,9 +2101,13 @@ function codexStorageSessionFromLine(line, profile, mounts) {
   const agentProfileId = String(profile.id || "codex");
   const agentLabel = String(profile.label || "Codex CLI");
   const commandEnvironment = codexCommandEnvironment({ command: profile.command, agentProfileId });
-  const resumeCommand = buildCodexSessionResumeCommand({ command: profile.command, agentProfileId }, sessionId);
   const detectedAt = String(event?.payload?.timestamp || timestampFromCodexSessionPath(filePath) || "");
   const containerCwd = String(event?.payload?.cwd || "/workspace");
+  const resumeCommand = buildCodexSessionResumeCommand(
+    { command: profile.command, agentProfileId },
+    sessionId,
+    { containerCwd },
+  );
   const cwd = mapContainerPathToHostPath(containerCwd, mounts) || repoRoot;
   const key = `${provider}:${agentProfileId}:${commandEnvironment}:${sessionId}`;
   const title = sessionLabelForKey(key) || titleFromCodexStorageUserEvent(userJsonText) || "Codex storage session";
@@ -2054,7 +2174,7 @@ function savedCodexSessionFromTask(task) {
     return null;
   }
 
-  const resumeCommand = String(task.agentSessionResumeCommand || task.resumeCommand || "").trim();
+  const resumeCommand = savedCodexResumeCommandForTask(task);
   if (!resumeCommand) {
     return null;
   }
@@ -2083,6 +2203,21 @@ function savedCodexSessionFromTask(task) {
     detectedAt: String(task.agentSessionDetectedAt || ""),
     updatedAt: String(task.updatedAt || task.agentSessionDetectedAt || task.createdAt || ""),
   };
+}
+
+function savedCodexResumeCommandForTask(task) {
+  const resumeCommand = String(task.agentSessionResumeCommand || task.resumeCommand || "").trim();
+  if (!resumeCommand) {
+    return "";
+  }
+
+  const resumeWorkdir = extractDockerExecWorkdir(resumeCommand);
+  const taskWorkdir = extractDockerExecWorkdir(task.command);
+  if (resumeWorkdir === "/workspace" && taskWorkdir && taskWorkdir !== resumeWorkdir) {
+    return replaceDockerExecWorkdir(resumeCommand, taskWorkdir);
+  }
+
+  return resumeCommand;
 }
 
 function isLikelySyntheticSession(task, sessionId) {

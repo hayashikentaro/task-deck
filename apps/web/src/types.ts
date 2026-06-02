@@ -156,6 +156,7 @@ export type ProjectSuggestion = {
 
 export type TaskDeckContext = {
   repoRoot: string;
+  projectRoot?: string;
   defaultCwd: string;
   serverCwd: string;
   shell: string;

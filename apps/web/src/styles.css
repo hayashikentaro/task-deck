@@ -1157,7 +1157,7 @@ dd {
 .input-composer-inner {
   min-width: 0;
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) 42px auto;
+  grid-template-columns: 40px minmax(0, 1fr) 42px;
   gap: 8px;
   align-items: end;
 }
@@ -1182,23 +1182,44 @@ dd {
   padding: 0;
 }
 
-.input-composer-inner > .input-cancel-button {
+.input-composer-inner > .input-primary-action-button {
   width: 42px;
   padding: 0;
-  border-color: var(--line);
-  background: transparent;
-  color: var(--status-muted);
+  display: inline-grid;
+  place-items: center;
+  border-color: var(--line-strong);
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--surface-input);
 }
 
-.input-cancel-button svg {
-  width: 15px;
-  height: 15px;
+.input-primary-action-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.input-primary-action-button path {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.input-primary-action-button rect {
   fill: currentColor;
 }
 
-.input-cancel-button:hover:not(:disabled) {
+.input-primary-action-button:hover:not(:disabled) {
   border-color: var(--line-strong);
-  color: var(--text-secondary);
+  background: var(--text-secondary);
+}
+
+.input-primary-action-button:disabled {
+  border-color: var(--line);
+  background: var(--panel-soft);
+  color: var(--status-muted);
+  opacity: 0.72;
 }
 
 .input-attachment-chip-list {
