@@ -837,7 +837,13 @@ dd {
 }
 
 .task-command {
+  flex: 1 1 auto;
   color: var(--text-secondary);
+}
+
+.task-cwd {
+  flex: 0 1 auto;
+  max-width: 42%;
 }
 
 .task-badge-row {
@@ -1614,6 +1620,49 @@ dd {
   display: flex;
   gap: 5px;
   align-items: baseline;
+}
+
+.task-card-details {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+  border-top: 1px solid var(--line);
+  padding-top: 9px;
+}
+
+.task-detail-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 3px;
+}
+
+.task-detail-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--status-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.task-detail-value {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-detail-command {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
 .task-meta-spacer {

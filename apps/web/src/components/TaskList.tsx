@@ -112,6 +112,8 @@ export function TaskList({
           const isSelected = task.id === selectedTaskId;
           const bucket = supervisionBucket(task);
           const isEditingTitle = editingTaskId === task.id;
+          const agentLabel = task.agentLabel || agentOrCommandLabel(task.command);
+          const projectLabel = workspaceLabel(task.cwd);
           return (
             <article
               className="task-list-item"
@@ -148,15 +150,23 @@ export function TaskList({
                   </span>
                   <span className="task-card-meta">
                     <span className="task-cwd" title={task.cwd}>
-                      {workspaceLabel(task.cwd)}
+                      {projectLabel}
                     </span>
                     <span className="task-meta-separator">·</span>
                     <span className="task-command" title={task.command}>
-                      {task.agentLabel || agentOrCommandLabel(task.command)}
+                      {agentLabel}
                     </span>
                     <span className="task-meta-spacer" />
                     <span className="task-updated">{formatTime(task.updatedAt)}</span>
                   </span>
+                  {isSelected ? (
+                    <span className="task-card-details" aria-label="Task details">
+                      <TaskDetail label="Agent" title={agentLabel} value={agentLabel} />
+                      <TaskDetail label="Session mode" value={sessionModeLabel(task.sessionMode)} />
+                      <TaskDetail label="Project" title={task.cwd} value={projectLabel} />
+                      <TaskDetail isCode label="Command" title={task.command} value={task.command} />
+                    </span>
+                  ) : null}
                 </button>
               )}
               <div className="task-card-actions">
@@ -183,6 +193,27 @@ export function TaskList({
         })}
       </div>
     </aside>
+  );
+}
+
+function TaskDetail({
+  isCode = false,
+  label,
+  title,
+  value,
+}: {
+  isCode?: boolean;
+  label: string;
+  title?: string;
+  value: string;
+}) {
+  return (
+    <span className="task-detail-row">
+      <span className="task-detail-label">{label}</span>
+      <span className={isCode ? "task-detail-value task-detail-command" : "task-detail-value"} title={title || value}>
+        {value}
+      </span>
+    </span>
   );
 }
 
@@ -292,6 +323,14 @@ function workspaceLabel(cwd: string) {
   const trimmed = cwd.replace(/\/+$/, "");
   const basename = trimmed.split("/").filter(Boolean).pop();
   return basename || "Repository root";
+}
+
+function sessionModeLabel(sessionMode: string | undefined) {
+  if (sessionMode === "new") return "New session";
+  if (sessionMode === "resume_last") return "Resume last";
+  if (sessionMode === "saved_codex") return "Resume saved";
+  if (sessionMode === "diagnostic") return "Diagnostic";
+  return "New session";
 }
 
 function formatTime(value: string) {
