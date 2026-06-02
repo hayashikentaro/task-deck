@@ -99,6 +99,22 @@ export type OutputEvent = {
   data: string;
 };
 
+export type CodexStatusSnapshot = {
+  taskId: string;
+  updatedAt: string;
+  context?: {
+    remainingPercent: number;
+  };
+  fiveHour?: {
+    remainingPercent: number;
+    resetLabel?: string;
+  };
+  weekly?: {
+    remainingPercent: number;
+    resetLabel?: string;
+  };
+};
+
 export type CreateTaskInput = {
   title: string;
   command: string;

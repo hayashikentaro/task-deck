@@ -11,7 +11,6 @@ type ToolsPaneProps = {
 };
 
 const sessionCommands = [
-  { label: "Status", command: "/status" },
   { label: "5.5 Thinking", command: "/model gpt-5.5-thinking" },
   { label: "5.5", command: "/model gpt-5.5" },
 ];

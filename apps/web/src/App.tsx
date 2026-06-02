@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CodexStatusPanel } from "./components/CodexStatusPanel";
 import { TaskCreateForm } from "./components/TaskCreateForm";
 import { TaskList } from "./components/TaskList";
 import { TerminalPane } from "./components/TerminalPane";
 import { ToolsPane } from "./components/ToolsPane";
-import type { CreateTaskInput, OutputEvent, SavedCodexSession, Task, TaskDeckContext } from "./types";
+import type { CodexStatusSnapshot, CreateTaskInput, OutputEvent, SavedCodexSession, Task, TaskDeckContext } from "./types";
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
 
@@ -28,10 +29,12 @@ export function App() {
   const [lastOutput, setLastOutput] = useState<OutputEvent | null>(null);
   const [taskDeckContext, setTaskDeckContext] = useState<TaskDeckContext | null>(null);
   const [composerValue, setComposerValue] = useState("");
+  const [codexStatusSnapshot, setCodexStatusSnapshot] = useState<CodexStatusSnapshot | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const outputSeqRef = useRef(0);
   const selectedTaskIdRef = useRef<string | null>(null);
   const runningTaskIdsRef = useRef<string[]>([]);
+  const codexStatusOutputBuffersRef = useRef(new Map<string, string>());
 
   useEffect(() => {
     selectedTaskIdRef.current = selectedTaskId;
@@ -144,6 +147,35 @@ export function App() {
     () => tasks.find((task) => task.id === selectedTaskId) ?? null,
     [selectedTaskId, tasks],
   );
+  const selectedCodexStatusSnapshot = codexStatusSnapshot?.taskId === selectedTask?.id ? codexStatusSnapshot : null;
+  const canRefreshCodexStatus = Boolean(
+    connectionState === "connected" && selectedTask?.status === "running" && isCodexTask(selectedTask),
+  );
+
+  useEffect(() => {
+    if (!lastOutput) {
+      return;
+    }
+    const task = tasks.find((candidate) => candidate.id === lastOutput.taskId);
+    if (!task || !isCodexTask(task)) {
+      return;
+    }
+
+    const buffers = codexStatusOutputBuffersRef.current;
+    const nextBuffer = `${buffers.get(task.id) || ""}${stripTerminalControlSequences(lastOutput.data)}`.slice(-8000);
+    buffers.set(task.id, nextBuffer);
+
+    const parsedStatus = parseCodexStatusOutput(nextBuffer);
+    if (!parsedStatus) {
+      return;
+    }
+    setCodexStatusSnapshot((current) => ({
+      ...(current?.taskId === task.id ? current : {}),
+      ...parsedStatus,
+      taskId: task.id,
+      updatedAt: new Date().toISOString(),
+    }));
+  }, [lastOutput, tasks]);
 
   const send = useCallback((payload: unknown) => {
     const socket = socketRef.current;
@@ -157,6 +189,18 @@ export function App() {
   const createTask = (input: CreateTaskInput) => {
     const didSend = send({ type: "start", ...input });
     return didSend;
+  };
+
+  const refreshCodexStatus = () => {
+    if (!selectedTask || !canRefreshCodexStatus) {
+      return;
+    }
+    send({
+      type: "input",
+      taskId: selectedTask.id,
+      data: formatAgentInputForPty("/status"),
+      source: "codex-status",
+    });
   };
 
   const renameTask = async (taskId: string, title: string) => {
@@ -275,6 +319,12 @@ export function App() {
             onCreateTask={createTask}
             onRenameSavedSession={renameSavedSession}
           />
+          <CodexStatusPanel
+            canRefresh={canRefreshCodexStatus}
+            selectedTask={selectedTask}
+            snapshot={selectedCodexStatusSnapshot}
+            onRefresh={refreshCodexStatus}
+          />
           <ToolsPane
             context={taskDeckContext}
             isConnected={connectionState === "connected"}
@@ -293,4 +343,83 @@ function getRunningTaskIdsFromMessage(message: { runningTaskId?: string | null; 
     return message.runningTaskIds;
   }
   return message.runningTaskId ? [message.runningTaskId] : [];
+}
+
+const terminalEnter = "\r";
+const bracketedPasteStart = "\x1b[200~";
+const bracketedPasteEnd = "\x1b[201~";
+
+function formatAgentInputForPty(input: string) {
+  const text = input.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  return `${bracketedPasteStart}${text}${bracketedPasteEnd}${terminalEnter}`;
+}
+
+function isCodexTask(task: Task) {
+  if (task.sessionMode === "diagnostic") {
+    return false;
+  }
+  const text = `${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command || ""}`.toLowerCase();
+  return /\bcodex\b/.test(text);
+}
+
+function stripTerminalControlSequences(value: string) {
+  return value
+    .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "")
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
+    .replace(/\r/g, "\n");
+}
+
+function parseCodexStatusOutput(output: string): Omit<CodexStatusSnapshot, "taskId" | "updatedAt"> | null {
+  const context = parsePercentLine(output, "Context window");
+  const fiveHour = parsePercentLine(output, "5h limit");
+  const weekly = parsePercentLine(output, "Weekly limit");
+  if (!context && !fiveHour && !weekly) {
+    return null;
+  }
+  return {
+    ...(context ? { context: { remainingPercent: context.percent } } : {}),
+    ...(fiveHour ? { fiveHour: { remainingPercent: fiveHour.percent, resetLabel: fiveHour.resetLabel } } : {}),
+    ...(weekly ? { weekly: { remainingPercent: weekly.percent, resetLabel: compactWeeklyResetLabel(weekly.resetLabel) } } : {}),
+  };
+}
+
+function parsePercentLine(output: string, label: string) {
+  const labelPattern = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+  const matches = Array.from(
+    output.matchAll(new RegExp(`${labelPattern}\\s*:\\s*(\\d{1,3})%\\s+left(?:\\s*\\(([^)]*)\\))?`, "gi")),
+  );
+  const match = matches.at(-1);
+  if (!match) {
+    return null;
+  }
+  return {
+    percent: clampPercent(Number(match[1])),
+    resetLabel: parseResetLabel(match[2] || ""),
+  };
+}
+
+function parseResetLabel(details: string) {
+  const resetMatch = details.match(/\bresets\s+(.+)$/i);
+  return resetMatch ? resetMatch[1].trim() : "";
+}
+
+function compactWeeklyResetLabel(resetLabel: string | undefined) {
+  const label = String(resetLabel || "").trim();
+  const dateMatch = label.match(/(?:\d{1,2}:\d{2}\s+)?(?:on\s+)?(\d{1,2})\s+([A-Za-z]{3,})/i);
+  if (!dateMatch) {
+    return label;
+  }
+  return `${capitalizeMonth(dateMatch[2])} ${Number(dateMatch[1])}`;
+}
+
+function capitalizeMonth(value: string) {
+  const normalized = value.slice(0, 3).toLowerCase();
+  return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
+}
+
+function clampPercent(value: number) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.min(100, Math.max(0, Math.round(value)));
 }
