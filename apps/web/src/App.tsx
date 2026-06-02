@@ -3,7 +3,6 @@ import { DiagnosticsPane } from "./components/DiagnosticsPane";
 import { TaskCreateForm } from "./components/TaskCreateForm";
 import { TaskList } from "./components/TaskList";
 import { TerminalPane } from "./components/TerminalPane";
-import { buildCodexResumeCommandForCommand } from "./codexPermissions";
 import type { CreateTaskInput, OutputEvent, SavedCodexSession, Task, TaskDeckContext } from "./types";
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
@@ -28,8 +27,6 @@ export function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [lastOutput, setLastOutput] = useState<OutputEvent | null>(null);
   const [taskDeckContext, setTaskDeckContext] = useState<TaskDeckContext | null>(null);
-  const [taskActionError, setTaskActionError] = useState("");
-  const [pendingResumeKeys, setPendingResumeKeys] = useState<string[]>([]);
   const socketRef = useRef<WebSocket | null>(null);
   const outputSeqRef = useRef(0);
   const selectedTaskIdRef = useRef<string | null>(null);
@@ -89,7 +86,6 @@ export function App() {
 
         if (message.type === "started") {
           setSelectedTaskId(message.taskId);
-          setPendingResumeKeys([]);
           return;
         }
 
@@ -100,8 +96,6 @@ export function App() {
         }
 
         if (message.type === "error") {
-          setTaskActionError(message.message);
-          setPendingResumeKeys([]);
           outputSeqRef.current += 1;
           setLastOutput({
             seq: outputSeqRef.current,
@@ -150,10 +144,6 @@ export function App() {
     [selectedTaskId, tasks],
   );
 
-  useEffect(() => {
-    setTaskActionError("");
-  }, [selectedTaskId, runningTaskIds]);
-
   const send = useCallback((payload: unknown) => {
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -165,9 +155,6 @@ export function App() {
 
   const createTask = (input: CreateTaskInput) => {
     const didSend = send({ type: "start", ...input });
-    if (!didSend) {
-      setTaskActionError("TaskDeck is not connected.");
-    }
     return didSend;
   };
 
@@ -190,10 +177,9 @@ export function App() {
       } else {
         loadSavedCodexSessions();
       }
-      setTaskActionError("");
       return true;
     } catch (error) {
-      setTaskActionError(error instanceof Error ? error.message : "Unable to update TaskDeck display name.");
+      console.error(error instanceof Error ? error.message : "Unable to update TaskDeck display name.");
       return false;
     }
   };
@@ -215,89 +201,11 @@ export function App() {
       if (payload.sessions) {
         setSavedCodexSessions(payload.sessions);
       }
-      setTaskActionError("");
       return true;
     } catch (error) {
-      setTaskActionError(error instanceof Error ? error.message : "Unable to update TaskDeck display name.");
+      console.error(error instanceof Error ? error.message : "Unable to update TaskDeck display name.");
       return false;
     }
-  };
-
-  const interruptTask = (task = selectedTask) => {
-    if (task) {
-      send({ type: "interrupt", taskId: task.id });
-    }
-  };
-
-  const rerunTask = (task = selectedTask) => {
-    if (!task) {
-      return;
-    }
-    const didStart = createTask({
-      title: taskDisplayName(task),
-      command: task.command,
-      cwd: task.cwd,
-      agentProfileId: task.agentProfileId,
-      agentLabel: task.agentLabel,
-      agentPermissionLevel: task.agentPermissionLevel,
-      agentModel: task.agentModel,
-      sessionMode: task.sessionMode,
-      resumeCommand: task.resumeCommand,
-    });
-    if (didStart) {
-      setTaskActionError("");
-    }
-  };
-
-  const resumeTask = (task: Task) => {
-    const resumeCommand = task.resumeCommand?.trim() || task.agentSessionResumeCommand?.trim();
-    if (!resumeCommand) {
-      return;
-    }
-    startResumeTask(task, resumeCommand, task.sessionMode || "custom_resume");
-  };
-
-  const resumeLastTask = (task: Task) => {
-    if (!isCodexTask(task)) {
-      return;
-    }
-    startResumeTask(task, buildCodexResumeLastCommandForTask(task), "resume_last");
-  };
-
-  const applyModel = (task: Task, model: string) => {
-    const didSend = send({ type: "apply_model", taskId: task.id, model });
-    if (!didSend) {
-      setTaskActionError("TaskDeck is not connected.");
-      return false;
-    }
-    setTaskActionError("");
-    return true;
-  };
-
-  const startResumeTask = (task: Task, resumeCommand: string, sessionMode: string) => {
-    const resumeKey = resumeTaskKey(task.id, resumeCommand);
-    if (pendingResumeKeys.includes(resumeKey)) {
-      return;
-    }
-    setPendingResumeKeys((current) => [...current, resumeKey]);
-    const didStart = createTask({
-      title: sessionMode === "resume_last" ? `Resume last: ${taskDisplayName(task)}` : taskDisplayName(task),
-      command: resumeCommand,
-      cwd: task.cwd,
-      agentProfileId: task.agentProfileId,
-      agentLabel: task.agentLabel,
-      agentPermissionLevel: task.agentPermissionLevel,
-      agentModel: task.agentModel,
-      sessionMode,
-      resumeCommand,
-    });
-    if (!didStart) {
-      setPendingResumeKeys((current) => current.filter((key) => key !== resumeKey));
-      return;
-    }
-    window.setTimeout(() => {
-      setPendingResumeKeys((current) => current.filter((key) => key !== resumeKey));
-    }, 4000);
   };
 
   const clearTasks = async () => {
@@ -342,21 +250,12 @@ export function App() {
     <main className="app-shell">
       <section className="workspace-grid">
         <TaskList
-          actionError={taskActionError}
-          agentProfiles={taskDeckContext?.agentProfiles ?? []}
-          isConnected={connectionState === "connected"}
           tasks={tasks}
           selectedTaskId={selectedTaskId}
           runningTaskIds={runningTaskIds}
           onClearTask={clearTask}
           onClearTasks={clearTasks}
-          onInterruptTask={interruptTask}
-          onRerunTask={rerunTask}
-          onResumeLastTask={resumeLastTask}
-          onResumeTask={resumeTask}
-          onApplyModel={applyModel}
           onRenameTask={renameTask}
-          pendingResumeKeys={pendingResumeKeys}
           onSelectTask={setSelectedTaskId}
         />
         <TerminalPane
@@ -378,24 +277,6 @@ export function App() {
       </section>
     </main>
   );
-}
-
-function resumeTaskKey(taskId: string, resumeCommand: string) {
-  return `${taskId}:${resumeCommand}`;
-}
-
-function isCodexTask(task: Task) {
-  const haystack = `${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command}`.toLowerCase();
-  return /\bcodex\b/.test(haystack);
-}
-
-function buildCodexResumeLastCommandForTask(task: Task) {
-  const command = String(task.command || task.resumeCommand || task.agentSessionResumeCommand || "");
-  return buildCodexResumeCommandForCommand(command, task.agentPermissionLevel, "--last");
-}
-
-function taskDisplayName(task: Task) {
-  return String(task.sessionLabel || task.title || "").trim() || "Untitled task";
 }
 
 function getRunningTaskIdsFromMessage(message: { runningTaskId?: string | null; runningTaskIds?: string[] }) {
