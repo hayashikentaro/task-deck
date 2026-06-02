@@ -388,7 +388,7 @@ function parseCodexStatusOutput(output: string): Omit<CodexStatusSnapshot, "task
 function latestCompleteCodexStatusBlock(output: string) {
   const lines = output
     .split("\n")
-    .map((line) => line.replace(/\s+/g, " ").trim())
+    .map((line) => removeTerminalBoxDrawing(line).replace(/\s+/g, " ").trim())
     .filter(Boolean);
 
   for (let weeklyIndex = lines.length - 1; weeklyIndex >= 0; weeklyIndex -= 1) {
@@ -426,12 +426,12 @@ function findPreviousStatusLineIndex(lines: string[], startIndex: number, label:
 }
 
 function statusLineHasLabel(line: string, label: string) {
-  return new RegExp(`^${labelPatternForRegex(label)}\\s*:`, "i").test(line);
+  return new RegExp(`${labelPatternForRegex(label)}\\s*:`, "i").test(line);
 }
 
 function parseCodexStatusLine(line: string, label: string) {
   const labelPattern = labelPatternForRegex(label);
-  const match = line.match(new RegExp(`^${labelPattern}\\s*:\\s+.*?(\\d{1,3})%\\s+left(?:\\s+\\(resets\\s+([^)]+)\\))?`, "i"));
+  const match = line.match(new RegExp(`${labelPattern}\\s*:\\s*.*?(\\d{1,3})%\\s+left(?:\\s+\\(resets\\s+([^)]+)\\))?`, "i"));
   if (!match) {
     return null;
   }
@@ -443,6 +443,10 @@ function parseCodexStatusLine(line: string, label: string) {
 
 function labelPatternForRegex(label: string) {
   return label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+}
+
+function removeTerminalBoxDrawing(value: string) {
+  return value.replace(/[\u2500-\u257f]/g, " ");
 }
 
 function localFiveHourResetLabel(resetLabel: string | undefined) {
