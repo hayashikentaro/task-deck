@@ -892,7 +892,7 @@ async function validateCwd(cwd) {
 }
 
 async function commandForTaskCwd(command, resolvedCwd, sessionMode) {
-  if (sessionMode !== "new") {
+  if (sessionMode !== "new" && sessionMode !== "saved_codex") {
     return command;
   }
 
