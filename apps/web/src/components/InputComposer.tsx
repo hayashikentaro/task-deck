@@ -101,9 +101,10 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
     try {
       setIsUploadingAttachments(true);
       setAttachmentError("");
+      const hasImageAttachments = selectedImages.length > 0;
       const uploadedAttachments = await uploadSelectedImages(selectedImages);
       const input = appendAttachmentContext(value, uploadedAttachments);
-      const didSend = sendAgentInput(input);
+      const didSend = sendAgentInput(input, hasImageAttachments);
       if (didSend) {
         onValueChange("");
         setSelectedImages([]);
@@ -115,11 +116,11 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
     }
   };
 
-  const sendAgentInput = (input: string) => {
+  const sendAgentInput = (input: string, hasImageAttachments: boolean) => {
     if (!task || !canSend || !input) {
       return false;
     }
-    const data = formatAgentInputForPty(input);
+    const data = formatComposerInputForPty(input, hasImageAttachments);
     return send({ type: "input", taskId: task.id, data, source: "composer-agent" });
   };
 
@@ -300,13 +301,25 @@ function isCommandEnter(event: KeyboardEvent<HTMLTextAreaElement>) {
   return event.metaKey || event.ctrlKey;
 }
 
-function formatAgentInputForPty(input: string) {
+function formatComposerInputForPty(input: string, hasImageAttachments: boolean) {
   const text = normalizeTerminalInput(input);
+  if (isSlashCommandInput(text, hasImageAttachments)) {
+    return `${text.trim()}${terminalEnter}`;
+  }
   return `${bracketedPasteStart}${text}${bracketedPasteEnd}${terminalEnter}`;
 }
 
 function normalizeTerminalInput(input: string) {
   return input.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+function isSlashCommandInput(input: string, hasImageAttachments: boolean) {
+  if (hasImageAttachments) {
+    return false;
+  }
+
+  const text = input.trim();
+  return text.startsWith("/") && !text.includes("\n");
 }
 
 function getComposerMode(task: Task | null, isConnected: boolean) {
