@@ -123,9 +123,7 @@ When finished:
 
 Agents working in this repository should read and follow this `AGENTS.md` before making changes.
 
-Future implementation prompts may intentionally omit repeated repository boilerplate that is already defined here, including repository-boundary checks, preservation rules, verification commands, commit/push expectations, and handoff reporting format.
-
-When a prompt says to follow `AGENTS.md`, treat the standing rules in this file as active requirements. The prompt should focus on the task-specific change, scope, and acceptance criteria rather than restating this entire file.
+Task-specific prompts should focus on the requested change, relevant context, non-goals, acceptance criteria, and task-specific verification. Repository-wide workflow rules are defined in this file.
 
 If a task-specific user instruction conflicts with this file, stop and report the conflict unless the user's instruction clearly and safely overrides a non-safety process preference.
 
