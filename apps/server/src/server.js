@@ -482,11 +482,6 @@ wss.on("connection", (socket) => {
       return;
     }
 
-    if (message.type === "apply_model") {
-      applyRuntimeModelSwitch(message, socket);
-      return;
-    }
-
     if (message.type === "input") {
       const activePty = activePtys.get(message.taskId);
       if (activePty && typeof message.data === "string") {
@@ -774,96 +769,6 @@ function clearActivePty(taskId) {
   activePtys.delete(taskId);
 }
 
-async function applyRuntimeModelSwitch(message, socket) {
-  const taskId = String(message.taskId || "").trim();
-  const model = String(message.model || "").trim();
-  const task = tasks.get(taskId);
-  const activePty = activePtys.get(taskId);
-
-  if (!task || !activePty || task.status !== TaskStatus.RUNNING) {
-    send(socket, { type: "error", message: "Select a running task before changing models." });
-    return;
-  }
-
-  if (!model || model === "default") {
-    send(socket, { type: "error", message: "Select a concrete model before applying it." });
-    return;
-  }
-
-  try {
-    const profile = await findAgentProfileForTask(task);
-    const modelOptions = modelOptionsForTask(task, profile);
-    const runtimeModelSwitchCommand = runtimeModelSwitchCommandForTask(task, profile);
-    if (!runtimeModelSwitchCommand || modelOptions.length === 0) {
-      send(socket, { type: "error", message: "This agent profile does not support runtime model switching." });
-      return;
-    }
-    if (!modelOptions.some((option) => option.id === model && option.id !== "default")) {
-      send(socket, { type: "error", message: "Selected model is not allowed for this agent profile." });
-      return;
-    }
-
-    const runtimeCommand = buildRuntimeModelSwitchCommand(runtimeModelSwitchCommand, model);
-    logInputDebug(taskId, runtimeCommand, "apply-model");
-    resetPendingInputPrompt(activePty);
-    writeOrQueuePtyInput(activePty, formatRuntimeModelSwitchInputForPty(runtimeCommand), "apply-model");
-    setTask({
-      ...task,
-      agentModel: model,
-      updatedAt: new Date().toISOString(),
-    });
-    broadcastTasks();
-  } catch (error) {
-    send(socket, { type: "error", message: error.message || "Unable to change model." });
-  }
-}
-
-async function findAgentProfileForTask(task) {
-  const profiles = await loadAgentProfiles();
-  return (
-    profiles.find((profile) => profile.id === task.agentProfileId) ??
-    profiles.find((profile) => profile.label === task.agentLabel) ??
-    null
-  );
-}
-
-function buildRuntimeModelSwitchCommand(template, model) {
-  const commandTemplate = String(template || "").trim();
-  const modelValue = String(model || "").trim();
-  const expandedCommand = commandTemplate
-    .replace(/\{\{\s*model\s*\}\}/g, modelValue)
-    .replace(/\{\s*model\s*\}/g, modelValue);
-  return expandedCommand === commandTemplate ? `${commandTemplate} ${modelValue}`.trim() : expandedCommand;
-}
-
-const codexFallbackModelOptions = [
-  { id: "default", label: "Default" },
-  { id: "gpt-5.5", label: "gpt-5.5" },
-  { id: "gpt-5.5-thinking", label: "gpt-5.5 Thinking" },
-  { id: "gpt-5.4-codex", label: "gpt-5.4 Codex" },
-];
-
-function modelOptionsForTask(task, profile) {
-  const configuredOptions = normalizeModelOptions(profile?.modelOptions);
-  if (configuredOptions.length > 0) {
-    return configuredOptions;
-  }
-  return isCodexRuntimeSwitchTask(task, profile) ? codexFallbackModelOptions : [];
-}
-
-function runtimeModelSwitchCommandForTask(task, profile) {
-  const configuredCommand = String(profile?.runtimeModelSwitchCommand || "").trim();
-  if (configuredCommand) {
-    return configuredCommand;
-  }
-  return isCodexRuntimeSwitchTask(task, profile) ? "/model {model}" : "";
-}
-
-function isCodexRuntimeSwitchTask(task, profile) {
-  const haystack = `${profile?.id || ""} ${profile?.label || ""} ${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command}`.toLowerCase();
-  return /\bcodex\b/.test(haystack);
-}
-
 async function resolveCwd(cwd, socket) {
   const validation = await validateCwd(cwd);
 
@@ -984,14 +889,6 @@ function quoteShellToken(value) {
 function formatAgentInputForPty(input) {
   const text = normalizeTerminalInput(input);
   return `${bracketedPasteStart}${text}${bracketedPasteEnd}${terminalEnter}`;
-}
-
-function formatRawTerminalInputForPty(input) {
-  return `${normalizeTerminalInput(input).trim()}${terminalEnter}`;
-}
-
-function formatRuntimeModelSwitchInputForPty(command) {
-  return `\x15${formatRawTerminalInputForPty(command)}`;
 }
 
 function normalizeTerminalInput(input) {
