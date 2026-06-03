@@ -47,8 +47,6 @@
   --task-card-border: transparent;
   --task-card-band: transparent;
   --task-card-glow: transparent;
-  --task-card-selected-ring: transparent;
-  --task-card-selected-outline: transparent;
   --task-terminal-tint: transparent;
   --task-terminal-tint-soft: transparent;
   --task-terminal-tint-faint: transparent;
@@ -598,20 +596,9 @@ dd {
 .task-list-item[data-selected="true"] {
   box-shadow:
     inset 6px 0 0 var(--task-card-band),
-    inset 0 0 0 1px var(--task-card-selected-ring),
     inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 66%, transparent),
-    0 0 0 1px var(--task-card-selected-outline),
     0 0 22px var(--task-card-glow),
     0 10px 24px rgb(0 0 0 / 28%);
-}
-
-.task-list-item[data-selected="true"]::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border: 1px solid color-mix(in srgb, var(--task-card-selected-ring) 84%, var(--task-card-border));
-  border-radius: inherit;
-  pointer-events: none;
 }
 
 .task-list-item[data-selected="true"] .task-select-button {
@@ -624,9 +611,7 @@ dd {
 .task-list-item[data-selected="true"][data-tone="review_ready"] {
   box-shadow:
     inset 6px 0 0 var(--task-card-band),
-    inset 0 0 0 1px var(--task-card-selected-ring),
     inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 66%, transparent),
-    0 0 0 1px var(--task-card-selected-outline),
     0 0 22px var(--task-card-glow),
     0 10px 24px rgb(0 0 0 / 28%);
 }
@@ -688,9 +673,7 @@ dd {
   box-shadow:
     inset 6px 0 0 var(--task-card-band),
     inset 0 2px 0 color-mix(in srgb, var(--task-card-band) 64%, transparent),
-    inset 0 0 0 1px var(--task-card-selected-ring),
     inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 66%, transparent),
-    0 0 0 1px var(--task-card-selected-outline),
     0 0 22px var(--task-card-glow),
     0 10px 24px rgb(0 0 0 / 28%);
 }
@@ -699,9 +682,7 @@ dd {
   box-shadow:
     inset 6px 0 0 var(--task-card-band),
     inset 0 2px 0 color-mix(in srgb, var(--task-card-band) 64%, transparent),
-    inset 0 0 0 1px var(--task-card-selected-ring),
     inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 66%, transparent),
-    0 0 0 1px var(--task-card-selected-outline),
     0 0 22px var(--task-card-glow),
     0 10px 24px rgb(0 0 0 / 28%);
 }
@@ -710,9 +691,7 @@ dd {
   box-shadow:
     inset 6px 0 0 var(--task-card-band),
     inset 0 2px 0 color-mix(in srgb, var(--status-review-ready) 72%, transparent),
-    inset 0 0 0 1px var(--task-card-selected-ring),
     inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 66%, transparent),
-    0 0 0 1px var(--task-card-selected-outline),
     0 0 22px var(--task-card-glow),
     0 10px 24px rgb(0 0 0 / 28%);
 }
