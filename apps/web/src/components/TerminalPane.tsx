@@ -2,6 +2,8 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { InputComposer } from "./InputComposer";
+import { TaskIdentityToken } from "./TaskIdentityToken";
+import { taskIdentityCssProperties, taskIdentityTerminalBackground } from "../taskIdentity";
 import type { OutputEvent, Task } from "../types";
 
 type TerminalPaneProps = {
@@ -19,6 +21,27 @@ type TerminalPaneProps = {
 const logTailLength = 200_000;
 const terminalFontSizeStorageKey = "taskdeck.terminalFontSize";
 const terminalFontSizes = [11, 12, 13, 14, 15, 16, 18];
+const terminalTheme = {
+  background: "#080907",
+  foreground: "#e2dac8",
+  cursor: "#c6a45b",
+  selectionBackground: "#2c2519",
+  black: "#080907",
+  blue: "#637e86",
+  brightBlue: "#78949d",
+  brightCyan: "#7fab9f",
+  brightGreen: "#9fa86a",
+  brightMagenta: "#9d86aa",
+  brightRed: "#c3774f",
+  brightWhite: "#eee7d6",
+  brightYellow: "#d0bd72",
+  cyan: "#5e948f",
+  green: "#7e8e58",
+  magenta: "#8c749b",
+  red: "#ae583f",
+  white: "#cfc6b2",
+  yellow: "#c6a45b",
+};
 
 export function TerminalPane({
   composerValue,
@@ -44,6 +67,7 @@ export function TerminalPane({
   const taskId = task?.id ?? null;
   const searchMatchCount = useMemo(() => countMatches(logBuffer, searchTerm), [logBuffer, searchTerm]);
   const hasTuiChoice = useMemo(() => detectTuiChoice(logBuffer), [logBuffer]);
+  const taskIdentityStyle = useMemo(() => (taskId ? taskIdentityCssProperties(taskId) : undefined), [taskId]);
 
   const updateTerminalMessage = useCallback(
     (value: string) => {
@@ -72,27 +96,7 @@ export function TerminalPane({
       convertEol: true,
       fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
       fontSize: terminalFontSize,
-      theme: {
-        background: "#080907",
-        foreground: "#e2dac8",
-        cursor: "#c6a45b",
-        selectionBackground: "#2c2519",
-        black: "#080907",
-        blue: "#637e86",
-        brightBlue: "#78949d",
-        brightCyan: "#7fab9f",
-        brightGreen: "#9fa86a",
-        brightMagenta: "#9d86aa",
-        brightRed: "#c3774f",
-        brightWhite: "#eee7d6",
-        brightYellow: "#d0bd72",
-        cyan: "#5e948f",
-        green: "#7e8e58",
-        magenta: "#8c749b",
-        red: "#ae583f",
-        white: "#cfc6b2",
-        yellow: "#c6a45b",
-      },
+      theme: terminalTheme,
     });
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
@@ -144,6 +148,18 @@ export function TerminalPane({
       send({ type: "resize", taskId, cols: terminal.cols, rows: terminal.rows });
     }
   }, [send, terminalFontSize]);
+
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) {
+      return;
+    }
+
+    terminal.options.theme = {
+      ...terminalTheme,
+      background: taskId ? taskIdentityTerminalBackground(taskId) : terminalTheme.background,
+    };
+  }, [taskId]);
 
   const loadPersistedLog = useCallback((nextTask: Task | null) => {
     const terminal = terminalRef.current;
@@ -218,9 +234,10 @@ export function TerminalPane({
   };
 
   return (
-    <section className="terminal-pane" aria-label="Terminal">
+    <section className="terminal-pane" aria-label="Terminal" data-has-task={task ? "true" : undefined} style={taskIdentityStyle}>
       <div className="terminal-toolbar">
         <div className="terminal-observations">
+          {task ? <TaskIdentityToken className="terminal-identity-token" /> : null}
           {hasTuiChoice ? (
             <span
               aria-label="Possible TUI choice detected"

@@ -37,6 +37,13 @@
   --tone-active-bg: #141d1b;
   --tone-attention-bg: #231813;
   --tone-risk-bg: #211f12;
+
+  --task-identity-a: transparent;
+  --task-identity-b: transparent;
+  --task-identity-c: transparent;
+  --task-identity-d: transparent;
+  --task-terminal-tint: transparent;
+  --task-terminal-border: transparent;
 }
 
 * {
@@ -929,12 +936,52 @@ dd {
   color: var(--status-muted);
 }
 
+.task-identity-token {
+  width: 16px;
+  height: 16px;
+  display: inline-grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 2px;
+  padding: 1px;
+  border: 1px solid color-mix(in srgb, var(--task-terminal-border) 72%, var(--line));
+  border-radius: 4px;
+  background: rgb(0 0 0 / 18%);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 16%);
+}
+
+.task-identity-token span {
+  min-width: 0;
+  min-height: 0;
+  border-radius: 2px;
+}
+
+.task-identity-token span[data-cell="a"] {
+  background: var(--task-identity-a);
+}
+
+.task-identity-token span[data-cell="b"] {
+  background: var(--task-identity-b);
+}
+
+.task-identity-token span[data-cell="c"] {
+  background: var(--task-identity-c);
+}
+
+.task-identity-token span[data-cell="d"] {
+  background: var(--task-identity-d);
+}
+
 .terminal-pane {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   overflow: hidden;
+}
+
+.terminal-pane[data-has-task="true"] {
+  box-shadow: inset 0 2px 0 var(--task-terminal-border);
 }
 
 .terminal-toolbar {
@@ -953,7 +1000,12 @@ dd {
 .terminal-observations {
   min-width: 0;
   display: flex;
+  gap: 8px;
   align-items: center;
+}
+
+.terminal-identity-token {
+  flex: 0 0 auto;
 }
 
 .terminal-tui-choice-indicator {
@@ -1062,7 +1114,9 @@ dd {
   grid-row: 3;
   overflow: hidden;
   padding: 8px;
-  background: var(--terminal);
+  background:
+    linear-gradient(var(--task-terminal-tint), var(--task-terminal-tint)),
+    var(--terminal);
 }
 
 .terminal-host .xterm {
@@ -1585,7 +1639,12 @@ dd {
   min-width: 0;
   display: flex;
   gap: 5px;
-  align-items: baseline;
+  align-items: center;
+}
+
+.task-card-identity {
+  flex: 0 0 auto;
+  margin-left: 2px;
 }
 
 .task-meta-spacer {

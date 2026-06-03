@@ -1,4 +1,6 @@
 import { FormEvent, useMemo, useState } from "react";
+import { TaskIdentityToken } from "./TaskIdentityToken";
+import { taskIdentityCssProperties } from "../taskIdentity";
 import type { AttentionState, Task } from "../types";
 
 type TaskFilter = "all" | "needs_you" | "not_now";
@@ -120,6 +122,7 @@ export function TaskList({
               data-selected={isSelected}
               data-tone={taskTone(task, runningTaskIdSet)}
               key={task.id}
+              style={taskIdentityCssProperties(task.id)}
             >
               {isEditingTitle ? (
                 <form className="task-title-edit-form" onSubmit={(event) => submitTitleEdit(event, task)}>
@@ -186,6 +189,7 @@ export function TaskList({
                     </span>
                     <span className="task-meta-spacer" />
                     <span className="task-updated">{formatTime(task.updatedAt)}</span>
+                    <TaskIdentityToken className="task-card-identity" />
                   </span>
                 </div>
               )}
