@@ -84,6 +84,41 @@ Keep state, risk, diffs, review, and agent supervision central. Terminal/PTY int
 - Use `docs/issues/` for deferred product decisions, domain-model questions, and implementation tradeoffs that should stay close to the codebase. Treat these files as decision records rather than a general TODO backlog.
 - For icon-only controls such as disclosure, close, clear, expand/collapse, and directional buttons, use vector icons such as inline SVG instead of text glyphs. Keep dimensions fixed and rotate/reuse one vector when representing state changes so the visual size does not shift.
 
+## Standard Task Workflow
+
+For every implementation task in this repository, follow this workflow unless the user explicitly says otherwise.
+
+Before editing:
+
+- Confirm the current repository with `pwd`.
+- Confirm the remote with `git remote -v`.
+- Check the working tree with `git status --short --branch`.
+- Preserve existing user changes.
+- If unexpected changes or untracked files exist, report them instead of modifying or deleting them.
+
+While editing:
+
+- Keep changes scoped to the requested task.
+- Prefer small, reviewable changes.
+- Avoid broad refactors unless they are required for the task.
+- Follow existing project conventions.
+- When changing API routes, response shapes, persisted metadata, or task semantics, update related docs and frontend types together.
+- Do not duplicate instructions or guidance already present in this `AGENTS.md`; update the existing relevant section instead.
+
+After editing:
+
+- Run the standard verification commands appropriate for the change.
+- At minimum, run `git diff --check`.
+- Run `node --check apps/server/src/server.js` when server code changed.
+- Run `npm run build` when application code changed.
+- If a check cannot be run, report why.
+
+When finished:
+
+- Commit the relevant changes.
+- Push the commit.
+- Report what changed, verification results, commit hash, push status, skipped checks, and unexpected files not touched.
+
 ## Prompt Handoff Convention
 
 Agents working in this repository should read and follow this `AGENTS.md` before making changes.
