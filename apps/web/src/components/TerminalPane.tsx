@@ -318,8 +318,11 @@ function detectTuiChoice(value: string) {
   const selectedLineIndexes = indexesMatching(lines, isLikelySelectedChoiceLine);
   const menuPromptLineIndexes = indexesMatching(lines, isLikelyMenuPromptLine);
   const enterPromptLineIndexes = indexesMatching(lines, isLikelyEnterPromptLine);
+  const numberedOptionIndexes = indexesMatching(lines, isLikelyNumberedChoiceOptionLine);
+  const selectedNumberedOptionIndexes = indexesMatching(lines, isLikelySelectedNumberedChoiceOptionLine);
 
-  return (menuPromptLineIndexes.length > 0 && hasNearbyLine(menuPromptLineIndexes, optionLineIndexes))
+  return hasNumberedChoiceMenu(lines, numberedOptionIndexes, selectedNumberedOptionIndexes)
+    || (menuPromptLineIndexes.length > 0 && hasNearbyLine(menuPromptLineIndexes, optionLineIndexes))
     || (
       enterPromptLineIndexes.length > 0
       && selectedLineIndexes.length > 0
@@ -345,12 +348,64 @@ function isLikelySelectedChoiceLine(line: string) {
   return /^(?:[>▸▹▶❯])\s+\S/.test(line);
 }
 
+function isLikelyNumberedChoiceOptionLine(line: string) {
+  return /^(?:[>›»▸▹▶❯]\s*)?(?:\(?[0-9]{1,2}\)?[.)])\s+\S/.test(line);
+}
+
+function isLikelySelectedNumberedChoiceOptionLine(line: string) {
+  return /^(?:[>›»▸▹▶❯])\s+(?:\(?[0-9]{1,2}\)?[.)])\s+\S/.test(line);
+}
+
 function isLikelyMenuPromptLine(line: string) {
   return /\b(use\s+(?:the\s+)?arrow\s+keys|select(?:\s+an?\s+option)?|choose(?:\s+an?\s+option)?|pick\s+one)\b/i.test(line);
 }
 
 function isLikelyEnterPromptLine(line: string) {
   return /\bpress\s+enter\b/i.test(line);
+}
+
+function hasNumberedChoiceMenu(lines: string[], numberedOptionIndexes: number[], selectedNumberedOptionIndexes: number[]) {
+  const consecutiveNumberedOptionIndexes = consecutiveNumberedMenuIndexes(lines, numberedOptionIndexes);
+  if (consecutiveNumberedOptionIndexes.length < 2) {
+    return false;
+  }
+
+  if (selectedNumberedOptionIndexes.some((index) => consecutiveNumberedOptionIndexes.includes(index))) {
+    return true;
+  }
+
+  return hasNearbyInteractionSignal(lines, consecutiveNumberedOptionIndexes);
+}
+
+function consecutiveNumberedMenuIndexes(lines: string[], numberedOptionIndexes: number[]) {
+  for (let index = 0; index < numberedOptionIndexes.length - 1; index += 1) {
+    const firstIndex = numberedOptionIndexes[index];
+    const secondIndex = numberedOptionIndexes[index + 1];
+    const firstNumber = numberedOptionNumber(lines[firstIndex]);
+    const secondNumber = numberedOptionNumber(lines[secondIndex]);
+    if (secondIndex - firstIndex <= 2 && firstNumber > 0 && secondNumber === firstNumber + 1) {
+      return [firstIndex, secondIndex];
+    }
+  }
+  return [];
+}
+
+function numberedOptionNumber(line: string) {
+  const match = line.match(/^(?:[>›»▸▹▶❯]\s*)?\(?([0-9]{1,2})\)?[.)]\s+\S/);
+  return match ? Number(match[1]) : 0;
+}
+
+function hasNearbyInteractionSignal(lines: string[], optionIndexes: number[]) {
+  const optionText = optionIndexes.map((index) => lines[index]).join("\n");
+  if (/\b(?:yes|no|cancel|proceed|continue|quit)\b/i.test(optionText)) {
+    return true;
+  }
+
+  const firstIndex = optionIndexes[0];
+  const lastIndex = optionIndexes[optionIndexes.length - 1];
+  const nearbyText = lines.slice(Math.max(0, firstIndex - 6), Math.min(lines.length, lastIndex + 7)).join("\n");
+  return /\b(?:press\s+enter|use\s+(?:the\s+)?arrow|select|choose|pick\s+one)\b/i.test(nearbyText)
+    || /(?:\?|^(?:do|are|would|should|can|will|is|does)\b.*\?)/im.test(nearbyText);
 }
 
 function indexesMatching(lines: string[], predicate: (line: string) => boolean) {
