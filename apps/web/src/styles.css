@@ -1702,14 +1702,6 @@ dd {
   align-items: center;
 }
 
-.task-card-identity-anchor {
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
-  z-index: 1;
-  pointer-events: none;
-}
-
 .task-meta-spacer {
   flex: 1 1 auto;
   min-width: 6px;

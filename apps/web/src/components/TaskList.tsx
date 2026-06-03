@@ -1,5 +1,4 @@
 import { FormEvent, useMemo, useState } from "react";
-import { TaskIdentityToken } from "./TaskIdentityToken";
 import { taskIdentityCssProperties } from "../taskIdentity";
 import type { AttentionState, Task } from "../types";
 
@@ -15,18 +14,6 @@ type TaskListProps = {
   onRenameTask: (taskId: string, title: string) => Promise<boolean>;
   onSelectTask: (taskId: string) => void;
 };
-
-const cardIdentityAnchorStyle = {
-  bottom: 10,
-  position: "absolute",
-  right: 10,
-  zIndex: 1,
-} as const;
-
-const taskCardContentStyle = {
-  paddingBottom: 34,
-  paddingRight: 42,
-} as const;
 
 export function TaskList({
   tasks,
@@ -137,7 +124,7 @@ export function TaskList({
               style={taskIdentityCssProperties(task.id)}
             >
               {isEditingTitle ? (
-                <form className="task-title-edit-form" onSubmit={(event) => submitTitleEdit(event, task)} style={taskCardContentStyle}>
+                <form className="task-title-edit-form" onSubmit={(event) => submitTitleEdit(event, task)}>
                   <input
                     aria-label="TaskDeck display name"
                     autoFocus
@@ -164,7 +151,6 @@ export function TaskList({
                     }
                   }}
                   role="button"
-                  style={taskCardContentStyle}
                   tabIndex={0}
                 >
                   <span className="task-row-heading">
@@ -205,7 +191,6 @@ export function TaskList({
                   </span>
                 </div>
               )}
-              <TaskIdentityToken className="task-card-identity-anchor" style={cardIdentityAnchorStyle} />
               <div className="task-card-actions">
                 <button
                   aria-label="Edit TaskDeck display name"
