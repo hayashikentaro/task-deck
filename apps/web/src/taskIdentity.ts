@@ -75,7 +75,7 @@ function taskIdentityCssPropertiesForSlot(slot: TaskIdentitySlot): TaskIdentityC
     "--task-identity-c": swatches[2],
     "--task-identity-d": swatches[3],
     "--task-card-wash": hsl(slot.hue, wash.saturation, wash.lightness, wash.alpha),
-    "--task-card-wash-soft": hsl(normalizeHue(slot.hue + 24), wash.saturation, wash.lightness, wash.softAlpha),
+    "--task-card-wash-soft": hsl(slot.hue, wash.saturation * 0.82, wash.lightness, wash.softAlpha),
     "--task-card-border": hsl(slot.hue, TASK_IDENTITY_SWATCH_SATURATION, 45, TASK_CARD_BORDER_ALPHA),
     "--task-card-band": hsl(slot.hue, TASK_IDENTITY_SWATCH_SATURATION, TASK_IDENTITY_SWATCH_LIGHTNESS, TASK_CARD_BAND_ALPHA),
     "--task-card-glow": hsl(slot.hue, TASK_IDENTITY_SWATCH_SATURATION, TASK_IDENTITY_SWATCH_LIGHTNESS, TASK_CARD_GLOW_ALPHA),

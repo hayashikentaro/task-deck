@@ -620,24 +620,24 @@ dd {
 .task-list-item[data-tone="starting"],
 .task-list-item[data-tone="thinking"],
 .task-list-item[data-tone="working"] {
-  border-color: var(--status-active);
+  border-color: color-mix(in srgb, var(--task-card-border) 82%, var(--line));
 }
 
 .task-list-item[data-tone="thinking"] {
-  border-color: var(--status-thinking);
+  border-color: color-mix(in srgb, var(--task-card-border) 82%, var(--line));
 }
 
 .task-list-item[data-tone="working"] {
-  border-color: var(--status-working);
+  border-color: color-mix(in srgb, var(--task-card-border) 82%, var(--line));
 }
 
 .task-list-item[data-tone="attention"],
 .task-list-item[data-tone="failed"] {
-  border-color: var(--status-failed);
+  border-color: color-mix(in srgb, var(--task-card-border) 82%, var(--line));
 }
 
 .task-list-item[data-tone="stopped"] {
-  border-color: var(--status-stopped);
+  border-color: color-mix(in srgb, var(--task-card-border) 82%, var(--line));
 }
 
 .task-list-item[data-tone="risk"],
@@ -660,10 +660,10 @@ dd {
 }
 
 .task-list-item[data-tone="review_ready"] {
-  border-color: var(--status-review-ready);
+  border-color: color-mix(in srgb, var(--task-card-border) 82%, var(--line));
   box-shadow:
     inset 5px 0 0 var(--task-card-band),
-    inset 0 2px 0 color-mix(in srgb, var(--status-review-ready) 68%, transparent),
+    inset 0 2px 0 color-mix(in srgb, var(--task-card-band) 58%, transparent),
     inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 54%, transparent),
     0 0 0 1px rgb(0 0 0 / 16%);
 }
@@ -690,14 +690,14 @@ dd {
 .task-list-item[data-selected="true"][data-tone="review_ready"] {
   box-shadow:
     inset 6px 0 0 var(--task-card-band),
-    inset 0 2px 0 color-mix(in srgb, var(--status-review-ready) 72%, transparent),
+    inset 0 2px 0 color-mix(in srgb, var(--task-card-band) 64%, transparent),
     inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 66%, transparent),
     0 0 22px var(--task-card-glow),
     0 10px 24px rgb(0 0 0 / 28%);
 }
 
 .task-list-item[data-tone="done"] {
-  border-color: var(--status-done);
+  border-color: color-mix(in srgb, var(--task-card-border) 82%, var(--line));
 }
 
 .task-list-item[data-tone="subdued"] {
