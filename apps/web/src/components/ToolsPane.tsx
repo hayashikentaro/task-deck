@@ -1,41 +1,26 @@
 import { useMemo, useState } from "react";
-import type { AgentProfile, CreateTaskInput, Task, TaskDeckContext } from "../types";
+import type { AgentProfile, CreateTaskInput, TaskDeckContext } from "../types";
 
 type ToolsPaneProps = {
   context: TaskDeckContext | null;
   isConnected: boolean;
-  selectedTask: Task | null;
   canCopyLog: boolean;
   onCreateTask: (input: CreateTaskInput) => boolean;
   onCopyLog: () => void;
-  onApplyModel: (taskId: string, model: string) => boolean;
 };
 
 export function ToolsPane({
   context,
   isConnected,
-  selectedTask,
   canCopyLog,
   onCreateTask,
   onCopyLog,
-  onApplyModel,
 }: ToolsPaneProps) {
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isRestartConfirmOpen, setIsRestartConfirmOpen] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
   const codexContainers = useMemo(() => getCodexToolContainers(context), [context]);
-  const selectedTaskProfile = useMemo(() => findAgentProfileForTask(context, selectedTask), [context, selectedTask]);
-  const modelOptions = useMemo(
-    () => modelOptionsForTask(selectedTask, selectedTaskProfile).filter((option) => option.id !== "default"),
-    [selectedTask, selectedTaskProfile],
-  );
-  const canSwitchModel = Boolean(
-    isConnected &&
-      selectedTask?.status === "running" &&
-      runtimeModelSwitchCommandForTask(selectedTask, selectedTaskProfile) &&
-      modelOptions.length > 0,
-  );
 
   const openDirectInput = () => {
     const directInputUrl = new URL(window.location.href);
@@ -60,15 +45,6 @@ export function ToolsPane({
         ? `Started ${isDeviceLogin ? "Codex device login" : "Codex logout"} in ${containerName}.`
         : "TaskDeck is not connected.",
     );
-    setErrorMessage("");
-  };
-
-  const applyModel = (model: string) => {
-    if (!selectedTask || !canSwitchModel) {
-      return;
-    }
-    const didSend = onApplyModel(selectedTask.id, model);
-    setStatusMessage(didSend ? `Switching model to ${model}.` : "TaskDeck is not connected.");
     setErrorMessage("");
   };
 
@@ -122,26 +98,6 @@ export function ToolsPane({
               </div>
             ))}
           </div>
-        </div>
-        <div className="tool-section" aria-labelledby="tools-model-title">
-          <h3 id="tools-model-title">Switch model</h3>
-          <div className="tool-action-group" data-layout="single">
-            {modelOptions.map((modelOption) => (
-              <button
-                aria-label={`Switch model to ${modelOption.label}`}
-                disabled={!canSwitchModel}
-                key={modelOption.id}
-                title={`Switch model to ${modelOption.label}`}
-                type="button"
-                onClick={() => applyModel(modelOption.id)}
-              >
-                {modelOption.label}
-              </button>
-            ))}
-          </div>
-          <p className="tool-hint">
-            {canSwitchModel ? "Sends TaskDeck's model-switch action to the selected task." : "Select a running Codex task to switch models."}
-          </p>
         </div>
         <div className="tool-section" aria-labelledby="tools-log-title">
           <h3 id="tools-log-title">Log</h3>
@@ -200,31 +156,6 @@ function getCodexToolContainers(context: TaskDeckContext | null) {
         .filter((containerName): containerName is string => Boolean(containerName)),
     ),
   );
-}
-
-function findAgentProfileForTask(context: TaskDeckContext | null, task: Task | null) {
-  if (!task) {
-    return null;
-  }
-  const agentProfiles = context?.agentProfiles ?? [];
-  return (
-    agentProfiles.find((profile) => profile.id === task.agentProfileId) ??
-    agentProfiles.find((profile) => profile.label === task.agentLabel) ??
-    null
-  );
-}
-
-function modelOptionsForTask(_task: Task | null, profile: AgentProfile | null) {
-  const configuredOptions = profile?.modelOptions?.filter((option) => option.id && option.label) ?? [];
-  return configuredOptions;
-}
-
-function runtimeModelSwitchCommandForTask(_task: Task | null, profile: AgentProfile | null) {
-  const configuredCommand = profile?.runtimeModelSwitchCommand?.trim() ?? "";
-  if (configuredCommand) {
-    return configuredCommand;
-  }
-  return "";
 }
 
 function isCodexProfile(profile: AgentProfile) {
