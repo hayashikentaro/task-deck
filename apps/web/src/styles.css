@@ -576,7 +576,6 @@ dd {
   position: relative;
   flex: 0 0 auto;
   width: 100%;
-  min-height: 104px;
   overflow: hidden;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
