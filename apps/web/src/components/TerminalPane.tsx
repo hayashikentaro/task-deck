@@ -3,7 +3,7 @@ import { Terminal } from "@xterm/xterm";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { InputComposer } from "./InputComposer";
 import { TaskIdentityToken } from "./TaskIdentityToken";
-import { taskIdentityCssProperties, taskIdentityTerminalBackground } from "../taskIdentity";
+import { taskIdentityCssProperties } from "../taskIdentity";
 import type { OutputEvent, Task } from "../types";
 
 type TerminalPaneProps = {
@@ -21,6 +21,7 @@ type TerminalPaneProps = {
 const logTailLength = 200_000;
 const terminalFontSizeStorageKey = "taskdeck.terminalFontSize";
 const terminalFontSizes = [11, 12, 13, 14, 15, 16, 18];
+const transparentTerminalBackground = "rgba(0, 0, 0, 0)";
 const terminalTheme = {
   background: "#080907",
   foreground: "#e2dac8",
@@ -92,6 +93,7 @@ export function TerminalPane({
     }
 
     const terminal = new Terminal({
+      allowTransparency: true,
       cursorBlink: true,
       convertEol: true,
       fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
@@ -157,7 +159,7 @@ export function TerminalPane({
 
     terminal.options.theme = {
       ...terminalTheme,
-      background: taskId ? taskIdentityTerminalBackground(taskId) : terminalTheme.background,
+      background: taskId ? transparentTerminalBackground : terminalTheme.background,
     };
   }, [taskId]);
 

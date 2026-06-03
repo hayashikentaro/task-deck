@@ -1166,6 +1166,12 @@ dd {
   height: 100%;
 }
 
+.terminal-host .xterm,
+.terminal-host .xterm-viewport,
+.terminal-host .xterm-screen {
+  background: transparent;
+}
+
 .right-rail {
   min-height: 0;
   display: grid;

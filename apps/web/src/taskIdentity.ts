@@ -37,8 +37,6 @@ const TASK_CARD_WASH_SOFT_MAX_ALPHA = 0.31;
 const TASK_CARD_BORDER_ALPHA = 0.46;
 const TASK_CARD_BAND_ALPHA = 0.74;
 const TASK_CARD_GLOW_ALPHA = 0.2;
-const TASK_TERMINAL_SATURATION = 18;
-const TASK_TERMINAL_LIGHTNESS = 8;
 const TASK_TERMINAL_TINT_ALPHA = 0.34;
 const TASK_TERMINAL_TINT_SOFT_ALPHA = 0.2;
 const TASK_TERMINAL_TINT_FAINT_ALPHA = 0.08;
@@ -59,11 +57,6 @@ type TaskIdentitySlot = {
 export function taskIdentityCssProperties(taskId: string): TaskIdentityCssProperties {
   const slot = TASK_IDENTITY_SLOTS[fallbackTaskIdentitySlotIndex(taskId)];
   return taskIdentityCssPropertiesForSlot(slot);
-}
-
-export function taskIdentityTerminalBackground(taskId: string) {
-  const slot = TASK_IDENTITY_SLOTS[fallbackTaskIdentitySlotIndex(taskId)];
-  return hsl(slot.hue, TASK_TERMINAL_SATURATION, TASK_TERMINAL_LIGHTNESS);
 }
 
 function taskIdentityCssPropertiesForSlot(slot: TaskIdentitySlot): TaskIdentityCssProperties {
