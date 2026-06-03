@@ -1,5 +1,5 @@
-import { FormEvent, useMemo, useState } from "react";
-import { taskIdentityCssProperties } from "../taskIdentity";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { taskIdentityCssPropertiesForVisibleTasks } from "../taskIdentity";
 import type { AttentionState, Task } from "../types";
 
 type TaskFilter = "all" | "needs_you" | "not_now";
@@ -12,6 +12,7 @@ type TaskListProps = {
   onClearTask: (taskId: string) => void;
   onClearTasks: () => void | Promise<void>;
   onRenameTask: (taskId: string, title: string) => Promise<boolean>;
+  onVisibleTaskIdsChange: (taskIds: string[]) => void;
   onSelectTask: (taskId: string) => void;
 };
 
@@ -23,6 +24,7 @@ export function TaskList({
   onClearTask,
   onClearTasks,
   onRenameTask,
+  onVisibleTaskIdsChange,
   onSelectTask,
 }: TaskListProps) {
   const [filter, setFilter] = useState<TaskFilter>("all");
@@ -32,6 +34,12 @@ export function TaskList({
   const [isRenaming, setIsRenaming] = useState(false);
   const runningTaskIdSet = useMemo(() => new Set(runningTaskIds), [runningTaskIds]);
   const visibleTasks = useMemo(() => sortTasksBySupervision(tasks.filter((task) => matchesFilter(task, filter))), [filter, tasks]);
+  const visibleTaskIds = useMemo(() => visibleTasks.map((task) => task.id), [visibleTasks]);
+  const visibleTaskIdentityStyles = useMemo(() => taskIdentityCssPropertiesForVisibleTasks(visibleTaskIds), [visibleTaskIds]);
+
+  useEffect(() => {
+    onVisibleTaskIdsChange(visibleTaskIds);
+  }, [onVisibleTaskIdsChange, visibleTaskIds]);
 
   const selectTask = (taskId: string) => {
     onSelectTask(taskId);
@@ -121,7 +129,7 @@ export function TaskList({
               data-selected={isSelected}
               data-tone={taskTone(task, runningTaskIdSet)}
               key={task.id}
-              style={taskIdentityCssProperties(task.id)}
+              style={visibleTaskIdentityStyles.get(task.id)}
             >
               {isEditingTitle ? (
                 <form className="task-title-edit-form" onSubmit={(event) => submitTitleEdit(event, task)}>
