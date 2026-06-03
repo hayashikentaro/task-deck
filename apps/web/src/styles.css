@@ -844,34 +844,6 @@ dd {
   color: var(--status-muted);
 }
 
-.task-acknowledge-button {
-  display: inline-flex;
-  width: 22px;
-  height: 22px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--status-needs-input) 42%, transparent);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--status-needs-input);
-  line-height: 1;
-}
-
-.task-acknowledge-button:hover:not(:disabled) {
-  border-color: var(--status-needs-input);
-  background: color-mix(in srgb, var(--status-needs-input) 10%, transparent);
-}
-
-.task-acknowledge-icon {
-  width: 13px;
-  height: 13px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 2;
-}
-
 .task-badge[data-kind="attention-none"] {
   border-color: var(--status-muted);
   color: var(--status-muted);

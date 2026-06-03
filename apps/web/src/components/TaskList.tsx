@@ -8,7 +8,6 @@ type TaskListProps = {
   tasks: Task[];
   selectedTaskId: string | null;
   runningTaskIds: string[];
-  onAcknowledgeTask: (taskId: string) => void | Promise<boolean>;
   onClearTask: (taskId: string) => void;
   onClearTasks: () => void | Promise<void>;
   onRenameTask: (taskId: string, title: string) => Promise<boolean>;
@@ -19,7 +18,6 @@ export function TaskList({
   tasks,
   selectedTaskId,
   runningTaskIds,
-  onAcknowledgeTask,
   onClearTask,
   onClearTasks,
   onRenameTask,
@@ -160,23 +158,6 @@ export function TaskList({
                     <span className="task-badge" data-kind={`supervision-${bucket}`} title={supervisionTitle(task)}>
                       {supervisionBucketLabel(bucket)}
                     </span>
-                    {bucket === "needs_you" ? (
-                      <button
-                        aria-label="Acknowledge attention"
-                        className="task-acknowledge-button"
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          onAcknowledgeTask(task.id);
-                        }}
-                        title="Acknowledge attention"
-                        type="button"
-                      >
-                        <svg aria-hidden="true" className="task-acknowledge-icon" focusable="false" viewBox="0 0 16 16">
-                          <path d="M3.5 8.2l2.8 2.8 6.2-6.5" />
-                        </svg>
-                      </button>
-                    ) : null}
                   </span>
                   <span className="task-card-meta">
                     <span className="task-cwd" title={task.cwd}>
