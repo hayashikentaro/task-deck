@@ -4,6 +4,13 @@ const TASK_IDENTITY_COUNT = 24;
 const TASK_IDENTITY_HUE_STEP = 137.508;
 const TASK_IDENTITY_SWATCH_SATURATION = 52;
 const TASK_IDENTITY_SWATCH_LIGHTNESS = 57;
+const TASK_CARD_WASH_SATURATION = 36;
+const TASK_CARD_WASH_LIGHTNESS = 18;
+const TASK_CARD_WASH_ALPHA = 0.48;
+const TASK_CARD_WASH_SOFT_ALPHA = 0.26;
+const TASK_CARD_BORDER_ALPHA = 0.46;
+const TASK_CARD_BAND_ALPHA = 0.74;
+const TASK_CARD_GLOW_ALPHA = 0.2;
 const TASK_TERMINAL_SATURATION = 18;
 const TASK_TERMINAL_LIGHTNESS = 8;
 const TASK_TERMINAL_TINT_ALPHA = 0.34;
@@ -29,6 +36,11 @@ export function taskIdentityCssProperties(taskId: string): TaskIdentityCssProper
     "--task-identity-b": swatches[1],
     "--task-identity-c": swatches[2],
     "--task-identity-d": swatches[3],
+    "--task-card-wash": hsl(hue, TASK_CARD_WASH_SATURATION, TASK_CARD_WASH_LIGHTNESS, TASK_CARD_WASH_ALPHA),
+    "--task-card-wash-soft": hsl(normalizeHue(hue + 24), TASK_CARD_WASH_SATURATION, TASK_CARD_WASH_LIGHTNESS, TASK_CARD_WASH_SOFT_ALPHA),
+    "--task-card-border": hsl(hue, TASK_IDENTITY_SWATCH_SATURATION, 45, TASK_CARD_BORDER_ALPHA),
+    "--task-card-band": hsl(hue, TASK_IDENTITY_SWATCH_SATURATION, TASK_IDENTITY_SWATCH_LIGHTNESS, TASK_CARD_BAND_ALPHA),
+    "--task-card-glow": hsl(hue, TASK_IDENTITY_SWATCH_SATURATION, TASK_IDENTITY_SWATCH_LIGHTNESS, TASK_CARD_GLOW_ALPHA),
     "--task-terminal-tint": hsl(hue, 28, 12, TASK_TERMINAL_TINT_ALPHA),
     "--task-terminal-border": hsl(hue, TASK_IDENTITY_SWATCH_SATURATION, 45, TASK_TERMINAL_BORDER_ALPHA),
   };
