@@ -296,6 +296,7 @@ app.patch("/api/tasks/:taskId/attention/acknowledge", async (request, response) 
     return;
   }
 
+  resetPendingInputPrompt(activePtys.get(taskId));
   setTask(markTaskAttentionAcknowledged(task));
   await persistTasks();
   broadcastTasks();
@@ -1718,6 +1719,10 @@ function updateQuietAttentionStates() {
       continue;
     }
 
+    if (isAttentionEventAcknowledged(task, lastActivityAt)) {
+      continue;
+    }
+
     const reason = "Running PTY has been quiet; user attention may be needed.";
     if (task.attentionState !== AttentionState.MAY_NEED_USER || task.attentionStateReason !== reason) {
       setTask(markTaskAttentionState(task, AttentionState.MAY_NEED_USER, {
@@ -1745,6 +1750,10 @@ function updatePendingInputAttentionStates(now) {
     }
 
     if (now - pendingInputPrompt.firstSeenAt < inputPromptStabilizationMs) {
+      continue;
+    }
+
+    if (isAttentionEventAcknowledged(task, pendingInputPrompt.firstSeenAt)) {
       continue;
     }
 
@@ -1783,6 +1792,11 @@ function isStrongAttentionState(attentionState) {
     attentionState === AttentionState.REVIEW_READY ||
     attentionState === AttentionState.FAILED
   );
+}
+
+function isAttentionEventAcknowledged(task, eventStartedAt) {
+  const acknowledgedAt = Date.parse(String(task.attentionAcknowledgedAt || ""));
+  return Number.isFinite(acknowledgedAt) && acknowledgedAt >= eventStartedAt;
 }
 
 function createPtyActivity() {
