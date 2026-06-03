@@ -223,12 +223,12 @@ export function TerminalPane({
         <div className="terminal-observations">
           {hasTuiChoice ? (
             <span
-              aria-label="TUI choice detected"
+              aria-label="Possible TUI choice detected"
               className="terminal-tui-choice-indicator"
               role="status"
-              title="TUI choice detected"
+              title="Possible TUI choice detected"
             >
-              TUI choice
+              Possible TUI choice
             </span>
           ) : null}
         </div>
@@ -314,11 +314,18 @@ function detectTuiChoice(value: string) {
     .map((line) => line.trim())
     .filter(Boolean)
     .slice(-80);
-  const optionLines = lines.filter(isLikelyChoiceOptionLine);
-  const selectedOptionLines = lines.filter(isLikelySelectedChoiceLine);
-  const promptLikeText = /\b(use\s+(?:the\s+)?arrow\s+keys|press\s+enter|select(?:\s+an?\s+option)?|choose(?:\s+an?\s+option)?|pick\s+one)\b/i.test(text);
+  const optionLineIndexes = indexesMatching(lines, (line) => isLikelyChoiceOptionLine(line) || isLikelySelectedChoiceLine(line));
+  const selectedLineIndexes = indexesMatching(lines, isLikelySelectedChoiceLine);
+  const menuPromptLineIndexes = indexesMatching(lines, isLikelyMenuPromptLine);
+  const enterPromptLineIndexes = indexesMatching(lines, isLikelyEnterPromptLine);
 
-  return (promptLikeText && optionLines.length >= 1) || (selectedOptionLines.length >= 1 && optionLines.length >= 2) || optionLines.length >= 4;
+  return (menuPromptLineIndexes.length > 0 && hasNearbyLine(menuPromptLineIndexes, optionLineIndexes))
+    || (
+      enterPromptLineIndexes.length > 0
+      && selectedLineIndexes.length > 0
+      && optionLineIndexes.length >= 2
+      && hasNearbyLine(enterPromptLineIndexes, selectedLineIndexes)
+    );
 }
 
 function normalizeTerminalObservation(value: string) {
@@ -331,13 +338,32 @@ function normalizeTerminalObservation(value: string) {
 }
 
 function isLikelyChoiceOptionLine(line: string) {
-  return /^(?:[>*•○●◦▪▫▸▹▶❯›]\s*)?(?:\(?[0-9]{1,2}\)?[.)]|[a-zA-Z][.)])\s+\S/.test(line)
-    || /^[>*•○●◦▪▫▸▹▶❯›]\s+\S/.test(line);
+  return /^(?:[>▸▹▶❯]\s*)?(?:\(?[0-9]{1,2}\)?[.)]|[a-zA-Z][.)])\s+\S/.test(line);
 }
 
 function isLikelySelectedChoiceLine(line: string) {
-  return /^(?:[>▸▹▶❯›]|[*●])\s+\S/.test(line)
-    || /^(?:[>▸▹▶❯›]|[*●])\s*(?:\(?[0-9]{1,2}\)?[.)]|[a-zA-Z][.)])\s+\S/.test(line);
+  return /^(?:[>▸▹▶❯])\s+\S/.test(line);
+}
+
+function isLikelyMenuPromptLine(line: string) {
+  return /\b(use\s+(?:the\s+)?arrow\s+keys|select(?:\s+an?\s+option)?|choose(?:\s+an?\s+option)?|pick\s+one)\b/i.test(line);
+}
+
+function isLikelyEnterPromptLine(line: string) {
+  return /\bpress\s+enter\b/i.test(line);
+}
+
+function indexesMatching(lines: string[], predicate: (line: string) => boolean) {
+  return lines.reduce<number[]>((indexes, line, index) => {
+    if (predicate(line)) {
+      indexes.push(index);
+    }
+    return indexes;
+  }, []);
+}
+
+function hasNearbyLine(leftIndexes: number[], rightIndexes: number[]) {
+  return leftIndexes.some((leftIndex) => rightIndexes.some((rightIndex) => Math.abs(leftIndex - rightIndex) <= 6));
 }
 
 function isDirectInputDebugEnabled() {
