@@ -14,17 +14,18 @@ The primary operator question is whether each task needs attention now. The UI s
 - `apps/web`: React/Vite frontend for task cards, terminal rendering, task creation, Codex usage, tools, diagnostics, composer input, and API/WebSocket state handling.
 - `packages/core`: Shared task-state primitives and task serialization helpers used by server and web code.
 - `.taskdeck/`: Ignored local runtime state. It stores persisted tasks, logs, presets, session labels, attachments, and other local data that may be sensitive.
-- Config files: `taskdeck.config.json` is committed default config; ignored `taskdeck.local.json`, `TASKDECK_CONFIG`, `TASKDECK_PROJECT_ROOT`, and `TASKDECK_PROJECT_ROOTS` carry machine-local overrides. `taskdeck.local.example.json` is the public example for local setup.
+- Config files: `taskdeck.config.json` is committed config and currently still contains default agent profile assumptions; ignored `taskdeck.local.json`, `TASKDECK_CONFIG`, `TASKDECK_PROJECT_ROOT`, and `TASKDECK_PROJECT_ROOTS` carry machine-local overrides. `taskdeck.local.example.json` is the public example for local setup.
 
 ## Runtime Data Flow
 
-1. The web app loads `/api/context`, `/api/tasks`, saved sessions, presets, diagnostics, and opens the WebSocket.
+1. The web app loads `/api/context` and saved sessions, opens the WebSocket, and receives task snapshots and output updates over WebSocket.
 2. The New Agent Session form creates a task from an agent profile, session mode, selected project, permission level, and optional saved-session resume command.
 3. The server launches the selected command in a PTY, stores task metadata, and begins streaming PTY output.
 4. PTY output is appended to bounded in-memory and persisted logs, broadcast over WebSocket, and rendered by xterm.js in the terminal pane.
 5. Server-side activity observations and adapter-specific TUI fallbacks update `agentState` and `attentionState` without treating silence as thinking.
 6. Task, log, preset, session-label, and attachment state is persisted under `.taskdeck/`.
-7. UI state updates from REST responses and WebSocket messages keep the task list, selected task, terminal output, composer availability, Codex usage panel, tools, and diagnostics in sync.
+7. Focused REST calls handle actions such as Codex usage refresh, task/session renaming, log reload, attachments, and diagnostics queries when a UI path calls them.
+8. UI state updates from REST responses and WebSocket messages keep the task list, selected task, terminal output, composer availability, Codex usage panel, and tools in sync.
 
 ## Domain Concepts
 
@@ -35,7 +36,7 @@ The primary operator question is whether each task needs attention now. The UI s
 - Agent state: A process/supervision state such as starting, working, waiting input, review ready, done, or failed. It is related to but not identical to attention.
 - Saved session: Best-effort Codex session metadata derived from TaskDeck task records and available container-side Codex session storage. It is not a guaranteed Codex internal registry.
 - Project root / project suggestion: `projectRoot` means a parent directory whose immediate child directories become Project choices. With no configured project root, TaskDeck falls back to the TaskDeck repo itself as the selectable project.
-- Diagnostics: Server/UI checks for Docker reachability, configured containers, configured container workspaces, and related local setup.
+- Diagnostics: Server-side checks for Docker reachability, configured containers, configured container workspaces, and related local setup. There is not currently a dedicated web diagnostics pane.
 
 ## Where To Change What
 
@@ -46,7 +47,7 @@ The primary operator question is whether each task needs attention now. The UI s
 - Attention/supervision logic: Adapter selection, process/activity observation, explicit TUI prompt fallback, quiet timers, and task state marking in `apps/server/src/server.js`; task-card display in `apps/web/src/components/TaskList.tsx`.
 - Terminal UI: `apps/web/src/components/TerminalPane.tsx`, `InputComposer.tsx`, related terminal/composer CSS in `apps/web/src/styles.css`.
 - Saved sessions: Codex session detection, resume command construction, session label storage, `/api/agent-sessions`, and saved-session picker behavior in `apps/server/src/server.js` and `TaskCreateForm.tsx`.
-- Diagnostics: `/api/diagnostics`, container inspection/start helpers, and diagnostics UI components in `apps/server/src/server.js` and the web diagnostics/tool panes.
+- Diagnostics: `/api/diagnostics` plus container inspection/start helpers in `apps/server/src/server.js`; existing tool panes use related profile/container metadata, and a dedicated diagnostics UI would be future work.
 
 ## Refactoring Seams
 
