@@ -54,7 +54,6 @@ const defaultAgentProfiles = [
       { id: "gpt-5.5-thinking", label: "gpt-5.5 Thinking" },
       { id: "gpt-5.4-codex", label: "gpt-5.4 Codex" },
     ],
-    defaultModel: "gpt-5.5-thinking",
     runtimeModelSwitchCommand: "/model {model}",
   },
   {
@@ -2930,7 +2929,6 @@ function sanitizeAgentProfiles(rawProfiles) {
     const diagnosticContainer = String(rawProfile?.diagnosticContainer || "").trim();
     const diagnosticWorkspace = String(rawProfile?.diagnosticWorkspace || "").trim();
     const modelOptions = normalizeModelOptions(rawProfile?.modelOptions);
-    const defaultModel = String(rawProfile?.defaultModel || "").trim();
     const runtimeModelSwitchCommand = String(rawProfile?.runtimeModelSwitchCommand || "").trim();
 
     if (!id || !label || seenIds.has(id)) {
@@ -2945,7 +2943,6 @@ function sanitizeAgentProfiles(rawProfiles) {
       ...(diagnosticContainer ? { diagnosticContainer } : {}),
       ...(diagnosticWorkspace ? { diagnosticWorkspace } : {}),
       ...(modelOptions.length ? { modelOptions } : {}),
-      ...(defaultModel ? { defaultModel } : {}),
       ...(runtimeModelSwitchCommand ? { runtimeModelSwitchCommand } : {}),
     });
     seenIds.add(id);
