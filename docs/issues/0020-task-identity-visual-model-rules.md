@@ -47,7 +47,7 @@ Large visual surfaces should use the same identity hue family:
 
 Avoid hue offsets such as `hue + 24`, `hue - 18`, or `hue + 180` on large surfaces.
 
-Small identity tokens may use hue offsets if they remain useful, because their job is compact recognition rather than large-surface tone.
+Small identity tokens may use hue offsets only if a current, explicit design asks for a compact token. Do not keep or reintroduce the old 2x2 identity token in the terminal header by default. In the accepted session-identity-first direction, card and terminal identity should be carried by surfaces, not by a persistent header token.
 
 ## Rule 2: alpha is gradient structure, not color tuning
 
@@ -162,6 +162,14 @@ compensateToneForHue(hue, tone) -> adjusted saturation/lightness
 
 No other part of the system should special-case hue behavior.
 
+## Rule 8: interaction status indicators are not identity tokens
+
+Input-waiting, TUI-choice, approval, or other interaction-state indicators must be visually distinct from identity tokens.
+
+Do not represent interaction state with the deprecated 2x2 identity token. If the terminal header needs an input-waiting or TUI-choice indicator, use a dedicated status icon or compact status badge that is conditional on the interaction state.
+
+A task identity element must not appear in the terminal header merely because a task exists. Persistent terminal identity should come from the terminal surface gradient/tint.
+
 ## Desired implementation shape
 
 The exact API is not fixed, but future code should move toward this shape:
@@ -200,3 +208,5 @@ A successful refactor should make these statements true:
 - terminal tone is derived from card tone
 - border/band/glow/selected treatment derive from the identity surface
 - CSS mostly consumes variables; color decisions live in `taskIdentity.ts`
+- the deprecated 2x2 identity token is not used as a persistent terminal header element
+- interaction-state indicators are dedicated status UI, not identity tokens
