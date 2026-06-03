@@ -14,6 +14,7 @@
         { "id": "gpt-5.5-thinking", "label": "gpt-5.5 Thinking" },
         { "id": "gpt-5.4-codex", "label": "gpt-5.4 Codex" }
       ],
+      "defaultModel": "gpt-5.5-thinking",
       "runtimeModelSwitchCommand": "/model {model}"
     },
     {

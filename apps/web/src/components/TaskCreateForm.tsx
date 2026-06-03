@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   applyCodexPermissionToCommand,
+  applyCodexStartupModelToCommand,
   buildCodexResumeCommandForCommand,
   type CodexPermissionLevel,
 } from "../codexPermissions";
@@ -14,6 +15,7 @@ type TaskCreateFormProps = {
 };
 
 const defaultAgentProfileId = "codex";
+const preferredCodexStartupModel = "gpt-5.5-thinking";
 type SessionMode = "new" | "resume_last" | "saved_codex";
 
 export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreateTask }: TaskCreateFormProps) {
@@ -21,6 +23,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
   const [selectedSavedSessionKey, setSelectedSavedSessionKey] = useState("");
   const [sessionMode, setSessionMode] = useState<SessionMode>("new");
   const [codexPermissionLevel, setCodexPermissionLevel] = useState<CodexPermissionLevel>("full_access");
+  const [selectedCodexModel, setSelectedCodexModel] = useState("");
   const [selectedProjectPath, setSelectedProjectPath] = useState("");
 
   const projectSuggestions = useMemo(() => buildProjectSuggestions(context), [context]);
@@ -39,6 +42,14 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
     agentProfiles.find((profile) => profile.id === selectedAgentId) ??
     findDefaultAgentProfile(agentProfiles);
   const selectedAgentIsCodex = Boolean(selectedAgent && isCodexProfile(selectedAgent));
+  const codexModelOptions = selectedAgentIsCodex ? selectedAgent?.modelOptions ?? [] : [];
+  const selectedCodexModelIsConfigured = codexModelOptions.some((option) => option.id === selectedCodexModel);
+  const selectedStartupModel =
+    selectedAgentIsCodex && selectedAgent
+      ? selectedCodexModelIsConfigured
+        ? selectedCodexModel
+        : defaultCodexStartupModel(selectedAgent)
+      : "";
   const matchingSavedCodexSessions = useMemo(
     () => (selectedAgentIsCodex && selectedAgent ? savedCodexSessions.filter((session) => savedSessionMatchesAgent(session, selectedAgent)) : []),
     [savedCodexSessions, selectedAgent, selectedAgentIsCodex],
@@ -50,7 +61,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
   const sessionSelectValue =
     sessionMode === "saved_codex" && selectedSavedSession ? savedSessionOptionValue(selectedSavedSession.key) : sessionMode;
   const launchCommand = selectedAgent
-    ? buildLaunchCommand(selectedAgent, sessionMode, selectedSavedSession, codexPermissionLevel)
+    ? buildLaunchCommand(selectedAgent, sessionMode, selectedSavedSession, codexPermissionLevel, selectedStartupModel)
     : { command: "", resumeCommand: "" };
   const command = launchCommand.command;
   const effectiveCwd = executionCwdForSessionMode(sessionMode, selectedProjectPath, selectedSavedSession, context?.defaultCwd);
@@ -68,6 +79,20 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
       setSelectedSavedSessionKey("");
     }
   }, [selectedAgentIsCodex, sessionMode]);
+
+  useEffect(() => {
+    if (!selectedAgentIsCodex || !selectedAgent) {
+      if (selectedCodexModel) {
+        setSelectedCodexModel("");
+      }
+      return;
+    }
+
+    const defaultModel = defaultCodexStartupModel(selectedAgent);
+    if (selectedCodexModel !== defaultModel && !codexModelOptions.some((option) => option.id === selectedCodexModel)) {
+      setSelectedCodexModel(defaultModel);
+    }
+  }, [codexModelOptions, selectedAgent, selectedAgentIsCodex, selectedCodexModel]);
 
   useEffect(() => {
     if (sessionMode === "saved_codex" && (!selectedAgentIsCodex || matchingSavedCodexSessions.length === 0)) {
@@ -106,6 +131,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
       agentProfileId: sessionMode === "saved_codex" ? selectedSavedSession?.agentProfileId || "codex" : selectedAgent?.id || "",
       agentLabel: sessionMode === "saved_codex" ? selectedSavedSession?.agentLabel || "Codex CLI" : selectedAgent?.label || "Agent",
       agentPermissionLevel: selectedAgentIsCodex ? codexPermissionLevel : undefined,
+      agentModel: selectedAgentIsCodex && sessionMode === "new" && selectedStartupModel ? selectedStartupModel : undefined,
       sessionMode,
       resumeCommand: launchCommand.resumeCommand || undefined,
       agentSessionProvider: sessionMode === "saved_codex" ? selectedSavedSession?.provider : undefined,
@@ -141,6 +167,18 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
               <option value="full_access">Full access</option>
               <option value="workspace_write">Workspace write</option>
               <option value="read_only">Read only</option>
+            </select>
+          </label>
+        ) : null}
+        {selectedAgentIsCodex && codexModelOptions.length > 0 ? (
+          <label className="codex-model-field">
+            <span>Model</span>
+            <select value={selectedStartupModel} onChange={(event) => setSelectedCodexModel(event.target.value)}>
+              {codexModelOptions.map((modelOption) => (
+                <option key={modelOption.id} value={modelOption.id}>
+                  {modelOption.label}
+                </option>
+              ))}
             </select>
           </label>
         ) : null}
@@ -207,6 +245,7 @@ function buildLaunchCommand(
   sessionMode: SessionMode,
   savedSession: SavedCodexSession | null,
   codexPermissionLevel: CodexPermissionLevel,
+  startupModel: string,
 ) {
   if (sessionMode === "saved_codex") {
     const resumeCommand = savedSession?.resumeCommand.trim() || "";
@@ -219,9 +258,21 @@ function buildLaunchCommand(
   }
 
   const command = isCodexProfile(profile)
-    ? applyCodexPermissionToCommand(profile.command.trim(), codexPermissionLevel)
+    ? applyCodexStartupModelToCommand(applyCodexPermissionToCommand(profile.command.trim(), codexPermissionLevel), startupModel)
     : profile.command.trim();
   return { command, resumeCommand: "" };
+}
+
+function defaultCodexStartupModel(profile: AgentProfile) {
+  const modelOptions = profile.modelOptions ?? [];
+  const explicitDefault = profile.defaultModel?.trim();
+  if (explicitDefault && explicitDefault !== "default" && modelOptions.some((option) => option.id === explicitDefault)) {
+    return explicitDefault;
+  }
+  if (modelOptions.some((option) => option.id === preferredCodexStartupModel)) {
+    return preferredCodexStartupModel;
+  }
+  return modelOptions.find((option) => option.id && option.id !== "default")?.id ?? "";
 }
 
 function executionCwdForSessionMode(

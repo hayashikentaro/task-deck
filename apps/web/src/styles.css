@@ -239,6 +239,7 @@ dd {
 }
 
 .agent-picker select,
+.codex-model-field select,
 .project-field select,
 .session-mode-field select {
   height: 40px;
@@ -247,6 +248,7 @@ dd {
 
 .session-mode-field,
 .project-field,
+.codex-model-field,
 .custom-resume-field,
 .custom-command-field {
   min-width: 0;

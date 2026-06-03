@@ -18,6 +18,28 @@ export function applyCodexPermissionToCommand(command: string, permissionLevel: 
   );
 }
 
+export function applyCodexStartupModelToCommand(command: string, model: string | undefined) {
+  const selectedModel = String(model || "").trim();
+  if (!command) {
+    return command;
+  }
+
+  const commandWithoutStartupModel = command.replace(
+    /(\bcodex\b(?:(?!\s+\bresume\b)[^'"])*?)\s+(?:--model|-m)\s+(?:"[^"]+"|'[^']+'|[^\s'"]+)/i,
+    "$1",
+  );
+  if (!selectedModel || selectedModel === "default") {
+    return commandWithoutStartupModel;
+  }
+
+  return commandWithoutStartupModel.replace(
+    /\bcodex\b((?:\s+(?:--dangerously-bypass-approvals-and-sandbox|--sandbox\s+(?:read-only|workspace-write|danger-full-access)))*)/i,
+    (_match, permissionArgs = "") => {
+      return `codex${permissionArgs} --model ${selectedModel}`;
+    },
+  );
+}
+
 export function buildCodexResumeCommandForCommand(
   command: string,
   permissionLevel: string | undefined,
