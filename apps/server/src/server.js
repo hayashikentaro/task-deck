@@ -1297,11 +1297,6 @@ async function resolveProjectRoots() {
     return configuredRoots;
   }
 
-  const documentsRoot = "/Users/hayashikentarou/Documents";
-  if (await directoryExists(documentsRoot)) {
-    return [documentsRoot];
-  }
-
   return [repoRoot];
 }
 
