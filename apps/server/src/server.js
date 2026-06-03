@@ -40,7 +40,38 @@ const pendingAttachmentRoot = path.join(attachmentRoot, "pending");
 const defaultConfigPath = path.join(repoRoot, "taskdeck.config.json");
 const localConfigPath = path.join(repoRoot, "taskdeck.local.json");
 const envConfigPath = process.env.TASKDECK_CONFIG ? path.resolve(process.env.TASKDECK_CONFIG) : "";
-const defaultAgentProfiles = [];
+const defaultAgentProfiles = [
+  {
+    id: "codex",
+    label: "Codex CLI",
+    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex'",
+    description: "Run Codex CLI inside the AI agent sandbox container",
+    diagnosticContainer: "ai-agent-sandbox-agent-1",
+    diagnosticWorkspace: "/workspace",
+    modelOptions: [
+      { id: "default", label: "Default" },
+      { id: "gpt-5.5", label: "gpt-5.5" },
+      { id: "gpt-5.5-thinking", label: "gpt-5.5 Thinking" },
+      { id: "gpt-5.4-codex", label: "gpt-5.4 Codex" },
+    ],
+  },
+  {
+    id: "goose",
+    label: "Goose",
+    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 goose",
+    description: "Run Goose inside the AI agent sandbox container",
+    diagnosticContainer: "ai-agent-sandbox-agent-1",
+    diagnosticWorkspace: "/workspace",
+  },
+  {
+    id: "zsh",
+    label: "zsh",
+    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'if command -v zsh >/dev/null 2>&1; then exec zsh; elif command -v bash >/dev/null 2>&1; then exec bash; else exec sh; fi'",
+    description: "Plain interactive zsh shell",
+    diagnosticContainer: "ai-agent-sandbox-agent-1",
+    diagnosticWorkspace: "/workspace",
+  },
+];
 
 const app = express();
 const server = http.createServer(app);
@@ -812,11 +843,6 @@ function extractDockerExecWorkdir(command) {
   return match ? unquoteShellToken(match[1]) : "";
 }
 
-function extractDockerExecContainerName(command) {
-  const match = String(command || "").match(/\bdocker\s+exec\b[\s\S]*?\s([a-zA-Z0-9][a-zA-Z0-9_.-]*)\s+(?:sh|bash|zsh|goose|codex)\b/);
-  return match ? match[1] : "";
-}
-
 function replaceDockerExecWorkdir(command, containerCwd) {
   return String(command || "").replace(
     /(\bdocker\s+exec\b[\s\S]*?\s-w\s+)("[^"]+"|'[^']+'|[^\s]+)/,
@@ -1269,6 +1295,11 @@ async function resolveProjectRoots() {
   const configuredRoots = await loadConfiguredProjectRoots();
   if (configuredRoots.length > 0) {
     return configuredRoots;
+  }
+
+  const documentsRoot = "/Users/hayashikentarou/Documents";
+  if (await directoryExists(documentsRoot)) {
+    return [documentsRoot];
   }
 
   return [repoRoot];
@@ -2075,9 +2106,11 @@ function buildCodexSessionResumeCommand(task, sessionId, options = {}) {
   const command = String(task.command || "");
   const codexCommand = `codex ${codexPermissionArgsForTask(task)} resume ${sessionId}`;
   const dockerWorkdir = String(options.containerCwd || extractDockerExecWorkdir(command) || "/workspace").trim();
-  const dockerContainerName = extractDockerExecContainerName(command);
-  if (dockerContainerName) {
-    return `docker start ${dockerContainerName} >/dev/null && docker exec -it -w ${quoteShellToken(dockerWorkdir)} ${dockerContainerName} sh -lc 'TERM=xterm-256color ${codexCommand}'`;
+  if (task.agentProfileId === "ai-dev-container-codex" || /\bdocker\b[\s\S]*\bai-agent-sandbox-agent-1\b/.test(command)) {
+    return `docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w ${quoteShellToken(dockerWorkdir)} ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color ${codexCommand}'`;
+  }
+  if (/\bdocker\b[\s\S]*\bai-agent-sandbox-codex-1\b/.test(command)) {
+    return `docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w ${quoteShellToken(dockerWorkdir)} ai-agent-sandbox-codex-1 sh -lc 'TERM=xterm-256color ${codexCommand}'`;
   }
   return codexCommand;
 }
@@ -2457,8 +2490,18 @@ function normalizeSavedSessionTitle(title) {
 }
 
 function codexCommandEnvironment(task) {
-  const command = String(task.command || task.agentSessionResumeCommand || task.resumeCommand || "");
-  return extractDockerExecContainerName(command) || "local";
+  const command = String(task.command || task.agentSessionResumeCommand || task.resumeCommand || "").toLowerCase();
+  const agentProfileId = String(task.agentProfileId || "").toLowerCase();
+
+  if (agentProfileId === "ai-dev-container-codex" || /\bdocker\b[\s\S]*\bai-agent-sandbox-agent-1\b/.test(command)) {
+    return "ai-agent-sandbox-agent-1";
+  }
+
+  if (/\bdocker\b[\s\S]*\bai-agent-sandbox-codex-1\b/.test(command)) {
+    return "ai-agent-sandbox-codex-1";
+  }
+
+  return "local";
 }
 
 function timestampForSort(value) {
