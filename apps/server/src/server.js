@@ -1297,7 +1297,7 @@ async function resolveProjectRoots() {
     return configuredRoots;
   }
 
-  return [repoRoot];
+  return [];
 }
 
 async function loadConfiguredProjectRoots() {
