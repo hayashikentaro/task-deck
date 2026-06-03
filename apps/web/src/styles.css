@@ -42,6 +42,13 @@
   --task-identity-b: transparent;
   --task-identity-c: transparent;
   --task-identity-d: transparent;
+  --task-card-wash: transparent;
+  --task-card-wash-soft: transparent;
+  --task-card-border: transparent;
+  --task-card-band: transparent;
+  --task-card-glow: transparent;
+  --task-card-selected-ring: transparent;
+  --task-card-selected-outline: transparent;
   --task-terminal-tint: transparent;
   --task-terminal-border: transparent;
 }
@@ -573,30 +580,39 @@ dd {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 2px;
   align-items: start;
-  border: 1px solid var(--line);
+  border: 1px solid color-mix(in srgb, var(--task-card-border) 72%, var(--line));
   border-radius: 6px;
-  background: var(--surface-raised);
+  background:
+    linear-gradient(135deg, var(--task-card-wash) 0%, var(--task-card-wash-soft) 64%, transparent 100%),
+    var(--surface-raised);
+  box-shadow:
+    inset 5px 0 0 var(--task-card-band),
+    inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 54%, transparent),
+    0 0 0 1px rgb(0 0 0 / 16%);
 }
 
 .task-list-item[data-selected="true"] {
   filter: brightness(1.08);
   box-shadow:
-    inset 5px 0 0 rgb(238 231 214 / 72%),
-    inset 0 0 0 1px rgb(238 231 214 / 42%),
-    0 0 0 1px rgb(238 231 214 / 18%),
+    inset 6px 0 0 var(--task-card-band),
+    inset 0 0 0 1px var(--task-card-selected-ring),
+    inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 66%, transparent),
+    0 0 0 1px var(--task-card-selected-outline),
+    0 0 22px var(--task-card-glow),
     0 10px 24px rgb(0 0 0 / 28%);
 }
 
 .task-list-item[data-selected="true"]::before {
   content: "";
   position: absolute;
-  inset: 0 auto 0 0;
-  width: 5px;
-  background: rgb(238 231 214 / 72%);
+  inset: 0;
+  border: 1px solid color-mix(in srgb, var(--task-card-selected-ring) 84%, var(--task-card-border));
+  border-radius: inherit;
+  pointer-events: none;
 }
 
 .task-list-item[data-selected="true"] .task-select-button {
-  padding-left: 10px;
+  padding-left: 11px;
 }
 
 .task-list-item[data-selected="true"][data-tone="risk"],
@@ -604,9 +620,11 @@ dd {
 .task-list-item[data-selected="true"][data-tone="waiting_approval"],
 .task-list-item[data-selected="true"][data-tone="review_ready"] {
   box-shadow:
-    inset 5px 0 0 rgb(238 231 214 / 72%),
-    inset 0 0 0 1px rgb(238 231 214 / 42%),
-    0 0 0 1px rgb(238 231 214 / 18%),
+    inset 6px 0 0 var(--task-card-band),
+    inset 0 0 0 1px var(--task-card-selected-ring),
+    inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 66%, transparent),
+    0 0 0 1px var(--task-card-selected-outline),
+    0 0 22px var(--task-card-glow),
     0 10px 24px rgb(0 0 0 / 28%);
 }
 
@@ -628,28 +646,72 @@ dd {
 .task-list-item[data-tone="attention"],
 .task-list-item[data-tone="failed"] {
   border-color: var(--status-failed);
-  background: var(--tone-attention-bg);
 }
 
 .task-list-item[data-tone="stopped"] {
   border-color: var(--status-stopped);
-  background: var(--tone-attention-bg);
 }
 
 .task-list-item[data-tone="risk"],
 .task-list-item[data-tone="waiting_input"] {
-  border-color: var(--status-needs-input);
-  background: var(--tone-risk-bg);
+  border-color: color-mix(in srgb, var(--task-card-border) 82%, var(--line));
+  box-shadow:
+    inset 5px 0 0 var(--task-card-band),
+    inset 0 2px 0 color-mix(in srgb, var(--task-card-band) 58%, transparent),
+    inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 54%, transparent),
+    0 0 0 1px rgb(0 0 0 / 16%);
 }
 
 .task-list-item[data-tone="waiting_approval"] {
-  border-color: var(--status-needs-approval);
-  background: var(--tone-risk-bg);
+  border-color: color-mix(in srgb, var(--task-card-border) 82%, var(--line));
+  box-shadow:
+    inset 5px 0 0 var(--task-card-band),
+    inset 0 2px 0 color-mix(in srgb, var(--task-card-band) 58%, transparent),
+    inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 54%, transparent),
+    0 0 0 1px rgb(0 0 0 / 16%);
 }
 
 .task-list-item[data-tone="review_ready"] {
   border-color: var(--status-review-ready);
-  background: var(--tone-risk-bg);
+  box-shadow:
+    inset 5px 0 0 var(--task-card-band),
+    inset 0 2px 0 color-mix(in srgb, var(--status-review-ready) 68%, transparent),
+    inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 54%, transparent),
+    0 0 0 1px rgb(0 0 0 / 16%);
+}
+
+.task-list-item[data-selected="true"][data-tone="risk"],
+.task-list-item[data-selected="true"][data-tone="waiting_input"] {
+  box-shadow:
+    inset 6px 0 0 var(--task-card-band),
+    inset 0 2px 0 color-mix(in srgb, var(--task-card-band) 64%, transparent),
+    inset 0 0 0 1px var(--task-card-selected-ring),
+    inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 66%, transparent),
+    0 0 0 1px var(--task-card-selected-outline),
+    0 0 22px var(--task-card-glow),
+    0 10px 24px rgb(0 0 0 / 28%);
+}
+
+.task-list-item[data-selected="true"][data-tone="waiting_approval"] {
+  box-shadow:
+    inset 6px 0 0 var(--task-card-band),
+    inset 0 2px 0 color-mix(in srgb, var(--task-card-band) 64%, transparent),
+    inset 0 0 0 1px var(--task-card-selected-ring),
+    inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 66%, transparent),
+    0 0 0 1px var(--task-card-selected-outline),
+    0 0 22px var(--task-card-glow),
+    0 10px 24px rgb(0 0 0 / 28%);
+}
+
+.task-list-item[data-selected="true"][data-tone="review_ready"] {
+  box-shadow:
+    inset 6px 0 0 var(--task-card-band),
+    inset 0 2px 0 color-mix(in srgb, var(--status-review-ready) 72%, transparent),
+    inset 0 0 0 1px var(--task-card-selected-ring),
+    inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 66%, transparent),
+    0 0 0 1px var(--task-card-selected-outline),
+    0 0 22px var(--task-card-glow),
+    0 10px 24px rgb(0 0 0 / 28%);
 }
 
 .task-list-item[data-tone="done"] {
@@ -1640,14 +1702,6 @@ dd {
   display: flex;
   gap: 5px;
   align-items: center;
-}
-
-.task-card-identity-anchor {
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
-  z-index: 1;
-  pointer-events: none;
 }
 
 .task-meta-spacer {

@@ -102,7 +102,7 @@ To restore a multi-project dropdown locally, create or edit ignored `taskdeck.lo
 
 For this maintainer environment, `/Users/hayashikentarou/Documents` belongs in `taskdeck.local.json`, not committed config. Existing `projectRoots`, `TASKDECK_PROJECT_ROOT`, and `TASKDECK_PROJECT_ROOTS` values are still accepted for compatibility.
 
-The UI is organized around a supervision-first workspace: the left rail is an expandable task-card list, the center pane is the terminal and persisted log view, the right rail launches new agent sessions, and the composer stays attached to the terminal. For running tasks, the task card's primary supervision badge and filters answer only `Needs you` or `Not now`; detailed process, risk, and agent-signal metadata stay available inside expanded cards.
+The UI is organized around task cards that help operators keep the left-rail task list matched to the center terminal and persisted log view. On the session-identity-first experiment branch, stable task/session identity is the primary card-level visual layer, while `Needs you` / `Not now` remains visible through sorting, badges, filters, and acknowledgement controls. The right rail launches new agent sessions, and the composer stays attached to the terminal.
 
 ## Agent State Inference
 

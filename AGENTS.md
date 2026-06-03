@@ -42,6 +42,21 @@ The long-term goal is for TaskDeck to become an operational cognition system for
 
 Dangerous paths should be structurally constrained where possible. Inside safe capability boundaries, AI agents should be able to operate freely.
 
+## Experimental Direction: Session Identity First Cards
+
+This branch is an experiment in session-identity-first task cards. The experiment is documented in `docs/issues/0015-session-identity-first-cards.md`.
+
+The working hypothesis is that, in real multi-agent use, the cost of identifying which task card maps to which running terminal/session can be higher than the cost of urgent-task triage. Agents working on this branch should therefore avoid drifting back to a card design where Needs you / Not now state dominates the whole card surface.
+
+For this experiment:
+
+- Stable task/session identity is allowed to be the primary card-level visual layer.
+- Needs you / Not now supervision remains important, but should be expressed through ordering, badges, acknowledgement controls, and compact state markers.
+- `attentionState` remains the primary supervision signal for data, sorting, and action prompts; it should not automatically imply full-card state coloration.
+- Do not encode session identity and supervision urgency as competing full-card color systems.
+- Preserve the terminal-side identity link through the header identity token and low-saturation terminal tint.
+- Do not remove supervision logic, PTY behavior, task persistence, or existing task metadata semantics as part of this visual experiment.
+
 ## Current Project State
 
 The repository now contains a working MVP application:
@@ -60,6 +75,8 @@ docs/architecture.md  Project architecture map and refactoring seams
 ## Domain Concepts
 
 - Task: the central supervision unit, with process status, agent state, risk, logs, metadata, and diff context.
+- Task/session identity: the stable visual link between a task card and its terminal/session. On session-identity-first branches, this may be the dominant card-level visual channel.
+- Supervision state: whether a task may need attention. This is still driven by TaskDeck state such as `attentionState`, but it may be shown through compact UI channels rather than full-card coloration.
 - PTY: the pseudo-terminal process behind a running task. It is an interaction mechanism, not the product identity.
 - Agent profile: a configured launch profile such as Codex, Goose, container agents, zsh, or custom commands.
 - Session mode: how a new agent session starts, such as new session, resume last, custom resume, or saved session.
@@ -68,7 +85,7 @@ docs/architecture.md  Project architecture map and refactoring seams
 - Saved Codex session: a best-effort session derived from TaskDeck task metadata, not from Codex internal storage.
 - Diagnostics: server/UI checks for Docker, configured agent containers, and configured workspaces.
 
-Keep state, risk, diffs, review, and agent supervision central. Terminal/PTY interaction is a means to supervise work, not a chat surface or decorative terminal skin.
+Keep state, risk, diffs, review, and agent supervision central. Terminal/PTY interaction is a means to supervise work, not a chat surface or decorative terminal skin. On session-identity-first branches, keep supervision semantics central while allowing session identity to dominate the card's first visual read.
 
 ## Working Guidelines
 
@@ -136,6 +153,7 @@ If a task-specific user instruction conflicts with this file, stop and report th
 - PTY process lifecycle, interrupts, server restarts, and task clearing should remain predictable.
 - WebSocket task updates should keep task lists, selected task behavior, terminal output, and session metadata in sync.
 - Treat `attentionState` as the supervision UI's primary signal for whether the user should look at a task. Prefer `may_need_user` over hiding possibly blocked tasks as merely running.
+- On session-identity-first branches, `attentionState` remains primary for supervision semantics, sorting, and action prompts, but must not by itself pull the visual design back to full-card Needs you / Not now coloration.
 - Agent state should be driven primarily by TaskDeck events such as start, input, PTY output activity, and exit. Do not infer thinking from silence; quiet running PTYs should keep their last known supervisor state until a stronger signal arrives. Treat TUI text matching as a fallback for explicit user-action prompts only.
 - Do not add one-off Goose/Codex spinner phrases to infer thinking. Prefer TaskDeck-owned events, process observations, or explicit action prompts. If TUI fallback is used, include reason/source/confidence metadata.
 - Keep agent state inference split by adapter (`goose`, `codex`, and `generic`) so Goose behavior can be tuned without accidentally changing Codex supervision semantics.

@@ -33,6 +33,7 @@ export function App() {
   const [isCodexStatusRefreshing, setIsCodexStatusRefreshing] = useState(false);
   const [selectedLogBuffer, setSelectedLogBuffer] = useState("");
   const [terminalMessage, setTerminalMessage] = useState("");
+  const [visibleTaskIds, setVisibleTaskIds] = useState<string[]>([]);
   const socketRef = useRef<WebSocket | null>(null);
   const outputSeqRef = useRef(0);
   const selectedTaskIdRef = useRef<string | null>(null);
@@ -316,12 +317,14 @@ export function App() {
           onClearTasks={clearTasks}
           onAcknowledgeTask={acknowledgeTaskAttention}
           onRenameTask={renameTask}
+          onVisibleTaskIdsChange={setVisibleTaskIds}
           onSelectTask={setSelectedTaskId}
         />
         <TerminalPane
           composerValue={composerValue}
           isConnected={connectionState === "connected"}
           task={selectedTask}
+          visibleTaskIds={visibleTaskIds}
           lastOutput={lastOutput}
           terminalMessage={terminalMessage}
           onComposerValueChange={setComposerValue}
