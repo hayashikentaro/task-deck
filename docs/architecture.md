@@ -6,7 +6,7 @@ This document is a navigation map for contributors and AI-agent sessions. It des
 
 TaskDeck is a task-centric supervision UI for AI-agent work. It is not a chatbot UI, and it is not merely a prettier terminal.
 
-The primary operator question is whether each task needs attention now. The UI should preserve `Needs you` / `Not now` as the main supervision lens, with terminal interaction, logs, diffs, diagnostics, and saved sessions supporting that task-level view.
+On the session-identity-first experiment branch, the primary card-level visual question is which task maps to the terminal/session the operator is viewing or about to resume. `Needs you` / `Not now` remains the primary supervision signal for sorting, badges, and action prompts, but it should not dominate the whole card surface or compete with stable task/session identity as a full-card color system.
 
 ## Repository Map
 
