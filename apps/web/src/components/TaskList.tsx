@@ -16,6 +16,18 @@ type TaskListProps = {
   onSelectTask: (taskId: string) => void;
 };
 
+const cardIdentityAnchorStyle = {
+  bottom: 10,
+  position: "absolute",
+  right: 10,
+  zIndex: 1,
+} as const;
+
+const taskCardContentStyle = {
+  paddingBottom: 34,
+  paddingRight: 42,
+} as const;
+
 export function TaskList({
   tasks,
   selectedTaskId,
@@ -125,7 +137,7 @@ export function TaskList({
               style={taskIdentityCssProperties(task.id)}
             >
               {isEditingTitle ? (
-                <form className="task-title-edit-form" onSubmit={(event) => submitTitleEdit(event, task)}>
+                <form className="task-title-edit-form" onSubmit={(event) => submitTitleEdit(event, task)} style={taskCardContentStyle}>
                   <input
                     aria-label="TaskDeck display name"
                     autoFocus
@@ -152,6 +164,7 @@ export function TaskList({
                     }
                   }}
                   role="button"
+                  style={taskCardContentStyle}
                   tabIndex={0}
                 >
                   <span className="task-row-heading">
@@ -192,7 +205,7 @@ export function TaskList({
                   </span>
                 </div>
               )}
-              <TaskIdentityToken className="task-card-identity-anchor" />
+              <TaskIdentityToken className="task-card-identity-anchor" style={cardIdentityAnchorStyle} />
               <div className="task-card-actions">
                 <button
                   aria-label="Edit TaskDeck display name"
