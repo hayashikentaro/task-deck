@@ -42,6 +42,8 @@ const TASK_CARD_SELECTED_OUTLINE_ALPHA = 0.3;
 const TASK_TERMINAL_SATURATION = 18;
 const TASK_TERMINAL_LIGHTNESS = 8;
 const TASK_TERMINAL_TINT_ALPHA = 0.34;
+const TASK_TERMINAL_TINT_SOFT_ALPHA = 0.2;
+const TASK_TERMINAL_TINT_FAINT_ALPHA = 0.08;
 const TASK_TERMINAL_BORDER_ALPHA = 0.42;
 const TASK_IDENTITY_CELL_HUE_OFFSETS = [0, 24, -18, 180] as const;
 
@@ -143,6 +145,8 @@ function taskIdentityCssPropertiesForSlot(slot: TaskIdentitySlot): TaskIdentityC
     "--task-card-selected-ring": hsl(slot.hue, 34, 70, TASK_CARD_SELECTED_RING_ALPHA),
     "--task-card-selected-outline": hsl(slot.hue, 28, 76, TASK_CARD_SELECTED_OUTLINE_ALPHA),
     "--task-terminal-tint": hsl(slot.hue, 28, 12, TASK_TERMINAL_TINT_ALPHA),
+    "--task-terminal-tint-soft": hsl(slot.hue, 24, 11, TASK_TERMINAL_TINT_SOFT_ALPHA),
+    "--task-terminal-tint-faint": hsl(slot.hue, 20, 10, TASK_TERMINAL_TINT_FAINT_ALPHA),
     "--task-terminal-border": hsl(slot.hue, TASK_IDENTITY_SWATCH_SATURATION, 45, TASK_TERMINAL_BORDER_ALPHA),
   };
 }

@@ -50,6 +50,8 @@
   --task-card-selected-ring: transparent;
   --task-card-selected-outline: transparent;
   --task-terminal-tint: transparent;
+  --task-terminal-tint-soft: transparent;
+  --task-terminal-tint-faint: transparent;
   --task-terminal-border: transparent;
 }
 
@@ -1179,7 +1181,13 @@ dd {
   overflow: hidden;
   padding: 8px;
   background:
-    linear-gradient(var(--task-terminal-tint), var(--task-terminal-tint)),
+    linear-gradient(
+      135deg,
+      var(--task-terminal-tint) 0%,
+      var(--task-terminal-tint-soft) 58%,
+      var(--task-terminal-tint-faint) 82%,
+      transparent 100%
+    ),
     var(--terminal);
 }
 
