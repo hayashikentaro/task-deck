@@ -667,8 +667,15 @@ dd {
   gap: 7px;
   border: 0;
   background: transparent;
+  color: inherit;
+  cursor: pointer;
   padding: 10px;
   text-align: left;
+}
+
+.task-select-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--status-focus) 72%, transparent);
+  outline-offset: -2px;
 }
 
 .task-clear-button {
@@ -761,6 +768,7 @@ dd {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
+  align-items: center;
 }
 
 .task-badge {
@@ -790,6 +798,34 @@ dd {
 .task-badge[data-kind="supervision-not_now"] {
   border-color: var(--status-muted);
   color: var(--status-muted);
+}
+
+.task-acknowledge-button {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--status-needs-input) 42%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--status-needs-input);
+  line-height: 1;
+}
+
+.task-acknowledge-button:hover:not(:disabled) {
+  border-color: var(--status-needs-input);
+  background: color-mix(in srgb, var(--status-needs-input) 10%, transparent);
+}
+
+.task-acknowledge-icon {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
 }
 
 .task-badge[data-kind="attention-none"] {

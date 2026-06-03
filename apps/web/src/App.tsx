@@ -233,6 +233,28 @@ export function App() {
     }
   };
 
+  const acknowledgeTaskAttention = async (taskId: string) => {
+    try {
+      const response = await fetch(`/api/tasks/${taskId}/attention/acknowledge`, { method: "PATCH" });
+      const payload = (await response.json()) as {
+        error?: string;
+        tasks?: Task[];
+        runningTaskId?: string | null;
+        runningTaskIds?: string[];
+      };
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to acknowledge task attention.");
+      }
+      if (payload.tasks) {
+        applyTaskList(payload.tasks, getRunningTaskIdsFromMessage(payload));
+      }
+      return true;
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : "Unable to acknowledge task attention.");
+      return false;
+    }
+  };
+
   const clearTasks = async () => {
     const response = await fetch("/api/tasks", { method: "DELETE" });
     const payload = (await response.json()) as {
@@ -294,6 +316,7 @@ export function App() {
           runningTaskIds={runningTaskIds}
           onClearTask={clearTask}
           onClearTasks={clearTasks}
+          onAcknowledgeTask={acknowledgeTaskAttention}
           onRenameTask={renameTask}
           onSelectTask={setSelectedTaskId}
         />

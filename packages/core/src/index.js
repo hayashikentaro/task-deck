@@ -95,6 +95,7 @@ export function createTask({
     attentionStateReason: "No user attention needed yet.",
     attentionStateSource: AgentStateSource.TASKDECK_EVENT,
     attentionStateConfidence: AgentStateConfidence.HIGH,
+    attentionAcknowledgedAt: null,
     risk: assessCommandRisk(normalizedCommand),
     createdAt: now,
     startedAt: null,
@@ -155,6 +156,18 @@ export function markTaskAttentionState(task, attentionState, metadata = {}) {
   };
 }
 
+export function markTaskAttentionAcknowledged(task, acknowledgedAt = new Date().toISOString()) {
+  return {
+    ...task,
+    attentionState: AttentionState.NONE,
+    attentionStateReason: "User acknowledged this attention event.",
+    attentionStateSource: AgentStateSource.MANUAL,
+    attentionStateConfidence: AgentStateConfidence.HIGH,
+    attentionAcknowledgedAt: acknowledgedAt,
+    updatedAt: acknowledgedAt,
+  };
+}
+
 export function markTaskExited(task, { exitCode, signal }) {
   const now = new Date().toISOString();
   const status = exitCode === 0 ? TaskStatus.SUCCEEDED : signal ? TaskStatus.INTERRUPTED : TaskStatus.FAILED;
@@ -205,6 +218,7 @@ export function serializeTask(task) {
     attentionStateReason: task.attentionStateReason || "",
     attentionStateSource: task.attentionStateSource || inferAttentionStateSourceFromTask(task),
     attentionStateConfidence: task.attentionStateConfidence || inferAttentionStateConfidenceFromTask(task),
+    attentionAcknowledgedAt: task.attentionAcknowledgedAt || null,
     risk: task.risk,
     createdAt: task.createdAt,
     startedAt: task.startedAt,

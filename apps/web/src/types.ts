@@ -67,6 +67,7 @@ export type Task = {
   attentionStateReason?: string;
   attentionStateSource?: AttentionStateSource;
   attentionStateConfidence?: AttentionStateConfidence;
+  attentionAcknowledgedAt?: string | null;
   risk: TaskRisk;
   createdAt: string;
   startedAt: string | null;

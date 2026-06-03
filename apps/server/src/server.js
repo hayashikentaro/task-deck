@@ -15,6 +15,7 @@ import {
   AgentStateSource,
   AttentionState,
   createTask,
+  markTaskAttentionAcknowledged,
   markTaskAttentionState,
   markTaskAgentState,
   markTaskExited,
@@ -273,6 +274,38 @@ app.patch("/api/tasks/:taskId/title", async (request, response) => {
     task: serializeTaskForClient(tasks.get(taskId)),
     tasks: listTasks(),
     sessions: await listSavedCodexSessions(),
+  });
+});
+
+app.patch("/api/tasks/:taskId/attention/acknowledge", async (request, response) => {
+  const { taskId } = request.params;
+  const task = tasks.get(taskId);
+
+  if (!task) {
+    response.status(404).json({ error: "Task not found." });
+    return;
+  }
+
+  if (task.status !== TaskStatus.RUNNING) {
+    response.status(409).json({ error: "Only running tasks can acknowledge attention." });
+    return;
+  }
+
+  if (!task.attentionState || task.attentionState === AttentionState.NONE) {
+    response.status(409).json({ error: "Task does not currently need attention." });
+    return;
+  }
+
+  setTask(markTaskAttentionAcknowledged(task));
+  await persistTasks();
+  broadcastTasks();
+
+  response.json({
+    ok: true,
+    task: serializeTaskForClient(tasks.get(taskId)),
+    tasks: listTasks(),
+    runningTaskId: getPrimaryRunningTaskId(),
+    runningTaskIds: getRunningTaskIds(),
   });
 });
 

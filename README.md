@@ -47,6 +47,7 @@ GET /api/agent-sessions
 PATCH /api/agent-sessions/:sessionKey/label
 GET /api/tasks/:taskId
 PATCH /api/tasks/:taskId/title
+PATCH /api/tasks/:taskId/attention/acknowledge
 DELETE /api/tasks/:taskId
 GET /api/tasks/:taskId/logs
 GET /api/tasks/:taskId/logs?tail=200000
@@ -66,6 +67,8 @@ DELETE /api/presets
 `GET /api/agent-sessions` returns saved Codex sessions derived from stored task metadata and Codex's container-side session JSONL storage under `/home/dev/.codex/sessions`. Sessions require a Codex provider, session id, and precise resume command, exclude obvious synthetic ids such as e2e/smoke/fake/test ids, and deduplicate by provider, agent profile, command environment, and session id. Container-side `/workspace` cwd values are mapped back to the host bind source when Docker mount information is available.
 
 `PATCH /api/tasks/:taskId/title` and `PATCH /api/agent-sessions/:sessionKey/label` update the TaskDeck display name used to identify a session. When a task has an external session id, the display name is stored against that session key so matching task cards and the saved-session dropdown show the same human-readable label. Tasks without a detected session id still update their own task title.
+
+`PATCH /api/tasks/:taskId/attention/acknowledge` clears the current attention event for a running task without stopping or modifying its PTY. The task stores `attentionAcknowledgedAt`, returns to Not now by setting `attentionState` to `none`, and can surface again when future prompt or quiet detection sets a new attention state.
 
 The server persists local runtime state under `.taskdeck/`, which is intentionally ignored by Git:
 
