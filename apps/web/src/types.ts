@@ -145,7 +145,6 @@ export type AgentProfile = {
   diagnosticContainer?: string;
   diagnosticWorkspace?: string;
   modelOptions?: ModelOption[];
-  runtimeModelSwitchCommand?: string;
 };
 
 export type AgentProfileConfigSummary = {
