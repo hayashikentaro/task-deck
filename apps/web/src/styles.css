@@ -565,18 +565,16 @@ dd {
 
 .task-list-items {
   min-height: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  align-content: start;
   gap: 8px;
   padding: 10px;
-  overflow-y: auto;
+  overflow: auto;
 }
 
 .task-list-item {
   position: relative;
-  flex: 0 0 auto;
   width: 100%;
-  min-height: 104px;
   overflow: hidden;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
