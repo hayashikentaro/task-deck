@@ -2,7 +2,7 @@
 
 ## Status
 
-Experimental branch only.
+Merged into `main` as the current task-card visual direction after the experiment branch.
 
 ## Problem
 
