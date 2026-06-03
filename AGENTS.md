@@ -79,6 +79,7 @@ Keep state, risk, diffs, review, and agent supervision central. Terminal/PTY int
 - Add or update tests when changing behavior once a test setup exists.
 - Document important setup, API, or workflow changes in the repository rather than only in chat.
 - Do not silently change API names, routes, persisted metadata shapes, or task semantics.
+- When removing a feature or UI path, remove or clearly deprecate related backend handlers, config fields, types, docs, and examples so dead code is not mistaken for supported behavior.
 - When changing API routes or response shapes, update README and frontend types together.
 - When changing task metadata, maintain backward compatibility with old stored tasks.
 - Use `docs/issues/` for deferred product decisions, domain-model questions, and implementation tradeoffs that should stay close to the codebase. Treat these files as decision records rather than a general TODO backlog.
