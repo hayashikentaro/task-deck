@@ -19,6 +19,31 @@ http://localhost:3000
 
 The dev command runs the local server directly and mounts Vite as middleware for the React UI. Server-side code changes require restarting `npm run dev`.
 
+## Local Safety
+
+TaskDeck is intended for local use. By default the server binds to `127.0.0.1`; do not expose it to a LAN or the internet without adding separate authentication, network controls, and operational protection.
+
+TaskDeck can launch agent CLIs with access to your configured workspaces. Docker/container execution can help keep toolchains organized, but it is containment, not a complete security boundary. Full-access agent operation should only be used in a safe or disposable workspace where file changes and command execution are acceptable.
+
+## Local Configuration
+
+The committed `taskdeck.config.json` is intentionally public-safe and portable. Machine-specific setup belongs in ignored `taskdeck.local.json` or in a file passed with `TASKDECK_CONFIG`.
+
+To configure a local machine:
+
+```bash
+cp taskdeck.local.example.json taskdeck.local.json
+```
+
+Then edit `taskdeck.local.json` for your environment:
+
+- `projectRoot`: host directory whose immediate children should appear in the Project dropdown.
+- `agentProfiles[].command`: command TaskDeck launches for an agent profile.
+- `agentProfiles[].diagnosticContainer`: Docker container name TaskDeck may inspect or start from diagnostics.
+- `agentProfiles[].diagnosticWorkspace`: container workspace path TaskDeck checks for that profile, commonly `/workspace`.
+
+The example file shows Codex, Goose, and shell profiles using a placeholder container named `taskdeck-agent-1`; replace it with your own container name and workspace path. Existing local workflows can also use `TASKDECK_PROJECT_ROOT`, `TASKDECK_PROJECT_ROOTS`, or `TASKDECK_CONFIG=/path/to/taskdeck.config.json npm run dev`.
+
 ## Workspace Layout
 
 ```text
@@ -61,7 +86,7 @@ DELETE /api/presets
 
 `PATCH /api/tasks/:taskId/title` and `PATCH /api/agent-sessions/:sessionKey/label` update the TaskDeck display name used to identify a session. When a task has an external session id, the display name is stored against that session key so matching task cards and the saved-session dropdown show the same human-readable label. Tasks without a detected session id still update their own task title.
 
-The server persists tasks and logs under `.taskdeck/`, which is intentionally ignored by Git:
+The server persists local runtime state under `.taskdeck/`, which is intentionally ignored by Git. This directory may contain sensitive logs, task metadata, session labels, attachments, and agent output:
 
 ```text
 .taskdeck/
@@ -77,9 +102,9 @@ The server persists tasks and logs under `.taskdeck/`, which is intentionally ig
 
 Multiple tasks can exist in the task list, and multiple PTY-backed agent sessions can run at the same time. Bulk clearing removes non-running tasks and their logs while preserving active tasks; clearing an individual running task stops its PTY and removes that task.
 
-Tasks carry a low-level process `status`, a supervisor-facing `agentState`, and a primary `attentionState` that answers whether the operator should look at the task now. `attentionState` can be `none`, `may_need_user`, `needs_input`, `needs_approval`, `review_ready`, or `failed`, with source/confidence/reason metadata. TaskDeck intentionally prefers false positives over false negatives for attention: input-like prompts that are not yet stable, quiet running PTYs, and working tasks whose PTY activity has stopped become `may_need_user` rather than staying invisible. Agent state also carries lightweight `agentStateReason`, `agentStateSource`, and `agentStateConfidence` metadata so operators can distinguish TaskDeck-owned events from heuristic TUI fallback. TaskDeck treats its own lifecycle events as the primary state source: session start, user input, PTY output activity, and process exit. Plain PTY output is a reliable process observation but only a medium-confidence inference of `working`. Silence does not imply thinking, but it may need user attention. TUI text matching is only a fallback for explicit user-action prompts such as approval or input requests, because agent spinner/status phrases are not stable protocol signals. Task creation is centered on starting an AI agent session in a selected workspace. The New Agent Session form selects Agent, Codex permissions, Project, and Session; instructions are sent after launch from the terminal composer. Agent profiles are limited to container-backed profiles; the committed defaults expose Codex CLI and Goose inside `ai-agent-sandbox-agent-1`, with Codex selected by default. Codex launches through `sh -lc 'TERM=xterm-256color codex'` so the CLI sees a conventional terminal environment. Prefer machine-readable or non-TUI agent modes when an agent exposes one, but keep the PTY path as the current compatibility layer. For Codex profiles, the Session selector offers a new session, recent saved Codex sessions detected from prior tasks, then the fallback `codex resume --last`. Full automatic saved-session discovery is not implemented yet, but TaskDeck does a first-pass Codex session id detection from explicit `codex resume <id>` commands and from recognizable session/conversation id text in task output. Task records preserve the selected agent profile, session mode, detected session id/provider/source/timestamp when available, generated session resume command, and resume command when provided. Detected Codex sessions become available through the existing Resume saved action by filling `resumeCommand` when it is empty or still points at imprecise resume-last behavior, and through the New Agent Session saved-session picker.
+Tasks carry a low-level process `status`, a supervisor-facing `agentState`, and a primary `attentionState` that answers whether the operator should look at the task now. `attentionState` can be `none`, `may_need_user`, `needs_input`, `needs_approval`, `review_ready`, or `failed`, with source/confidence/reason metadata. TaskDeck intentionally prefers false positives over false negatives for attention: input-like prompts that are not yet stable, quiet running PTYs, and working tasks whose PTY activity has stopped become `may_need_user` rather than staying invisible. Agent state also carries lightweight `agentStateReason`, `agentStateSource`, and `agentStateConfidence` metadata so operators can distinguish TaskDeck-owned events from heuristic TUI fallback. TaskDeck treats its own lifecycle events as the primary state source: session start, user input, PTY output activity, and process exit. Plain PTY output is a reliable process observation but only a medium-confidence inference of `working`. Silence does not imply thinking, but it may need user attention. TUI text matching is only a fallback for explicit user-action prompts such as approval or input requests, because agent spinner/status phrases are not stable protocol signals. Task creation is centered on starting an AI agent session in a selected workspace. The New Agent Session form selects Agent, Codex permissions, Project, and Session; instructions are sent after launch from the terminal composer. Agent profiles are configured locally and are usually container-backed. Codex profiles commonly launch through `sh -lc 'TERM=xterm-256color codex'` so the CLI sees a conventional terminal environment. Prefer machine-readable or non-TUI agent modes when an agent exposes one, but keep the PTY path as the current compatibility layer. For Codex profiles, the Session selector offers a new session, recent saved Codex sessions detected from prior tasks, then the fallback `codex resume --last`. Full automatic saved-session discovery is not implemented yet, but TaskDeck does a first-pass Codex session id detection from explicit `codex resume <id>` commands and from recognizable session/conversation id text in task output. Task records preserve the selected agent profile, session mode, detected session id/provider/source/timestamp when available, generated session resume command, and resume command when provided. Detected Codex sessions become available through the existing Resume saved action by filling `resumeCommand` when it is empty or still points at imprecise resume-last behavior, and through the New Agent Session saved-session picker.
 
-Project suggestions come from `projectRoot` in `taskdeck.local.json` or `taskdeck.config.json`, with `TASKDECK_PROJECT_ROOT` available as an environment override. The committed default uses `/Users/hayashikentarou/Documents`. TaskDeck lists immediate child directories under the selected project root, skips hidden/build/cache directories, includes git metadata when available, and falls back to `/Users/hayashikentarou/Documents` when it exists or the repository root otherwise. Existing `projectRoots` and `TASKDECK_PROJECT_ROOTS` values are still accepted for compatibility.
+Project suggestions come from `projectRoot` in `taskdeck.local.json` or `taskdeck.config.json`, with `TASKDECK_PROJECT_ROOT` available as an environment override. TaskDeck lists immediate child directories under the selected project root, skips hidden/build/cache directories, includes git metadata when available, and falls back to the repository root when no project root is configured. Existing `projectRoots` and `TASKDECK_PROJECT_ROOTS` values are still accepted for compatibility.
 
 The UI is organized around a supervision-first workspace: the left rail is an expandable task-card list, the center pane is the terminal and persisted log view, the right rail launches new agent sessions, and the composer stays attached to the terminal. For running tasks, the task card's primary supervision badge and filters answer only `Needs you` or `Not now`; detailed process, risk, and agent-signal metadata stay available inside expanded cards.
 
@@ -106,6 +131,6 @@ TaskDeck also stores the 10 most recent task presets by `command` and `cwd` so c
 
 ## Agent Profiles
 
-Agent profiles can be changed without editing application code. TaskDeck merges profiles by `id`: built-in defaults are loaded first, then `taskdeck.config.json`, then ignored `taskdeck.local.json`, then `TASKDECK_CONFIG`. Later files override matching ids and append new ids, but the server only exposes profiles with Docker-backed commands and diagnostic containers. For machine-local profiles, copy `taskdeck.local.example.json` to `taskdeck.local.json`; that local file is ignored by Git. To point TaskDeck at another profile file, start the server with `TASKDECK_CONFIG=/path/to/taskdeck.profiles.json npm run dev`.
+Agent profiles can be changed without editing application code. TaskDeck merges profiles by `id`: built-in core defaults are loaded first, then public `taskdeck.config.json`, then ignored `taskdeck.local.json`, then `TASKDECK_CONFIG`. Later files override matching ids and append new ids, but the server only exposes profiles with Docker-backed commands and diagnostic containers. For machine-local profiles, copy `taskdeck.local.example.json` to `taskdeck.local.json`; that local file is ignored by Git. To point TaskDeck at another profile file, start the server with `TASKDECK_CONFIG=/path/to/taskdeck.profiles.json npm run dev`.
 
-Each profile supports `id`, `label`, `command`, `description`, optional `diagnosticContainer`, optional `diagnosticWorkspace`, and optional `modelOptions`. The diagnostics panel uses the diagnostic fields to inspect/start configured Docker containers and check whether expected container workspace directories exist. The committed profiles are `codex` and `goose`, both running inside `ai-agent-sandbox-agent-1`.
+Each profile supports `id`, `label`, `command`, `description`, optional `diagnosticContainer`, optional `diagnosticWorkspace`, and optional `modelOptions`. The diagnostics panel uses the diagnostic fields to inspect/start configured Docker containers and check whether expected container workspace directories exist. The committed repository does not assume a personal Docker container name or host project directory; configure those values locally.

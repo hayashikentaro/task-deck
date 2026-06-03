@@ -1,27 +1,3 @@
 {
-  "projectRoot": "/Users/hayashikentarou/Documents",
-  "agentProfiles": [
-    {
-      "id": "codex",
-      "label": "Codex CLI",
-      "command": "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex'",
-      "description": "Run Codex CLI inside the AI agent sandbox container",
-      "diagnosticContainer": "ai-agent-sandbox-agent-1",
-      "diagnosticWorkspace": "/workspace",
-      "modelOptions": [
-        { "id": "default", "label": "Default" },
-        { "id": "gpt-5.5", "label": "gpt-5.5" },
-        { "id": "gpt-5.5-thinking", "label": "gpt-5.5 Thinking" },
-        { "id": "gpt-5.4-codex", "label": "gpt-5.4 Codex" }
-      ]
-    },
-    {
-      "id": "goose",
-      "label": "Goose",
-      "command": "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 goose",
-      "description": "Run Goose inside the AI agent sandbox container",
-      "diagnosticContainer": "ai-agent-sandbox-agent-1",
-      "diagnosticWorkspace": "/workspace"
-    }
-  ]
+  "projectRoot": "."
 }
