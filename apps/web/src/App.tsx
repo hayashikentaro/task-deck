@@ -30,7 +30,6 @@ export function App() {
   const [taskDeckContext, setTaskDeckContext] = useState<TaskDeckContext | null>(null);
   const [composerValue, setComposerValue] = useState("");
   const [codexStatusSnapshot, setCodexStatusSnapshot] = useState<CodexStatusSnapshot | null>(null);
-  const [codexStatusError, setCodexStatusError] = useState("");
   const [isCodexStatusRefreshing, setIsCodexStatusRefreshing] = useState(false);
   const [selectedLogBuffer, setSelectedLogBuffer] = useState("");
   const [terminalMessage, setTerminalMessage] = useState("");
@@ -175,7 +174,6 @@ export function App() {
 
     isCodexStatusRefreshingRef.current = true;
     setIsCodexStatusRefreshing(true);
-    setCodexStatusError("");
     try {
       const response = await fetch("/api/codex-status/refresh", { method: "POST" });
       const payload = (await response.json()) as { status?: CodexStatusSnapshot; error?: string };
@@ -184,7 +182,7 @@ export function App() {
       }
       setCodexStatusSnapshot(codexStatusSnapshotForDisplay(payload.status));
     } catch {
-      setCodexStatusError("Unable to refresh");
+      // Keep existing meters and leave refresh failures quiet in the compact rail UI.
     } finally {
       isCodexStatusRefreshingRef.current = false;
       setIsCodexStatusRefreshing(false);
@@ -340,7 +338,6 @@ export function App() {
           />
           <CodexStatusPanel
             canRefresh={canRefreshCodexStatus}
-            errorMessage={codexStatusError}
             isRefreshing={isCodexStatusRefreshing}
             snapshot={codexStatusSnapshot}
             onRefresh={refreshCodexStatus}

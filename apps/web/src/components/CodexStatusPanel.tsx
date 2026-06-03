@@ -2,7 +2,6 @@ import type { CodexStatusSnapshot } from "../types";
 
 type CodexStatusPanelProps = {
   canRefresh: boolean;
-  errorMessage: string;
   isRefreshing: boolean;
   snapshot: CodexStatusSnapshot | null;
   onRefresh: () => void;
@@ -17,13 +16,10 @@ const metricRows = [
 
 export function CodexStatusPanel({
   canRefresh,
-  errorMessage,
   isRefreshing,
   snapshot,
   onRefresh,
 }: CodexStatusPanelProps) {
-  const unavailableText = errorMessage || "";
-
   return (
     <section className="codex-status-panel" aria-label="Codex usage">
       <div className="codex-status-heading">
@@ -60,7 +56,6 @@ export function CodexStatusPanel({
             </div>
           );
         })}
-        {unavailableText ? <p className="codex-status-hint">{unavailableText}</p> : null}
       </div>
     </section>
   );
