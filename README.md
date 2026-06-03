@@ -19,6 +19,12 @@ http://localhost:3000
 
 The dev command runs the local server directly and mounts Vite as middleware for the React UI. Server-side code changes require restarting `npm run dev`.
 
+## Local Safety
+
+TaskDeck is intended for local use. Do not expose the server to a LAN or the internet without separate authentication, network controls, and operational protection.
+
+TaskDeck can launch local or container agent CLIs that may edit files and run commands. Docker/container execution is containment, not a complete security boundary. Use full-access agent operation only in a safe or disposable workspace.
+
 ## Workspace Layout
 
 ```text
@@ -61,7 +67,7 @@ DELETE /api/presets
 
 `PATCH /api/tasks/:taskId/title` and `PATCH /api/agent-sessions/:sessionKey/label` update the TaskDeck display name used to identify a session. When a task has an external session id, the display name is stored against that session key so matching task cards and the saved-session dropdown show the same human-readable label. Tasks without a detected session id still update their own task title.
 
-The server persists tasks and logs under `.taskdeck/`, which is intentionally ignored by Git:
+The server persists local runtime state under `.taskdeck/`, which is intentionally ignored by Git:
 
 ```text
 .taskdeck/
@@ -74,6 +80,8 @@ The server persists tasks and logs under `.taskdeck/`, which is intentionally ig
   logs/
     <taskId>.log
 ```
+
+`.taskdeck/` may contain sensitive task metadata, logs, session labels, attachments, and agent output. Do not commit or share it.
 
 Multiple tasks can exist in the task list, and multiple PTY-backed agent sessions can run at the same time. Bulk clearing removes non-running tasks and their logs while preserving active tasks; clearing an individual running task stops its PTY and removes that task.
 
