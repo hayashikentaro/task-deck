@@ -906,12 +906,33 @@ dd {
   min-width: 0;
   display: flex;
   grid-row: 1;
-  justify-content: end;
+  justify-content: space-between;
   gap: 12px;
   align-items: center;
   padding: 7px 10px;
   border-bottom: 1px solid var(--line);
   background: var(--surface-raised);
+}
+
+.terminal-observations {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.terminal-tui-choice-indicator {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border: 1px solid color-mix(in srgb, var(--status-needs-input) 42%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--status-needs-input) 12%, transparent);
+  padding: 2px 8px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .terminal-controls {
@@ -1183,6 +1204,10 @@ dd {
   .terminal-toolbar {
     align-items: start;
     flex-direction: column;
+  }
+
+  .terminal-observations {
+    min-height: 22px;
   }
 
   .terminal-controls {

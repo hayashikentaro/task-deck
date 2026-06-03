@@ -43,6 +43,7 @@ export function TerminalPane({
   const directInputDebug = directInputDebugRef.current;
   const taskId = task?.id ?? null;
   const searchMatchCount = useMemo(() => countMatches(logBuffer, searchTerm), [logBuffer, searchTerm]);
+  const hasTuiChoice = useMemo(() => detectTuiChoice(logBuffer), [logBuffer]);
 
   const updateTerminalMessage = useCallback(
     (value: string) => {
@@ -219,6 +220,18 @@ export function TerminalPane({
   return (
     <section className="terminal-pane" aria-label="Terminal">
       <div className="terminal-toolbar">
+        <div className="terminal-observations">
+          {hasTuiChoice ? (
+            <span
+              aria-label="TUI choice detected"
+              className="terminal-tui-choice-indicator"
+              role="status"
+              title="TUI choice detected"
+            >
+              TUI choice
+            </span>
+          ) : null}
+        </div>
         <div className="terminal-controls">
           <label className="terminal-font-size">
             <span>Font</span>
@@ -288,6 +301,43 @@ function countMatches(value: string, searchTerm: string) {
   }
 
   return count;
+}
+
+function detectTuiChoice(value: string) {
+  const text = normalizeTerminalObservation(value.slice(-8000));
+  if (!text) {
+    return false;
+  }
+
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(-80);
+  const optionLines = lines.filter(isLikelyChoiceOptionLine);
+  const selectedOptionLines = lines.filter(isLikelySelectedChoiceLine);
+  const promptLikeText = /\b(use\s+(?:the\s+)?arrow\s+keys|press\s+enter|select(?:\s+an?\s+option)?|choose(?:\s+an?\s+option)?|pick\s+one)\b/i.test(text);
+
+  return (promptLikeText && optionLines.length >= 1) || (selectedOptionLines.length >= 1 && optionLines.length >= 2) || optionLines.length >= 4;
+}
+
+function normalizeTerminalObservation(value: string) {
+  return value
+    .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "")
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
+    .replace(/\x1b[PX^_].*?\x1b\\/g, "")
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "")
+    .replace(/[│┃┆┊┌┐└┘├┤┬┴┼─━]/g, " ");
+}
+
+function isLikelyChoiceOptionLine(line: string) {
+  return /^(?:[>*•○●◦▪▫▸▹▶❯›]\s*)?(?:\(?[0-9]{1,2}\)?[.)]|[a-zA-Z][.)])\s+\S/.test(line)
+    || /^[>*•○●◦▪▫▸▹▶❯›]\s+\S/.test(line);
+}
+
+function isLikelySelectedChoiceLine(line: string) {
+  return /^(?:[>▸▹▶❯›]|[*●])\s+\S/.test(line)
+    || /^(?:[>▸▹▶❯›]|[*●])\s*(?:\(?[0-9]{1,2}\)?[.)]|[a-zA-Z][.)])\s+\S/.test(line);
 }
 
 function isDirectInputDebugEnabled() {
