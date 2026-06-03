@@ -189,10 +189,10 @@ export function TaskList({
                     </span>
                     <span className="task-meta-spacer" />
                     <span className="task-updated">{formatTime(task.updatedAt)}</span>
-                    <TaskIdentityToken className="task-card-identity" />
                   </span>
                 </div>
               )}
+              <TaskIdentityToken className="task-card-identity-anchor" />
               <div className="task-card-actions">
                 <button
                   aria-label="Edit TaskDeck display name"
