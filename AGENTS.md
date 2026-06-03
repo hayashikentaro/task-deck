@@ -52,6 +52,7 @@ apps/web       React/Vite frontend
 packages/core  Shared task and domain logic
 README.md      Project overview and local API notes
 AGENTS.md      Repository guidance for AI agents
+docs/architecture.md  Project architecture map and refactoring seams
 ```
 
 `.taskdeck/` is local runtime state for persisted tasks, logs, presets, and related data. It should not be committed.
