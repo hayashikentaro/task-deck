@@ -596,7 +596,6 @@ dd {
 }
 
 .task-list-item[data-selected="true"] {
-  filter: brightness(1.08);
   box-shadow:
     inset 6px 0 0 var(--task-card-band),
     inset 0 0 0 1px var(--task-card-selected-ring),
@@ -724,13 +723,6 @@ dd {
 
 .task-list-item[data-tone="subdued"] {
   opacity: 0.82;
-}
-
-.task-list-item[data-selected="true"][data-tone="risk"],
-.task-list-item[data-selected="true"][data-tone="waiting_input"],
-.task-list-item[data-selected="true"][data-tone="waiting_approval"],
-.task-list-item[data-selected="true"][data-tone="review_ready"] {
-  filter: brightness(1.12);
 }
 
 .task-select-button {
