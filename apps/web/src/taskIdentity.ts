@@ -55,78 +55,17 @@ type TaskIdentitySlot = {
   hue: number;
 };
 
-type OklabColor = {
-  a: number;
-  b: number;
-  l: number;
-};
-
-// Identity color is separate from task state. The visible-task assignment uses
-// a fixed candidate palette and greedily spreads slots apart so neighboring
-// cards are easier to distinguish in the current rendered set.
-export function taskIdentityCssProperties(taskId: string, visibleTaskIds: readonly string[] = []): TaskIdentityCssProperties {
-  const slot = TASK_IDENTITY_SLOTS[taskIdentitySlotIndexForTask(taskId, visibleTaskIds)];
+// Identity color is separate from task state. The slot is derived only from
+// task identity so card and terminal colors remain stable across sorting,
+// filtering, attention changes, and task list updates.
+export function taskIdentityCssProperties(taskId: string): TaskIdentityCssProperties {
+  const slot = TASK_IDENTITY_SLOTS[fallbackTaskIdentitySlotIndex(taskId)];
   return taskIdentityCssPropertiesForSlot(slot);
 }
 
-export function taskIdentityCssPropertiesForVisibleTasks(taskIds: readonly string[]) {
-  const assignments = assignVisibleTaskIdentitySlots(taskIds);
-  const styles = new Map<string, TaskIdentityCssProperties>();
-  for (const taskId of taskIds) {
-    const slot = TASK_IDENTITY_SLOTS[assignments.get(taskId) ?? fallbackTaskIdentitySlotIndex(taskId)];
-    styles.set(taskId, taskIdentityCssPropertiesForSlot(slot));
-  }
-  return styles;
-}
-
-export function taskIdentityTerminalBackground(taskId: string, visibleTaskIds: readonly string[] = []) {
-  const slot = TASK_IDENTITY_SLOTS[taskIdentitySlotIndexForTask(taskId, visibleTaskIds)];
+export function taskIdentityTerminalBackground(taskId: string) {
+  const slot = TASK_IDENTITY_SLOTS[fallbackTaskIdentitySlotIndex(taskId)];
   return hsl(slot.hue, TASK_TERMINAL_SATURATION, TASK_TERMINAL_LIGHTNESS);
-}
-
-function assignVisibleTaskIdentitySlots(taskIds: readonly string[]) {
-  const assignments = new Map<string, number>();
-  const assignedSlotIndexes: number[] = [];
-
-  for (const taskId of taskIds) {
-    const candidateIndexes =
-      assignedSlotIndexes.length < TASK_IDENTITY_SLOTS.length
-        ? TASK_IDENTITY_SLOTS.map((_, index) => index).filter((index) => !assignedSlotIndexes.includes(index))
-        : TASK_IDENTITY_SLOTS.map((_, index) => index);
-
-    let bestSlotIndex = candidateIndexes[0] ?? fallbackTaskIdentitySlotIndex(taskId);
-    let bestScore = Number.NEGATIVE_INFINITY;
-    let bestTieBreak = Number.NEGATIVE_INFINITY;
-
-    for (const slotIndex of candidateIndexes) {
-      const slot = TASK_IDENTITY_SLOTS[slotIndex];
-      const score = assignedSlotIndexes.length === 0 ? 0 : minimumOklabDistance(slot, assignedSlotIndexes);
-      const tieBreak = hashTaskId(`${taskId}:${slotIndex}`);
-      if (score > bestScore || (score === bestScore && tieBreak > bestTieBreak)) {
-        bestSlotIndex = slotIndex;
-        bestScore = score;
-        bestTieBreak = tieBreak;
-      }
-    }
-
-    assignments.set(taskId, bestSlotIndex);
-    assignedSlotIndexes.push(bestSlotIndex);
-  }
-
-  return assignments;
-}
-
-function minimumOklabDistance(slot: TaskIdentitySlot, assignedSlotIndexes: number[]) {
-  let minimumDistance = Number.POSITIVE_INFINITY;
-  const currentLab = slotAnchorOklab(slot);
-  for (const assignedSlotIndex of assignedSlotIndexes) {
-    const assignedLab = slotAnchorOklab(TASK_IDENTITY_SLOTS[assignedSlotIndex]);
-    const distance = oklabDistance(currentLab, assignedLab);
-    if (distance < minimumDistance) {
-      minimumDistance = distance;
-    }
-  }
-  return minimumDistance;
 }
 
 function taskIdentityCssPropertiesForSlot(slot: TaskIdentitySlot): TaskIdentityCssProperties {
@@ -191,21 +130,6 @@ function helmholtzKohlrauschHueResponse(hue: number) {
   return Math.abs(Math.sin(degreesToRadians(normalizeHue(hue) - 45)));
 }
 
-function slotAnchorOklab(slot: TaskIdentitySlot): OklabColor {
-  return rgbToOklab(hslToRgb(slot.hue, slot.anchorSaturation, slot.anchorLightness));
-}
-
-function taskIdentitySlotIndexForTask(taskId: string, visibleTaskIds: readonly string[]) {
-  if (visibleTaskIds.includes(taskId)) {
-    const assignment = assignVisibleTaskIdentitySlots(visibleTaskIds);
-    const slotIndex = assignment.get(taskId);
-    if (typeof slotIndex === "number") {
-      return slotIndex;
-    }
-  }
-  return fallbackTaskIdentitySlotIndex(taskId);
-}
-
 function fallbackTaskIdentitySlotIndex(taskId: string) {
   return hashTaskId(taskId) % TASK_IDENTITY_SLOTS.length;
 }
@@ -233,88 +157,10 @@ function hsl(hue: number, saturation: number, lightness: number, alpha?: number)
   return `hsl(${roundedHue} ${roundedSaturation}% ${roundedLightness}%)`;
 }
 
-function hslToRgb(hue: number, saturation: number, lightness: number) {
-  const normalizedHue = normalizeHue(hue);
-  const normalizedSaturation = clamp01(saturation / 100);
-  const normalizedLightness = clamp01(lightness / 100);
-  const chroma = (1 - Math.abs(2 * normalizedLightness - 1)) * normalizedSaturation;
-  const huePrime = normalizedHue / 60;
-  const secondary = chroma * (1 - Math.abs((huePrime % 2) - 1));
-
-  let red = 0;
-  let green = 0;
-  let blue = 0;
-
-  if (huePrime >= 0 && huePrime < 1) {
-    red = chroma;
-    green = secondary;
-  } else if (huePrime < 2) {
-    red = secondary;
-    green = chroma;
-  } else if (huePrime < 3) {
-    green = chroma;
-    blue = secondary;
-  } else if (huePrime < 4) {
-    green = secondary;
-    blue = chroma;
-  } else if (huePrime < 5) {
-    red = secondary;
-    blue = chroma;
-  } else {
-    red = chroma;
-    blue = secondary;
-  }
-
-  const match = normalizedLightness - chroma / 2;
-  return {
-    red: (red + match) * 255,
-    green: (green + match) * 255,
-    blue: (blue + match) * 255,
-  };
-}
-
-function rgbToOklab(rgb: { blue: number; green: number; red: number }): OklabColor {
-  const red = srgbToLinear(rgb.red / 255);
-  const green = srgbToLinear(rgb.green / 255);
-  const blue = srgbToLinear(rgb.blue / 255);
-
-  const l = 0.4122214708 * red + 0.5363325363 * green + 0.0514459929 * blue;
-  const m = 0.2119034982 * red + 0.6806995451 * green + 0.1073969566 * blue;
-  const s = 0.0883024619 * red + 0.2817188376 * green + 0.6299787005 * blue;
-
-  const lRoot = Math.cbrt(l);
-  const mRoot = Math.cbrt(m);
-  const sRoot = Math.cbrt(s);
-
-  return {
-    l: 0.2104542553 * lRoot + 0.7936177850 * mRoot - 0.0040720468 * sRoot,
-    a: 1.9779984951 * lRoot - 2.4285922050 * mRoot + 0.4505937099 * sRoot,
-    b: 0.0259040371 * lRoot + 0.7827717662 * mRoot - 0.8086757660 * sRoot,
-  };
-}
-
-function srgbToLinear(value: number) {
-  if (value <= 0.04045) {
-    return value / 12.92;
-  }
-  return ((value + 0.055) / 1.055) ** 2.4;
-}
-
-function oklabDistance(left: OklabColor, right: OklabColor) {
-  const deltaL = left.l - right.l;
-  const deltaA = left.a - right.a;
-  const deltaB = left.b - right.b;
-  return Math.sqrt(deltaL * deltaL + deltaA * deltaA + deltaB * deltaB);
-}
-
 function degreesToRadians(value: number) {
   return (value * Math.PI) / 180;
 }
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
-}
-
-function clamp01(value: number) {
-  return Math.max(0, Math.min(1, value));
 }

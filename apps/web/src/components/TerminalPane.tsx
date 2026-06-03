@@ -10,7 +10,6 @@ type TerminalPaneProps = {
   composerValue: string;
   isConnected: boolean;
   task: Task | null;
-  visibleTaskIds: string[];
   lastOutput: OutputEvent | null;
   terminalMessage: string;
   onComposerValueChange: (value: string) => void;
@@ -48,7 +47,6 @@ export function TerminalPane({
   composerValue,
   isConnected,
   task,
-  visibleTaskIds,
   lastOutput,
   terminalMessage,
   onComposerValueChange,
@@ -69,10 +67,7 @@ export function TerminalPane({
   const taskId = task?.id ?? null;
   const searchMatchCount = useMemo(() => countMatches(logBuffer, searchTerm), [logBuffer, searchTerm]);
   const hasTuiChoice = useMemo(() => detectTuiChoice(logBuffer), [logBuffer]);
-  const taskIdentityStyle = useMemo(
-    () => (taskId ? taskIdentityCssProperties(taskId, visibleTaskIds) : undefined),
-    [taskId, visibleTaskIds],
-  );
+  const taskIdentityStyle = useMemo(() => (taskId ? taskIdentityCssProperties(taskId) : undefined), [taskId]);
 
   const updateTerminalMessage = useCallback(
     (value: string) => {
@@ -162,9 +157,9 @@ export function TerminalPane({
 
     terminal.options.theme = {
       ...terminalTheme,
-      background: taskId ? taskIdentityTerminalBackground(taskId, visibleTaskIds) : terminalTheme.background,
+      background: taskId ? taskIdentityTerminalBackground(taskId) : terminalTheme.background,
     };
-  }, [taskId, visibleTaskIds]);
+  }, [taskId]);
 
   const loadPersistedLog = useCallback((nextTask: Task | null) => {
     const terminal = terminalRef.current;
