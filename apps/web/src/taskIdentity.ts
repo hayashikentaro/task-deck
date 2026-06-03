@@ -17,31 +17,41 @@ const TASK_IDENTITY_SLOTS = [
 
 const TASK_IDENTITY_SWATCH_SATURATION = 52;
 const TASK_IDENTITY_SWATCH_LIGHTNESS = 57;
-const TASK_CARD_WASH_SATURATION = 32;
-const TASK_CARD_WASH_LIGHTNESS = 18;
-const TASK_CARD_WASH_ALPHA = 0.48;
-const TASK_CARD_WASH_SOFT_ALPHA = 0.26;
-const TASK_CARD_HK_REFERENCE = 2 / Math.PI;
-const TASK_CARD_HK_STRENGTH = 0.16;
-const TASK_CARD_HK_ALPHA_RESPONSE = 0.9;
-const TASK_CARD_HK_LIGHTNESS_RESPONSE = 5;
-const TASK_CARD_HK_SATURATION_RESPONSE = 12;
-const TASK_CARD_WASH_MIN_SATURATION = 28;
-const TASK_CARD_WASH_MAX_SATURATION = 42;
-const TASK_CARD_WASH_MIN_LIGHTNESS = 15;
-const TASK_CARD_WASH_MAX_LIGHTNESS = 20;
-const TASK_CARD_WASH_MIN_ALPHA = 0.38;
-const TASK_CARD_WASH_MAX_ALPHA = 0.54;
-const TASK_CARD_WASH_SOFT_MIN_ALPHA = 0.2;
-const TASK_CARD_WASH_SOFT_MAX_ALPHA = 0.31;
-const TASK_CARD_BORDER_ALPHA = 0.46;
-const TASK_CARD_BAND_ALPHA = 0.74;
-const TASK_CARD_GLOW_ALPHA = 0.2;
-const TASK_TERMINAL_TINT_ALPHA = 0.34;
-const TASK_TERMINAL_TINT_SOFT_ALPHA = 0.2;
-const TASK_TERMINAL_TINT_FAINT_ALPHA = 0.08;
-const TASK_TERMINAL_BORDER_ALPHA = 0.42;
 const TASK_IDENTITY_CELL_HUE_OFFSETS = [0, 24, -18, 180] as const;
+const TASK_IDENTITY_VISUAL_MODEL = {
+  card: {
+    saturation: 32,
+    lightness: 18,
+  },
+  terminal: {
+    saturationRatio: 0.82,
+    lightnessRatio: 0.68,
+  },
+  accent: {
+    saturationRatio: 1.62,
+    borderLightnessDelta: 27,
+    bandLightnessDelta: 39,
+  },
+  gradient: {
+    baseAlpha: 0.48,
+    softRatio: 0.54,
+    faintRatio: 0.17,
+    borderRatio: 0.96,
+    bandRatio: 1.54,
+    glowRatio: 0.42,
+    terminalBorderRatio: 0.88,
+  },
+  hueBalance: {
+    reference: 2 / Math.PI,
+    strength: 0.16,
+    saturationResponse: 12,
+    lightnessResponse: 5,
+    saturationMin: 28,
+    saturationMax: 42,
+    lightnessMin: 15,
+    lightnessMax: 20,
+  },
+} as const;
 
 export type TaskIdentityCssProperties = CSSProperties & Record<`--task-${string}`, string>;
 
@@ -60,22 +70,25 @@ export function taskIdentityCssProperties(taskId: string): TaskIdentityCssProper
 }
 
 function taskIdentityCssPropertiesForSlot(slot: TaskIdentitySlot): TaskIdentityCssProperties {
-  const wash = compensatedCardWash(slot.hue);
+  const cardTone = compensateToneForHue(slot.hue, TASK_IDENTITY_VISUAL_MODEL.card);
+  const terminalTone = terminalToneFromCardTone(cardTone);
+  const accentTone = accentToneFromCardTone(cardTone);
+  const gradient = identityGradientAlphas(TASK_IDENTITY_VISUAL_MODEL.gradient.baseAlpha);
   const swatches = taskIdentitySwatches(slot.hue);
   return {
     "--task-identity-a": swatches[0],
     "--task-identity-b": swatches[1],
     "--task-identity-c": swatches[2],
     "--task-identity-d": swatches[3],
-    "--task-card-wash": hsl(slot.hue, wash.saturation, wash.lightness, wash.alpha),
-    "--task-card-wash-soft": hsl(slot.hue, wash.saturation * 0.82, wash.lightness, wash.softAlpha),
-    "--task-card-border": hsl(slot.hue, TASK_IDENTITY_SWATCH_SATURATION, 45, TASK_CARD_BORDER_ALPHA),
-    "--task-card-band": hsl(slot.hue, TASK_IDENTITY_SWATCH_SATURATION, TASK_IDENTITY_SWATCH_LIGHTNESS, TASK_CARD_BAND_ALPHA),
-    "--task-card-glow": hsl(slot.hue, TASK_IDENTITY_SWATCH_SATURATION, TASK_IDENTITY_SWATCH_LIGHTNESS, TASK_CARD_GLOW_ALPHA),
-    "--task-terminal-tint": hsl(slot.hue, 28, 12, TASK_TERMINAL_TINT_ALPHA),
-    "--task-terminal-tint-soft": hsl(slot.hue, 24, 11, TASK_TERMINAL_TINT_SOFT_ALPHA),
-    "--task-terminal-tint-faint": hsl(slot.hue, 20, 10, TASK_TERMINAL_TINT_FAINT_ALPHA),
-    "--task-terminal-border": hsl(slot.hue, TASK_IDENTITY_SWATCH_SATURATION, 45, TASK_TERMINAL_BORDER_ALPHA),
+    "--task-card-wash": hsl(slot.hue, cardTone.saturation, cardTone.lightness, gradient.base),
+    "--task-card-wash-soft": hsl(slot.hue, cardTone.saturation * 0.82, cardTone.lightness, gradient.soft),
+    "--task-card-border": hsl(slot.hue, accentTone.saturation, accentTone.borderLightness, gradient.border),
+    "--task-card-band": hsl(slot.hue, accentTone.saturation, accentTone.bandLightness, gradient.band),
+    "--task-card-glow": hsl(slot.hue, accentTone.saturation, accentTone.bandLightness, gradient.glow),
+    "--task-terminal-tint": hsl(slot.hue, terminalTone.saturation, terminalTone.lightness, gradient.base),
+    "--task-terminal-tint-soft": hsl(slot.hue, terminalTone.saturation * 0.82, terminalTone.lightness * 0.92, gradient.soft),
+    "--task-terminal-tint-faint": hsl(slot.hue, terminalTone.saturation * 0.68, terminalTone.lightness * 0.84, gradient.faint),
+    "--task-terminal-border": hsl(slot.hue, accentTone.saturation, accentTone.borderLightness, gradient.terminalBorder),
   };
 }
 
@@ -88,30 +101,51 @@ function taskIdentitySwatches(hue: number) {
   });
 }
 
-function compensatedCardWash(hue: number) {
+function compensateToneForHue(hue: number, tone: { saturation: number; lightness: number }) {
+  const { hueBalance } = TASK_IDENTITY_VISUAL_MODEL;
   const perceivedBrightness = helmholtzKohlrauschHueResponse(hue);
-  const inverseCorrection = 1 - TASK_CARD_HK_STRENGTH * (perceivedBrightness - TASK_CARD_HK_REFERENCE);
+  const inverseCorrection = 1 - hueBalance.strength * (perceivedBrightness - hueBalance.reference);
   return {
     saturation: clamp(
-      TASK_CARD_WASH_SATURATION + (inverseCorrection - 1) * TASK_CARD_HK_SATURATION_RESPONSE,
-      TASK_CARD_WASH_MIN_SATURATION,
-      TASK_CARD_WASH_MAX_SATURATION,
+      tone.saturation + (inverseCorrection - 1) * hueBalance.saturationResponse,
+      hueBalance.saturationMin,
+      hueBalance.saturationMax,
     ),
     lightness: clamp(
-      TASK_CARD_WASH_LIGHTNESS + (inverseCorrection - 1) * TASK_CARD_HK_LIGHTNESS_RESPONSE,
-      TASK_CARD_WASH_MIN_LIGHTNESS,
-      TASK_CARD_WASH_MAX_LIGHTNESS,
+      tone.lightness + (inverseCorrection - 1) * hueBalance.lightnessResponse,
+      hueBalance.lightnessMin,
+      hueBalance.lightnessMax,
     ),
-    alpha: clamp(
-      TASK_CARD_WASH_ALPHA * (1 + (inverseCorrection - 1) * TASK_CARD_HK_ALPHA_RESPONSE),
-      TASK_CARD_WASH_MIN_ALPHA,
-      TASK_CARD_WASH_MAX_ALPHA,
-    ),
-    softAlpha: clamp(
-      TASK_CARD_WASH_SOFT_ALPHA * (1 + (inverseCorrection - 1) * TASK_CARD_HK_ALPHA_RESPONSE),
-      TASK_CARD_WASH_SOFT_MIN_ALPHA,
-      TASK_CARD_WASH_SOFT_MAX_ALPHA,
-    ),
+  };
+}
+
+function terminalToneFromCardTone(cardTone: { saturation: number; lightness: number }) {
+  const { terminal } = TASK_IDENTITY_VISUAL_MODEL;
+  return {
+    saturation: cardTone.saturation * terminal.saturationRatio,
+    lightness: cardTone.lightness * terminal.lightnessRatio,
+  };
+}
+
+function accentToneFromCardTone(cardTone: { saturation: number; lightness: number }) {
+  const { accent } = TASK_IDENTITY_VISUAL_MODEL;
+  return {
+    saturation: cardTone.saturation * accent.saturationRatio,
+    borderLightness: cardTone.lightness + accent.borderLightnessDelta,
+    bandLightness: cardTone.lightness + accent.bandLightnessDelta,
+  };
+}
+
+function identityGradientAlphas(baseAlpha: number) {
+  const { gradient } = TASK_IDENTITY_VISUAL_MODEL;
+  return {
+    base: baseAlpha,
+    soft: baseAlpha * gradient.softRatio,
+    faint: baseAlpha * gradient.faintRatio,
+    border: baseAlpha * gradient.borderRatio,
+    band: baseAlpha * gradient.bandRatio,
+    glow: baseAlpha * gradient.glowRatio,
+    terminalBorder: baseAlpha * gradient.terminalBorderRatio,
   };
 }
 
