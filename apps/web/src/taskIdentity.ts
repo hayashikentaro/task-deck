@@ -21,6 +21,19 @@ const TASK_CARD_WASH_SATURATION = 36;
 const TASK_CARD_WASH_LIGHTNESS = 18;
 const TASK_CARD_WASH_ALPHA = 0.48;
 const TASK_CARD_WASH_SOFT_ALPHA = 0.26;
+const TASK_CARD_HK_REFERENCE = 2 / Math.PI;
+const TASK_CARD_HK_STRENGTH = 0.16;
+const TASK_CARD_HK_ALPHA_RESPONSE = 0.9;
+const TASK_CARD_HK_LIGHTNESS_RESPONSE = 5;
+const TASK_CARD_HK_SATURATION_RESPONSE = 12;
+const TASK_CARD_WASH_MIN_SATURATION = 28;
+const TASK_CARD_WASH_MAX_SATURATION = 42;
+const TASK_CARD_WASH_MIN_LIGHTNESS = 15;
+const TASK_CARD_WASH_MAX_LIGHTNESS = 20;
+const TASK_CARD_WASH_MIN_ALPHA = 0.38;
+const TASK_CARD_WASH_MAX_ALPHA = 0.54;
+const TASK_CARD_WASH_SOFT_MIN_ALPHA = 0.2;
+const TASK_CARD_WASH_SOFT_MAX_ALPHA = 0.31;
 const TASK_CARD_BORDER_ALPHA = 0.46;
 const TASK_CARD_BAND_ALPHA = 0.74;
 const TASK_CARD_GLOW_ALPHA = 0.2;
@@ -51,28 +64,7 @@ type OklabColor = {
 // cards are easier to distinguish in the current rendered set.
 export function taskIdentityCssProperties(taskId: string, visibleTaskIds: readonly string[] = []): TaskIdentityCssProperties {
   const slot = TASK_IDENTITY_SLOTS[taskIdentitySlotIndexForTask(taskId, visibleTaskIds)];
-  const swatches = TASK_IDENTITY_CELL_HUE_OFFSETS.map((offset, index) => {
-    const nextHue = normalizeHue(slot.hue + offset);
-    const saturation = index === 3 ? TASK_IDENTITY_SWATCH_SATURATION * 0.62 : TASK_IDENTITY_SWATCH_SATURATION;
-    const lightness = index === 3 ? TASK_IDENTITY_SWATCH_LIGHTNESS * 0.82 : TASK_IDENTITY_SWATCH_LIGHTNESS;
-    return hsl(nextHue, saturation, lightness);
-  });
-
-  return {
-    "--task-identity-a": swatches[0],
-    "--task-identity-b": swatches[1],
-    "--task-identity-c": swatches[2],
-    "--task-identity-d": swatches[3],
-    "--task-card-wash": hsl(slot.hue, TASK_CARD_WASH_SATURATION, TASK_CARD_WASH_LIGHTNESS, TASK_CARD_WASH_ALPHA),
-    "--task-card-wash-soft": hsl(normalizeHue(slot.hue + 24), TASK_CARD_WASH_SATURATION, TASK_CARD_WASH_LIGHTNESS, TASK_CARD_WASH_SOFT_ALPHA),
-    "--task-card-border": hsl(slot.hue, TASK_IDENTITY_SWATCH_SATURATION, 45, TASK_CARD_BORDER_ALPHA),
-    "--task-card-band": hsl(slot.hue, TASK_IDENTITY_SWATCH_SATURATION, TASK_IDENTITY_SWATCH_LIGHTNESS, TASK_CARD_BAND_ALPHA),
-    "--task-card-glow": hsl(slot.hue, TASK_IDENTITY_SWATCH_SATURATION, TASK_IDENTITY_SWATCH_LIGHTNESS, TASK_CARD_GLOW_ALPHA),
-    "--task-card-selected-ring": hsl(slot.hue, 34, 70, TASK_CARD_SELECTED_RING_ALPHA),
-    "--task-card-selected-outline": hsl(slot.hue, 28, 76, TASK_CARD_SELECTED_OUTLINE_ALPHA),
-    "--task-terminal-tint": hsl(slot.hue, 28, 12, TASK_TERMINAL_TINT_ALPHA),
-    "--task-terminal-border": hsl(slot.hue, TASK_IDENTITY_SWATCH_SATURATION, 45, TASK_TERMINAL_BORDER_ALPHA),
-  };
+  return taskIdentityCssPropertiesForSlot(slot);
 }
 
 export function taskIdentityCssPropertiesForVisibleTasks(taskIds: readonly string[]) {
@@ -136,13 +128,15 @@ function minimumOklabDistance(slot: TaskIdentitySlot, assignedSlotIndexes: numbe
 }
 
 function taskIdentityCssPropertiesForSlot(slot: TaskIdentitySlot): TaskIdentityCssProperties {
+  const wash = compensatedCardWash(slot.hue);
+  const swatches = taskIdentitySwatches(slot.hue);
   return {
-    "--task-identity-a": hsl(slot.hue, TASK_IDENTITY_SWATCH_SATURATION, TASK_IDENTITY_SWATCH_LIGHTNESS),
-    "--task-identity-b": hsl(normalizeHue(slot.hue + 24), TASK_IDENTITY_SWATCH_SATURATION, TASK_IDENTITY_SWATCH_LIGHTNESS),
-    "--task-identity-c": hsl(normalizeHue(slot.hue - 18), TASK_IDENTITY_SWATCH_SATURATION, TASK_IDENTITY_SWATCH_LIGHTNESS),
-    "--task-identity-d": hsl(normalizeHue(slot.hue + 180), TASK_IDENTITY_SWATCH_SATURATION * 0.62, TASK_IDENTITY_SWATCH_LIGHTNESS * 0.82),
-    "--task-card-wash": hsl(slot.hue, TASK_CARD_WASH_SATURATION, TASK_CARD_WASH_LIGHTNESS, TASK_CARD_WASH_ALPHA),
-    "--task-card-wash-soft": hsl(normalizeHue(slot.hue + 24), TASK_CARD_WASH_SATURATION, TASK_CARD_WASH_LIGHTNESS, TASK_CARD_WASH_SOFT_ALPHA),
+    "--task-identity-a": swatches[0],
+    "--task-identity-b": swatches[1],
+    "--task-identity-c": swatches[2],
+    "--task-identity-d": swatches[3],
+    "--task-card-wash": hsl(slot.hue, wash.saturation, wash.lightness, wash.alpha),
+    "--task-card-wash-soft": hsl(normalizeHue(slot.hue + 24), wash.saturation, wash.lightness, wash.softAlpha),
     "--task-card-border": hsl(slot.hue, TASK_IDENTITY_SWATCH_SATURATION, 45, TASK_CARD_BORDER_ALPHA),
     "--task-card-band": hsl(slot.hue, TASK_IDENTITY_SWATCH_SATURATION, TASK_IDENTITY_SWATCH_LIGHTNESS, TASK_CARD_BAND_ALPHA),
     "--task-card-glow": hsl(slot.hue, TASK_IDENTITY_SWATCH_SATURATION, TASK_IDENTITY_SWATCH_LIGHTNESS, TASK_CARD_GLOW_ALPHA),
@@ -151,6 +145,46 @@ function taskIdentityCssPropertiesForSlot(slot: TaskIdentitySlot): TaskIdentityC
     "--task-terminal-tint": hsl(slot.hue, 28, 12, TASK_TERMINAL_TINT_ALPHA),
     "--task-terminal-border": hsl(slot.hue, TASK_IDENTITY_SWATCH_SATURATION, 45, TASK_TERMINAL_BORDER_ALPHA),
   };
+}
+
+function taskIdentitySwatches(hue: number) {
+  return TASK_IDENTITY_CELL_HUE_OFFSETS.map((offset, index) => {
+    const nextHue = normalizeHue(hue + offset);
+    const saturation = index === 3 ? TASK_IDENTITY_SWATCH_SATURATION * 0.62 : TASK_IDENTITY_SWATCH_SATURATION;
+    const lightness = index === 3 ? TASK_IDENTITY_SWATCH_LIGHTNESS * 0.82 : TASK_IDENTITY_SWATCH_LIGHTNESS;
+    return hsl(nextHue, saturation, lightness);
+  });
+}
+
+function compensatedCardWash(hue: number) {
+  const perceivedBrightness = helmholtzKohlrauschHueResponse(hue);
+  const inverseCorrection = 1 - TASK_CARD_HK_STRENGTH * (perceivedBrightness - TASK_CARD_HK_REFERENCE);
+  return {
+    saturation: clamp(
+      TASK_CARD_WASH_SATURATION + (inverseCorrection - 1) * TASK_CARD_HK_SATURATION_RESPONSE,
+      TASK_CARD_WASH_MIN_SATURATION,
+      TASK_CARD_WASH_MAX_SATURATION,
+    ),
+    lightness: clamp(
+      TASK_CARD_WASH_LIGHTNESS + (inverseCorrection - 1) * TASK_CARD_HK_LIGHTNESS_RESPONSE,
+      TASK_CARD_WASH_MIN_LIGHTNESS,
+      TASK_CARD_WASH_MAX_LIGHTNESS,
+    ),
+    alpha: clamp(
+      TASK_CARD_WASH_ALPHA * (1 + (inverseCorrection - 1) * TASK_CARD_HK_ALPHA_RESPONSE),
+      TASK_CARD_WASH_MIN_ALPHA,
+      TASK_CARD_WASH_MAX_ALPHA,
+    ),
+    softAlpha: clamp(
+      TASK_CARD_WASH_SOFT_ALPHA * (1 + (inverseCorrection - 1) * TASK_CARD_HK_ALPHA_RESPONSE),
+      TASK_CARD_WASH_SOFT_MIN_ALPHA,
+      TASK_CARD_WASH_SOFT_MAX_ALPHA,
+    ),
+  };
+}
+
+function helmholtzKohlrauschHueResponse(hue: number) {
+  return Math.abs(Math.sin(degreesToRadians(normalizeHue(hue) - 45)));
 }
 
 function slotAnchorOklab(slot: TaskIdentitySlot): OklabColor {
@@ -267,6 +301,14 @@ function oklabDistance(left: OklabColor, right: OklabColor) {
   const deltaA = left.a - right.a;
   const deltaB = left.b - right.b;
   return Math.sqrt(deltaL * deltaL + deltaA * deltaA + deltaB * deltaB);
+}
+
+function degreesToRadians(value: number) {
+  return (value * Math.PI) / 180;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
 }
 
 function clamp01(value: number) {
