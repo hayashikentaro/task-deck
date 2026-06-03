@@ -37,8 +37,8 @@ const TASK_CARD_WASH_SOFT_MAX_ALPHA = 0.31;
 const TASK_CARD_BORDER_ALPHA = 0.46;
 const TASK_CARD_BAND_ALPHA = 0.74;
 const TASK_CARD_GLOW_ALPHA = 0.2;
-const TASK_CARD_SELECTED_RING_ALPHA = 0.5;
-const TASK_CARD_SELECTED_OUTLINE_ALPHA = 0.3;
+const TASK_CARD_SELECTED_RING_ALPHA = 0.42;
+const TASK_CARD_SELECTED_OUTLINE_ALPHA = 0.26;
 const TASK_TERMINAL_SATURATION = 18;
 const TASK_TERMINAL_LIGHTNESS = 8;
 const TASK_TERMINAL_TINT_ALPHA = 0.34;
@@ -81,8 +81,8 @@ function taskIdentityCssPropertiesForSlot(slot: TaskIdentitySlot): TaskIdentityC
     "--task-card-border": hsl(slot.hue, TASK_IDENTITY_SWATCH_SATURATION, 45, TASK_CARD_BORDER_ALPHA),
     "--task-card-band": hsl(slot.hue, TASK_IDENTITY_SWATCH_SATURATION, TASK_IDENTITY_SWATCH_LIGHTNESS, TASK_CARD_BAND_ALPHA),
     "--task-card-glow": hsl(slot.hue, TASK_IDENTITY_SWATCH_SATURATION, TASK_IDENTITY_SWATCH_LIGHTNESS, TASK_CARD_GLOW_ALPHA),
-    "--task-card-selected-ring": hsl(slot.hue, 34, 70, TASK_CARD_SELECTED_RING_ALPHA),
-    "--task-card-selected-outline": hsl(slot.hue, 28, 76, TASK_CARD_SELECTED_OUTLINE_ALPHA),
+    "--task-card-selected-ring": hsl(slot.hue, 42, 46, TASK_CARD_SELECTED_RING_ALPHA),
+    "--task-card-selected-outline": hsl(slot.hue, 36, 40, TASK_CARD_SELECTED_OUTLINE_ALPHA),
     "--task-terminal-tint": hsl(slot.hue, 28, 12, TASK_TERMINAL_TINT_ALPHA),
     "--task-terminal-tint-soft": hsl(slot.hue, 24, 11, TASK_TERMINAL_TINT_SOFT_ALPHA),
     "--task-terminal-tint-faint": hsl(slot.hue, 20, 10, TASK_TERMINAL_TINT_FAINT_ALPHA),
