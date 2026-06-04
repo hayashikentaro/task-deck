@@ -6,6 +6,7 @@ import {
 } from "../codexPermissions";
 import type { AgentProfile, CreateTaskInput, ProjectSuggestion, SavedCodexSession, TaskDeckContext } from "../types";
 import { Button } from "./ui/Button";
+import { SelectField } from "./ui/SelectField";
 
 type TaskCreateFormProps = {
   context: TaskDeckContext | null;
@@ -122,62 +123,70 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
   return (
     <section className="task-create-panel" aria-label="New agent session">
       <form className="task-create-form" onSubmit={handleSubmit}>
-        <div className="agent-picker" aria-label="Agent profiles">
-          <span>Agent</span>
-          <select disabled={!agentProfiles.length} value={selectedAgent?.id ?? ""} onChange={(event) => setSelectedAgentId(event.target.value)}>
-            {agentProfiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <SelectField
+          className="agent-picker"
+          disabled={!agentProfiles.length}
+          label="Agent"
+          value={selectedAgent?.id ?? ""}
+          onChange={setSelectedAgentId}
+        >
+          {agentProfiles.map((profile) => (
+            <option key={profile.id} value={profile.id}>
+              {profile.label}
+            </option>
+          ))}
+        </SelectField>
         {selectedAgentIsCodex ? (
-          <label className="codex-permission-field">
-            <span>Codex permissions</span>
-            <select
-              value={codexPermissionLevel}
-              onChange={(event) => setCodexPermissionLevel(event.target.value as CodexPermissionLevel)}
-            >
-              <option value="full_access">Full access</option>
-              <option value="workspace_write">Workspace write</option>
-              <option value="read_only">Read only</option>
-            </select>
-          </label>
+          <SelectField
+            className="codex-permission-field"
+            label="Codex permissions"
+            value={codexPermissionLevel}
+            onChange={(value) => setCodexPermissionLevel(value as CodexPermissionLevel)}
+          >
+            <option value="full_access">Full access</option>
+            <option value="workspace_write">Workspace write</option>
+            <option value="read_only">Read only</option>
+          </SelectField>
         ) : null}
-        <label className="project-field">
-          <span>Project</span>
-          <select value={selectedProjectPath} onChange={(event) => setSelectedProjectPath(event.target.value)}>
-            {projectSuggestions.map((project) => (
-              <option key={project.path} value={project.path}>
-                {project.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="session-mode-field">
-          <span>Session</span>
-          <select value={sessionSelectValue} onChange={(event) => handleSessionChange(event.target.value)}>
-            <option value="new">New session</option>
-            {selectedAgentIsCodex && matchingSavedCodexSessions.length > 0 ? (
-              <optgroup label="Recent saved sessions">
-                {matchingSavedCodexSessions.map((session) => (
-                  <option key={session.key} value={savedSessionOptionValue(session.key)}>
-                    {savedSessionLabel(session)}
-                  </option>
-                ))}
-              </optgroup>
-            ) : null}
-            {selectedAgentIsCodex ? (
-              <optgroup label="Fallback">
-                <option value="resume_last">Resume last</option>
-              </optgroup>
-            ) : null}
-          </select>
-          {selectedAgentIsCodex && matchingSavedCodexSessions.length === 0 ? (
-            <small className="saved-session-empty">Saved sessions for this Codex profile appear after TaskDeck detects a session id.</small>
+        <SelectField
+          className="project-field"
+          label="Project"
+          value={selectedProjectPath}
+          onChange={setSelectedProjectPath}
+        >
+          {projectSuggestions.map((project) => (
+            <option key={project.path} value={project.path}>
+              {project.label}
+            </option>
+          ))}
+        </SelectField>
+        <SelectField
+          className="session-mode-field"
+          hint={
+            selectedAgentIsCodex && matchingSavedCodexSessions.length === 0
+              ? "Saved sessions for this Codex profile appear after TaskDeck detects a session id."
+              : undefined
+          }
+          label="Session"
+          value={sessionSelectValue}
+          onChange={handleSessionChange}
+        >
+          <option value="new">New session</option>
+          {selectedAgentIsCodex && matchingSavedCodexSessions.length > 0 ? (
+            <optgroup label="Recent saved sessions">
+              {matchingSavedCodexSessions.map((session) => (
+                <option key={session.key} value={savedSessionOptionValue(session.key)}>
+                  {savedSessionLabel(session)}
+                </option>
+              ))}
+            </optgroup>
           ) : null}
-        </label>
+          {selectedAgentIsCodex ? (
+            <optgroup label="Fallback">
+              <option value="resume_last">Resume last</option>
+            </optgroup>
+          ) : null}
+        </SelectField>
         <Button disabled={!canStart} fullWidth type="submit" variant="panel">
           Start Session
         </Button>
