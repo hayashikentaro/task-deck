@@ -149,18 +149,6 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
           </SelectField>
         ) : null}
         <SelectField
-          className="project-field"
-          label="Project"
-          value={selectedProjectPath}
-          onChange={setSelectedProjectPath}
-        >
-          {projectSuggestions.map((project) => (
-            <option key={project.path} value={project.path}>
-              {project.label}
-            </option>
-          ))}
-        </SelectField>
-        <SelectField
           className="session-mode-field"
           hint={
             selectedAgentIsCodex && matchingSavedCodexSessions.length === 0
@@ -186,6 +174,18 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
               <option value="resume_last">Resume last</option>
             </optgroup>
           ) : null}
+        </SelectField>
+        <SelectField
+          className="project-field"
+          label="Project"
+          value={selectedProjectPath}
+          onChange={setSelectedProjectPath}
+        >
+          {projectSuggestions.map((project) => (
+            <option key={project.path} value={project.path}>
+              {project.label}
+            </option>
+          ))}
         </SelectField>
         <Button disabled={!canStart} fullWidth type="submit" variant="panel">
           Start Session
