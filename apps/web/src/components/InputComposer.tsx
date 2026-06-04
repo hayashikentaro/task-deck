@@ -17,6 +17,7 @@ type SelectedImageAttachment = {
   id: string;
   file: File;
 };
+type ComposerInputState = "ready" | "locked" | "busy" | "readonly" | "disconnected" | "empty";
 
 export function InputComposer({ isConnected, task, value, onValueChange, send }: InputComposerProps) {
   const [isComposing, setIsComposing] = useState(false);
@@ -33,6 +34,7 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
   const canCancelCurrentInstruction = Boolean(canInteractWithRunningTask && task?.agentState === "working" && !taskNeedsUserAttention(task));
   const actionLabel = canCancelCurrentInstruction ? "Cancel current instruction" : "Send input to running PTY";
   const modeText = getComposerMode(task, isConnected);
+  const inputState = getComposerInputState({ task, isConnected, isUploadingAttachments });
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -132,7 +134,7 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
   };
 
   return (
-    <form className="input-composer" onSubmit={handleSubmit}>
+    <form className="input-composer" data-input-state={inputState} onSubmit={handleSubmit}>
       {selectedImages.length > 0 ? (
         <div className="attachment-chip-list input-attachment-chip-list" aria-label="Selected image attachments">
           {selectedImages.map((image) => (
@@ -343,6 +345,33 @@ function getComposerMode(task: Task | null, isConnected: boolean) {
     return "Terminal input locked";
   }
   return "Interactive PTY";
+}
+
+function getComposerInputState({
+  task,
+  isConnected,
+  isUploadingAttachments,
+}: {
+  isConnected: boolean;
+  isUploadingAttachments: boolean;
+  task: Task | null;
+}): ComposerInputState {
+  if (!task) {
+    return "empty";
+  }
+  if (!isConnected) {
+    return "disconnected";
+  }
+  if (task.terminalInputLockedAt) {
+    return "locked";
+  }
+  if (isUploadingAttachments) {
+    return "busy";
+  }
+  if (task.status !== "running") {
+    return "readonly";
+  }
+  return "ready";
 }
 
 function taskNeedsUserAttention(task: Task | null) {

@@ -1392,6 +1392,22 @@ dd {
   background: var(--surface-raised);
 }
 
+.input-composer[data-input-state="locked"] {
+  border-top-color: color-mix(in srgb, var(--status-focus) 42%, var(--line));
+  background: color-mix(in srgb, var(--surface-raised) 78%, #2a2721);
+}
+
+.input-composer[data-input-state="busy"] {
+  border-top-color: color-mix(in srgb, var(--status-working) 36%, var(--line));
+  background: color-mix(in srgb, var(--surface-raised) 86%, #17201d);
+}
+
+.input-composer[data-input-state="readonly"],
+.input-composer[data-input-state="empty"],
+.input-composer[data-input-state="disconnected"] {
+  background: color-mix(in srgb, var(--surface-raised) 72%, #252525);
+}
+
 .input-composer-inner {
   min-width: 0;
   display: grid;
@@ -1411,9 +1427,57 @@ dd {
   overflow-y: auto;
 }
 
+.input-composer[data-input-state="locked"] textarea {
+  border-color: color-mix(in srgb, var(--status-focus) 40%, var(--line));
+  background: color-mix(in srgb, var(--surface-input) 58%, #2b2924);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.input-composer[data-input-state="busy"] textarea {
+  border-color: color-mix(in srgb, var(--status-working) 42%, var(--line));
+  background: color-mix(in srgb, var(--surface-input) 68%, #16211e);
+  color: var(--text-secondary);
+  cursor: wait;
+}
+
+.input-composer[data-input-state="readonly"] textarea,
+.input-composer[data-input-state="empty"] textarea,
+.input-composer[data-input-state="disconnected"] textarea {
+  border-color: color-mix(in srgb, var(--line) 78%, #888);
+  background: color-mix(in srgb, var(--surface-input) 45%, #2d2d2d);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.input-composer[data-input-state="locked"] textarea::placeholder,
+.input-composer[data-input-state="readonly"] textarea::placeholder,
+.input-composer[data-input-state="empty"] textarea::placeholder,
+.input-composer[data-input-state="disconnected"] textarea::placeholder {
+  color: color-mix(in srgb, var(--text-muted) 86%, var(--text));
+}
+
+.input-composer[data-input-state="busy"] textarea::placeholder {
+  color: color-mix(in srgb, var(--text-secondary) 76%, var(--status-working));
+}
+
 .input-composer-inner > button {
   height: 42px;
   padding: 0 14px;
+}
+
+.input-composer[data-input-state="locked"] .input-attach-button:disabled,
+.input-composer[data-input-state="readonly"] .input-attach-button:disabled,
+.input-composer[data-input-state="empty"] .input-attach-button:disabled,
+.input-composer[data-input-state="disconnected"] .input-attach-button:disabled {
+  background: color-mix(in srgb, var(--panel-soft) 74%, #2d2d2d);
+  color: var(--status-muted);
+}
+
+.input-composer[data-input-state="busy"] .input-attach-button:disabled {
+  background: color-mix(in srgb, var(--panel-soft) 80%, #16211e);
+  color: var(--text-muted);
+  cursor: wait;
 }
 
 .input-composer-inner > .input-attach-button {
