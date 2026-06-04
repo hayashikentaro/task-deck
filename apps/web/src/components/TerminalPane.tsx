@@ -67,7 +67,10 @@ export function TerminalPane({
   const taskId = task?.id ?? null;
   const searchMatchCount = useMemo(() => countMatches(logBuffer, searchTerm), [logBuffer, searchTerm]);
   const hasTuiChoice = useMemo(() => detectTuiChoice(logBuffer), [logBuffer]);
-  const taskIdentityStyle = useMemo(() => (taskId ? taskIdentityCssProperties(taskId) : undefined), [taskId]);
+  const taskIdentityStyle = useMemo(
+    () => (task ? taskIdentityCssProperties({ taskId: task.id, identityColorSlot: task.identityColorSlot }) : undefined),
+    [task?.id, task?.identityColorSlot],
+  );
 
   const updateTerminalMessage = useCallback(
     (value: string) => {

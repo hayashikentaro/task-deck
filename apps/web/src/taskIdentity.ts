@@ -55,18 +55,29 @@ const TASK_IDENTITY_VISUAL_MODEL = {
 
 export type TaskIdentityCssProperties = CSSProperties & Record<`--task-${string}`, string>;
 
+type TaskIdentityInput = {
+  identityColorSlot?: number;
+  taskId: string;
+};
+
 type TaskIdentitySlot = {
   anchorLightness: number;
   anchorSaturation: number;
   hue: number;
 };
 
-// Identity color is separate from task state. The slot is derived only from
-// task identity so card and terminal colors remain stable across sorting,
-// filtering, attention changes, and task list updates.
-export function taskIdentityCssProperties(taskId: string): TaskIdentityCssProperties {
-  const slot = TASK_IDENTITY_SLOTS[fallbackTaskIdentitySlotIndex(taskId)];
+// Identity color is separate from task state. New tasks carry a fixed metadata
+// slot; taskId hashing is only a fallback for older stored tasks.
+export function taskIdentityCssProperties({ identityColorSlot, taskId }: TaskIdentityInput): TaskIdentityCssProperties {
+  const slot = TASK_IDENTITY_SLOTS[taskIdentitySlotIndex({ identityColorSlot, taskId })];
   return taskIdentityCssPropertiesForSlot(slot);
+}
+
+function taskIdentitySlotIndex({ identityColorSlot, taskId }: TaskIdentityInput) {
+  if (Number.isFinite(identityColorSlot) && typeof identityColorSlot === "number" && identityColorSlot >= 0) {
+    return Math.floor(identityColorSlot) % TASK_IDENTITY_SLOTS.length;
+  }
+  return fallbackTaskIdentitySlotIndex(taskId);
 }
 
 function taskIdentityCssPropertiesForSlot(slot: TaskIdentitySlot): TaskIdentityCssProperties {

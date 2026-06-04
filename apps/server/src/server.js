@@ -14,12 +14,14 @@ import {
   AgentStateConfidence,
   AgentStateSource,
   AttentionState,
+  TASK_IDENTITY_COLOR_SLOT_COUNT,
   createTask,
   markTaskAttentionAcknowledged,
   markTaskAttentionState,
   markTaskAgentState,
   markTaskExited,
   markTaskRunning,
+  normalizeIdentityColorSlot,
   serializeTask,
   TaskStatus,
   inferAgentStateFromStatus,
@@ -648,6 +650,7 @@ async function startTask({
     agentSessionResumeCommand,
   });
   const taskTitle = buildUniqueNewSessionTitle(title, sessionMode);
+  const identityColorSlot = assignTaskIdentityColorSlot();
   const baseTask = createTask({
     title: taskTitle,
     command: effectiveCommand,
@@ -658,6 +661,7 @@ async function startTask({
     agentModel: agentModel || modelFromCommand(effectiveCommand),
     sessionMode,
     resumeCommand,
+    identityColorSlot,
     initialInstruction,
     ...detectedAgentSession,
     ...explicitAgentSession,
@@ -728,6 +732,27 @@ async function startTask({
     broadcast({ type: "output", taskId: task.id, data: logs.get(task.id) });
     broadcastTasks();
   }
+}
+
+function assignTaskIdentityColorSlot() {
+  const slotUseCounts = Array.from({ length: TASK_IDENTITY_COLOR_SLOT_COUNT }, () => 0);
+
+  for (const task of tasks.values()) {
+    const slot = normalizeIdentityColorSlot(task.identityColorSlot);
+    if (slot === undefined) {
+      continue;
+    }
+    slotUseCounts[slot % TASK_IDENTITY_COLOR_SLOT_COUNT] += 1;
+  }
+
+  let selectedSlot = 0;
+  for (let slot = 1; slot < slotUseCounts.length; slot += 1) {
+    if (slotUseCounts[slot] < slotUseCounts[selectedSlot]) {
+      selectedSlot = slot;
+    }
+  }
+
+  return selectedSlot;
 }
 
 function createActivePty(task, process) {

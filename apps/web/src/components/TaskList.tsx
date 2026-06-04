@@ -119,7 +119,7 @@ export function TaskList({
               data-selected={isSelected}
               data-tone={taskTone(task, runningTaskIdSet)}
               key={task.id}
-              style={taskIdentityCssProperties(task.id)}
+              style={taskIdentityCssProperties({ taskId: task.id, identityColorSlot: task.identityColorSlot })}
             >
               {isEditingTitle ? (
                 <form className="task-title-edit-form" onSubmit={(event) => submitTitleEdit(event, task)}>

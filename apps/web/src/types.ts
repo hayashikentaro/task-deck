@@ -58,6 +58,7 @@ export type Task = {
   agentSessionProvider?: string;
   agentSessionDetectedAt?: string;
   agentSessionResumeCommand?: string;
+  identityColorSlot?: number;
   status: TaskStatus;
   agentState: AgentState;
   agentStateReason?: string;

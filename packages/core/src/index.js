@@ -40,6 +40,8 @@ export const AttentionState = Object.freeze({
   FAILED: "failed",
 });
 
+export const TASK_IDENTITY_COLOR_SLOT_COUNT = 12;
+
 const dangerousPatterns = [
   /\brm\s+-rf\b/,
   /\bsudo\b/,
@@ -64,6 +66,7 @@ export function createTask({
   agentSessionProvider = "",
   agentSessionDetectedAt = "",
   agentSessionResumeCommand = "",
+  identityColorSlot,
   attachments = [],
 }) {
   const now = new Date().toISOString();
@@ -86,6 +89,7 @@ export function createTask({
     agentSessionProvider,
     agentSessionDetectedAt,
     agentSessionResumeCommand,
+    identityColorSlot: normalizeIdentityColorSlot(identityColorSlot),
     status: TaskStatus.IDLE,
     agentState: AgentState.STARTING,
     agentStateReason: "Task created.",
@@ -209,6 +213,7 @@ export function serializeTask(task) {
     agentSessionProvider: task.agentSessionProvider || "",
     agentSessionDetectedAt: task.agentSessionDetectedAt || "",
     agentSessionResumeCommand: task.agentSessionResumeCommand || "",
+    identityColorSlot: normalizeIdentityColorSlot(task.identityColorSlot),
     status: task.status,
     agentState: task.agentState ?? inferAgentStateFromStatus(task),
     agentStateReason: task.agentStateReason || "",
@@ -229,6 +234,14 @@ export function serializeTask(task) {
     initialInstruction: task.initialInstruction || "",
     attachments: normalizeTaskAttachments(task.attachments),
   };
+}
+
+export function normalizeIdentityColorSlot(identityColorSlot) {
+  const slot = Number(identityColorSlot);
+  if (!Number.isFinite(slot) || slot < 0) {
+    return undefined;
+  }
+  return Math.floor(slot);
 }
 
 function normalizeTaskAttachments(attachments) {
