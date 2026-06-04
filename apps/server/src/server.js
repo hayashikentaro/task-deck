@@ -1249,12 +1249,16 @@ async function buildProjectRoots() {
 
 async function buildProjectSuggestions(projectRoots = null) {
   const roots = projectRoots ?? await resolveProjectRoots();
+  const childSuggestions = [];
   const suggestions = [];
   const defaultProjectRoot = roots[0] || repoRoot;
   const rootProjectPath = defaultProjectRoot;
   const accessibleRootProjectPath = serverAccessibleProjectRootForHostRoot(defaultProjectRoot) ?? defaultProjectRoot;
-  if (!isIgnoredProjectPath(rootProjectPath)) {
-    suggestions.push(await buildProjectSuggestion(rootProjectPath, accessibleRootProjectPath));
+  const rootSuggestion = !isIgnoredProjectPath(rootProjectPath)
+    ? await buildProjectSuggestion(rootProjectPath, accessibleRootProjectPath, "Workspace")
+    : null;
+  if (rootSuggestion) {
+    suggestions.push(rootSuggestion);
   }
 
   for (const projectRoot of roots) {
@@ -1286,20 +1290,13 @@ async function buildProjectSuggestions(projectRoots = null) {
       if (!entry.isDirectory() || shouldExcludeProjectDirectory(entry.name) || isIgnoredProjectPath(projectPath)) {
         continue;
       }
-      suggestions.push(await buildProjectSuggestion(projectPath, path.join(readableProjectRoot, entry.name)));
+      childSuggestions.push(await buildProjectSuggestion(projectPath, path.join(readableProjectRoot, entry.name)));
     }
   }
 
-  if (suggestions.length === 0 && !isIgnoredProjectPath(rootProjectPath)) {
-    suggestions.push(await buildProjectSuggestion(rootProjectPath, accessibleRootProjectPath));
-  }
+  suggestions.push(...sortProjectSuggestions(childSuggestions));
 
-  return dedupeProjectSuggestions(suggestions).sort((left, right) => {
-    if (left.isGitRepo !== right.isGitRepo) {
-      return left.isGitRepo ? -1 : 1;
-    }
-    return left.label.localeCompare(right.label);
-  });
+  return dedupeProjectSuggestions(suggestions);
 }
 
 function selectDefaultProjectCwd(projectSuggestions, defaultProjectRoot) {
@@ -1313,12 +1310,21 @@ function selectDefaultProjectCwd(projectSuggestions, defaultProjectRoot) {
   );
 }
 
-async function buildProjectSuggestion(projectPath, accessibleProjectPath = projectPath) {
+async function buildProjectSuggestion(projectPath, accessibleProjectPath = projectPath, label = path.basename(projectPath) || projectPath) {
   return {
-    label: path.basename(projectPath) || projectPath,
+    label,
     path: projectPath,
     isGitRepo: await cwdIsGitRepo(accessibleProjectPath),
   };
+}
+
+function sortProjectSuggestions(suggestions) {
+  return suggestions.sort((left, right) => {
+    if (left.isGitRepo !== right.isGitRepo) {
+      return left.isGitRepo ? -1 : 1;
+    }
+    return left.label.localeCompare(right.label);
+  });
 }
 
 function shouldExcludeProjectDirectory(name) {
