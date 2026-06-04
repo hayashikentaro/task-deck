@@ -38,3 +38,11 @@ Read this guide when:
 Some raw compact and icon buttons remain temporarily, including TaskList compact toolbar/task-card icons and InputComposer attachment/send controls.
 
 Future work should migrate them deliberately after confirming that `IconButton` fits their layout and behavior.
+
+## SelectField
+
+- Use `apps/web/src/components/ui/SelectField.tsx` for labeled native select controls in `apps/web`.
+- `SelectField` wraps a native `<select>`; it is not a custom dropdown.
+- `SelectField` owns label, hint, error, `aria-describedby`, and `aria-invalid` wiring.
+- Use native `<option>` and `<optgroup>` children.
+- If a future custom dropdown is needed, treat it as a separate design decision instead of an ad-hoc local replacement.
