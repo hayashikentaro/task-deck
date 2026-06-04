@@ -1133,6 +1133,12 @@ dd {
     var(--terminal);
 }
 
+.terminal-pane[data-has-task="true"] .terminal-host {
+  background:
+    linear-gradient(135deg, var(--task-card-wash) 0%, var(--task-card-wash-soft) 64%, transparent 100%),
+    var(--surface-raised);
+}
+
 .terminal-host .xterm {
   height: 100%;
 }
