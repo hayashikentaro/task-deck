@@ -1,5 +1,4 @@
 import type { CodexStatusSnapshot } from "../types";
-import { IconButton } from "./ui/IconButton";
 
 type CodexStatusPanelProps = {
   canRefresh: boolean;
@@ -25,18 +24,18 @@ export function CodexStatusPanel({
     <section className="codex-status-panel" aria-label="Codex usage">
       <div className="codex-status-heading">
         <h2>Codex Usage</h2>
-        <IconButton
+        <button
+          aria-label="Refresh Codex usage"
           data-loading={isRefreshing ? "true" : undefined}
           disabled={!canRefresh || isRefreshing}
-          label="Refresh Codex usage"
           onClick={onRefresh}
           title="Refresh Codex usage"
-          variant="panel"
+          type="button"
         >
           <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
             <path d="M13 8a5 5 0 1 1-1.46-3.54M13 2.5v4h-4" />
           </svg>
-        </IconButton>
+        </button>
       </div>
       <div className="codex-status-body">
         {metricRows.map((row) => {
