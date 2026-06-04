@@ -1447,6 +1447,14 @@ dd {
   overflow-y: auto;
 }
 
+.input-composer textarea:focus,
+.input-composer textarea:focus-visible {
+  outline: none;
+  border-color: var(--line-strong);
+  background: var(--surface-input);
+  box-shadow: none;
+}
+
 .input-composer[data-input-state="locked"] textarea {
   border-color: color-mix(in srgb, var(--line) 88%, #777);
   background: color-mix(in srgb, var(--surface-input) 35%, #2f2f2f);
@@ -1456,11 +1464,23 @@ dd {
   box-shadow: none;
 }
 
+.input-composer[data-input-state="locked"] textarea:focus,
+.input-composer[data-input-state="locked"] textarea:focus-visible {
+  border-color: color-mix(in srgb, var(--line) 88%, #777);
+  background: color-mix(in srgb, var(--surface-input) 35%, #2f2f2f);
+}
+
 .input-composer[data-input-state="busy"] textarea {
   border-color: color-mix(in srgb, var(--status-working) 42%, var(--line));
   background: color-mix(in srgb, var(--surface-input) 68%, #16211e);
   color: var(--text-secondary);
   cursor: progress;
+}
+
+.input-composer[data-input-state="busy"] textarea:focus,
+.input-composer[data-input-state="busy"] textarea:focus-visible {
+  border-color: color-mix(in srgb, var(--status-working) 42%, var(--line));
+  background: color-mix(in srgb, var(--surface-input) 68%, #16211e);
 }
 
 .input-composer[data-input-state="readonly"] textarea,
@@ -1472,6 +1492,16 @@ dd {
   cursor: not-allowed;
   opacity: 1;
   box-shadow: none;
+}
+
+.input-composer[data-input-state="readonly"] textarea:focus,
+.input-composer[data-input-state="readonly"] textarea:focus-visible,
+.input-composer[data-input-state="empty"] textarea:focus,
+.input-composer[data-input-state="empty"] textarea:focus-visible,
+.input-composer[data-input-state="disconnected"] textarea:focus,
+.input-composer[data-input-state="disconnected"] textarea:focus-visible {
+  border-color: color-mix(in srgb, var(--line) 78%, #888);
+  background: color-mix(in srgb, var(--surface-input) 45%, #2d2d2d);
 }
 
 .input-composer[data-input-state="locked"] textarea::placeholder {
