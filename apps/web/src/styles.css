@@ -1393,8 +1393,8 @@ dd {
 }
 
 .input-composer[data-input-state="locked"] {
-  border-top-color: color-mix(in srgb, var(--status-focus) 42%, var(--line));
-  background: color-mix(in srgb, var(--surface-raised) 78%, #2a2721);
+  border-top-color: color-mix(in srgb, var(--line) 84%, #777);
+  background: color-mix(in srgb, var(--surface-raised) 70%, #303030);
 }
 
 .input-composer[data-input-state="busy"] {
@@ -1405,7 +1405,8 @@ dd {
 .input-composer[data-input-state="readonly"],
 .input-composer[data-input-state="empty"],
 .input-composer[data-input-state="disconnected"] {
-  background: color-mix(in srgb, var(--surface-raised) 72%, #252525);
+  border-top-color: color-mix(in srgb, var(--line) 88%, #666);
+  background: color-mix(in srgb, var(--surface-raised) 76%, #282828);
 }
 
 .input-composer-inner {
@@ -1428,17 +1429,19 @@ dd {
 }
 
 .input-composer[data-input-state="locked"] textarea {
-  border-color: color-mix(in srgb, var(--status-focus) 40%, var(--line));
-  background: color-mix(in srgb, var(--surface-input) 58%, #2b2924);
+  border-color: color-mix(in srgb, var(--line) 88%, #777);
+  background: color-mix(in srgb, var(--surface-input) 35%, #2f2f2f);
   color: var(--text-muted);
   cursor: not-allowed;
+  opacity: 1;
+  box-shadow: none;
 }
 
 .input-composer[data-input-state="busy"] textarea {
   border-color: color-mix(in srgb, var(--status-working) 42%, var(--line));
   background: color-mix(in srgb, var(--surface-input) 68%, #16211e);
   color: var(--text-secondary);
-  cursor: wait;
+  cursor: progress;
 }
 
 .input-composer[data-input-state="readonly"] textarea,
@@ -1448,9 +1451,14 @@ dd {
   background: color-mix(in srgb, var(--surface-input) 45%, #2d2d2d);
   color: var(--text-muted);
   cursor: not-allowed;
+  opacity: 1;
+  box-shadow: none;
 }
 
-.input-composer[data-input-state="locked"] textarea::placeholder,
+.input-composer[data-input-state="locked"] textarea::placeholder {
+  color: color-mix(in srgb, var(--text-muted) 76%, transparent);
+}
+
 .input-composer[data-input-state="readonly"] textarea::placeholder,
 .input-composer[data-input-state="empty"] textarea::placeholder,
 .input-composer[data-input-state="disconnected"] textarea::placeholder {
@@ -1470,14 +1478,18 @@ dd {
 .input-composer[data-input-state="readonly"] .input-attach-button:disabled,
 .input-composer[data-input-state="empty"] .input-attach-button:disabled,
 .input-composer[data-input-state="disconnected"] .input-attach-button:disabled {
-  background: color-mix(in srgb, var(--panel-soft) 74%, #2d2d2d);
-  color: var(--status-muted);
+  border-color: color-mix(in srgb, var(--line) 86%, #777);
+  background: color-mix(in srgb, var(--surface-raised) 72%, #2d2d2d);
+  color: color-mix(in srgb, var(--text-muted) 70%, transparent);
+  cursor: not-allowed;
+  opacity: 1;
+  box-shadow: none;
 }
 
 .input-composer[data-input-state="busy"] .input-attach-button:disabled {
   background: color-mix(in srgb, var(--panel-soft) 80%, #16211e);
   color: var(--text-muted);
-  cursor: wait;
+  cursor: progress;
 }
 
 .input-composer-inner > .input-attach-button {
@@ -1522,6 +1534,25 @@ dd {
   background: var(--panel-soft);
   color: var(--status-muted);
   opacity: 0.72;
+}
+
+.input-composer[data-input-state="locked"] .input-primary-action-button:disabled,
+.input-composer[data-input-state="readonly"] .input-primary-action-button:disabled,
+.input-composer[data-input-state="empty"] .input-primary-action-button:disabled,
+.input-composer[data-input-state="disconnected"] .input-primary-action-button:disabled {
+  border-color: color-mix(in srgb, var(--line) 86%, #777);
+  background: color-mix(in srgb, var(--surface-raised) 72%, #2d2d2d);
+  color: color-mix(in srgb, var(--text-muted) 70%, transparent);
+  cursor: not-allowed;
+  opacity: 1;
+  box-shadow: none;
+}
+
+.input-composer[data-input-state="busy"] .input-primary-action-button:disabled {
+  border-color: color-mix(in srgb, var(--status-working) 24%, var(--line));
+  background: color-mix(in srgb, var(--panel-soft) 80%, #16211e);
+  color: var(--text-muted);
+  cursor: progress;
 }
 
 .input-attachment-chip-list {
