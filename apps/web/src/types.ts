@@ -69,6 +69,7 @@ export type Task = {
   attentionStateSource?: AttentionStateSource;
   attentionStateConfidence?: AttentionStateConfidence;
   attentionAcknowledgedAt?: string | null;
+  terminalInputLockedAt?: string | null;
   risk: TaskRisk;
   createdAt: string;
   startedAt: string | null;

@@ -935,7 +935,8 @@ dd {
   outline-offset: -2px;
 }
 
-.task-clear-button {
+.task-clear-button,
+.task-terminal-input-lock-button {
   width: 24px;
   height: 24px;
   min-height: 24px;
@@ -1764,19 +1765,26 @@ dd {
 }
 
 .task-card-actions .task-clear-button,
-.task-card-actions .task-edit-title-button {
+.task-card-actions .task-edit-title-button,
+.task-card-actions .task-terminal-input-lock-button {
   padding: 0;
 }
 
 .task-clear-button:hover:not(:disabled),
-.task-edit-title-button:hover:not(:disabled) {
+.task-edit-title-button:hover:not(:disabled),
+.task-terminal-input-lock-button:hover:not(:disabled) {
   border-color: transparent;
   background: transparent;
   color: var(--status-focus);
 }
 
+.task-terminal-input-lock-button[data-active="true"] {
+  color: var(--status-focus);
+}
+
 .task-clear-icon,
-.task-edit-title-icon {
+.task-edit-title-icon,
+.task-terminal-input-lock-icon {
   width: 16px;
   height: 16px;
   fill: none;

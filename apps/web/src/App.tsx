@@ -254,6 +254,30 @@ export function App() {
     applyTaskList(payload.tasks, getRunningTaskIdsFromMessage(payload));
   };
 
+  const toggleTerminalInputLock = async (taskId: string, locked: boolean) => {
+    try {
+      const response = await fetch(`/api/tasks/${taskId}/terminal-input-lock`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ locked }),
+      });
+      const payload = (await response.json()) as {
+        error?: string;
+        tasks?: Task[];
+        runningTaskId?: string | null;
+        runningTaskIds?: string[];
+      };
+      if (!response.ok || !payload.tasks) {
+        throw new Error(payload.error || "Unable to toggle terminal input lock.");
+      }
+      applyTaskList(payload.tasks, getRunningTaskIdsFromMessage(payload));
+      return true;
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : "Unable to toggle terminal input lock.");
+      return false;
+    }
+  };
+
   const copySelectedLog = async () => {
     if (!selectedLogBuffer) {
       setTerminalMessage("No terminal content to copy.");
@@ -294,6 +318,7 @@ export function App() {
           onClearTasks={clearTasks}
           onRenameTask={renameTask}
           onSelectTask={setSelectedTaskId}
+          onToggleTerminalInputLock={toggleTerminalInputLock}
         />
         <TerminalPane
           composerValue={composerValue}

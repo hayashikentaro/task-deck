@@ -25,10 +25,12 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
-  const canSend = Boolean(task && task.status === "running" && isConnected);
+  const isTerminalInputLocked = Boolean(task?.terminalInputLockedAt);
+  const canInteractWithRunningTask = Boolean(task && task.status === "running" && isConnected);
+  const canSend = canInteractWithRunningTask && !isTerminalInputLocked;
   const hasComposerContent = Boolean(value || selectedImages.length);
   const canSubmit = canSend && hasComposerContent && !isUploadingAttachments;
-  const canCancelCurrentInstruction = Boolean(canSend && task?.agentState === "working" && !taskNeedsUserAttention(task));
+  const canCancelCurrentInstruction = Boolean(canInteractWithRunningTask && task?.agentState === "working" && !taskNeedsUserAttention(task));
   const actionLabel = canCancelCurrentInstruction ? "Cancel current instruction" : "Send input to running PTY";
   const modeText = getComposerMode(task, isConnected);
 
@@ -63,6 +65,11 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
   };
 
   const handleImageSelection = (event: ChangeEvent<HTMLInputElement>) => {
+    if (!canSend) {
+      event.target.value = "";
+      return;
+    }
+
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
 
@@ -87,14 +94,14 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
   };
 
   const cancelCurrentInstruction = () => {
-    if (!task || !canSend) {
+    if (!task || !canInteractWithRunningTask) {
       return;
     }
     send({ type: "interrupt", taskId: task.id });
   };
 
   const sendValue = async () => {
-    if (!hasComposerContent || isUploadingAttachments) {
+    if (!canSend || !hasComposerContent || isUploadingAttachments) {
       return;
     }
 
@@ -185,7 +192,7 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
         <button
           aria-label={actionLabel}
           className="input-primary-action-button"
-          disabled={canCancelCurrentInstruction ? !canSend : !canSubmit}
+          disabled={canCancelCurrentInstruction ? !canInteractWithRunningTask : !canSubmit}
           onClick={handlePrimaryAction}
           title={actionLabel}
           type="button"
@@ -331,6 +338,9 @@ function getComposerMode(task: Task | null, isConnected: boolean) {
   }
   if (task.status !== "running") {
     return "Read-only log";
+  }
+  if (task.terminalInputLockedAt) {
+    return "Terminal input locked";
   }
   return "Interactive PTY";
 }

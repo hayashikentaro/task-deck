@@ -59,6 +59,7 @@ export function TerminalPane({
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const selectedTaskIdRef = useRef<string | null>(null);
+  const selectedTaskTerminalInputLockedRef = useRef(false);
   const directInputDebugRef = useRef(isDirectInputDebugEnabled());
   const [logBuffer, setLogBuffer] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -66,6 +67,7 @@ export function TerminalPane({
 
   const directInputDebug = directInputDebugRef.current;
   const taskId = task?.id ?? null;
+  const isTerminalInputLocked = Boolean(task?.terminalInputLockedAt);
   const searchMatchCount = useMemo(() => countMatches(logBuffer, searchTerm), [logBuffer, searchTerm]);
   const hasTuiChoice = useMemo(() => detectTuiChoice(logBuffer), [logBuffer]);
   const taskIdentityStyle = useMemo(
@@ -88,9 +90,9 @@ export function TerminalPane({
 
   useEffect(() => {
     if (terminalRef.current) {
-      terminalRef.current.options.disableStdin = !(directInputDebug && task?.status === "running" && isConnected);
+      terminalRef.current.options.disableStdin = !(directInputDebug && task?.status === "running" && isConnected && !isTerminalInputLocked);
     }
-  }, [directInputDebug, isConnected, task?.status]);
+  }, [directInputDebug, isConnected, isTerminalInputLocked, task?.status]);
 
   useEffect(() => {
     if (!hostRef.current || terminalRef.current) {
@@ -114,7 +116,7 @@ export function TerminalPane({
         return;
       }
       const taskId = selectedTaskIdRef.current;
-      if (taskId) {
+      if (taskId && !selectedTaskTerminalInputLockedRef.current) {
         send({ type: "input", taskId, data, source: "xterm" });
       }
     });
@@ -226,6 +228,10 @@ export function TerminalPane({
     setSearchTerm("");
     return loadPersistedLog(task);
   }, [loadPersistedLog, taskId]);
+
+  useEffect(() => {
+    selectedTaskTerminalInputLockedRef.current = isTerminalInputLocked;
+  }, [isTerminalInputLocked]);
 
   useEffect(() => {
     if (!lastOutput || lastOutput.taskId !== task?.id) {

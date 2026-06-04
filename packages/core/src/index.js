@@ -100,6 +100,7 @@ export function createTask({
     attentionStateSource: AgentStateSource.TASKDECK_EVENT,
     attentionStateConfidence: AgentStateConfidence.HIGH,
     attentionAcknowledgedAt: null,
+    terminalInputLockedAt: null,
     risk: assessCommandRisk(normalizedCommand),
     createdAt: now,
     startedAt: null,
@@ -172,6 +173,22 @@ export function markTaskAttentionAcknowledged(task, acknowledgedAt = new Date().
   };
 }
 
+export function markTaskTerminalInputLocked(task, lockedAt = new Date().toISOString()) {
+  return {
+    ...task,
+    terminalInputLockedAt: lockedAt,
+    updatedAt: lockedAt,
+  };
+}
+
+export function markTaskTerminalInputUnlocked(task, unlockedAt = new Date().toISOString()) {
+  return {
+    ...task,
+    terminalInputLockedAt: null,
+    updatedAt: unlockedAt,
+  };
+}
+
 export function markTaskExited(task, { exitCode, signal }) {
   const now = new Date().toISOString();
   const status = exitCode === 0 ? TaskStatus.SUCCEEDED : signal ? TaskStatus.INTERRUPTED : TaskStatus.FAILED;
@@ -224,6 +241,7 @@ export function serializeTask(task) {
     attentionStateSource: task.attentionStateSource || inferAttentionStateSourceFromTask(task),
     attentionStateConfidence: task.attentionStateConfidence || inferAttentionStateConfidenceFromTask(task),
     attentionAcknowledgedAt: task.attentionAcknowledgedAt || null,
+    terminalInputLockedAt: task.terminalInputLockedAt || null,
     risk: task.risk,
     createdAt: task.createdAt,
     startedAt: task.startedAt,

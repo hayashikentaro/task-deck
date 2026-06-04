@@ -12,6 +12,7 @@ type TaskListProps = {
   onClearTasks: () => void | Promise<void>;
   onRenameTask: (taskId: string, title: string) => Promise<boolean>;
   onSelectTask: (taskId: string) => void;
+  onToggleTerminalInputLock: (taskId: string, locked: boolean) => void | Promise<boolean>;
 };
 
 export function TaskList({
@@ -22,6 +23,7 @@ export function TaskList({
   onClearTasks,
   onRenameTask,
   onSelectTask,
+  onToggleTerminalInputLock,
 }: TaskListProps) {
   const [filter, setFilter] = useState<TaskFilter>("all");
   const [isClearAllConfirmOpen, setIsClearAllConfirmOpen] = useState(false);
@@ -113,10 +115,13 @@ export function TaskList({
           const isSelected = task.id === selectedTaskId;
           const bucket = supervisionBucket(task);
           const isEditingTitle = editingTaskId === task.id;
+          const isTerminalInputLocked = Boolean(task.terminalInputLockedAt);
+          const terminalInputLockLabel = isTerminalInputLocked ? "Unlock terminal input" : "Lock terminal input";
           return (
             <article
               className="task-list-item"
               data-selected={isSelected}
+              data-terminal-input-locked={isTerminalInputLocked ? "true" : undefined}
               data-tone={taskTone(task, runningTaskIdSet)}
               key={task.id}
               style={taskIdentityCssProperties({ taskId: task.id, identityColorSlot: task.identityColorSlot })}
@@ -173,6 +178,30 @@ export function TaskList({
                 </div>
               )}
               <div className="task-card-actions">
+                <button
+                  aria-label={terminalInputLockLabel}
+                  aria-pressed={isTerminalInputLocked}
+                  className="task-terminal-input-lock-button"
+                  data-active={isTerminalInputLocked ? "true" : "false"}
+                  disabled={task.status !== "running"}
+                  onClick={() => onToggleTerminalInputLock(task.id, !isTerminalInputLocked)}
+                  title={terminalInputLockLabel}
+                  type="button"
+                >
+                  {isTerminalInputLocked ? (
+                    <svg aria-hidden="true" className="task-terminal-input-lock-icon" focusable="false" viewBox="0 0 16 16">
+                      <path d="M5 7V5.5a3 3 0 0 1 5.6-1.5" />
+                      <path d="M4.5 7.5h7v6h-7z" />
+                      <path d="M8 10v1.5" />
+                    </svg>
+                  ) : (
+                    <svg aria-hidden="true" className="task-terminal-input-lock-icon" focusable="false" viewBox="0 0 16 16">
+                      <path d="M5 7V5.5a3 3 0 0 1 6 0V7" />
+                      <path d="M4.5 7.5h7v6h-7z" />
+                      <path d="M8 10v1.5" />
+                    </svg>
+                  )}
+                </button>
                 <button
                   aria-label="Edit TaskDeck display name"
                   className="task-edit-title-button"

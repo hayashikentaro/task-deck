@@ -21,6 +21,8 @@ import {
   markTaskAgentState,
   markTaskExited,
   markTaskRunning,
+  markTaskTerminalInputLocked,
+  markTaskTerminalInputUnlocked,
   normalizeIdentityColorSlot,
   serializeTask,
   TaskStatus,
@@ -312,6 +314,40 @@ app.patch("/api/tasks/:taskId/attention/acknowledge", async (request, response) 
   });
 });
 
+app.patch("/api/tasks/:taskId/terminal-input-lock", async (request, response) => {
+  const { taskId } = request.params;
+  const task = tasks.get(taskId);
+  const locked = Boolean(request.body?.locked);
+
+  if (!task) {
+    response.status(404).json({ error: "Task not found." });
+    return;
+  }
+
+  if (task.status !== TaskStatus.RUNNING) {
+    response.status(409).json({ error: "Only running tasks can toggle terminal input lock." });
+    return;
+  }
+
+  const activePty = activePtys.get(taskId);
+  if (locked && activePty) {
+    resetPendingInputPrompt(activePty);
+    clearQueuedPtyInput(activePty);
+  }
+
+  setTask(locked ? markTaskTerminalInputLocked(task) : markTaskTerminalInputUnlocked(task));
+  await persistTasks();
+  broadcastTasks();
+
+  response.json({
+    ok: true,
+    task: serializeTaskForClient(tasks.get(taskId)),
+    tasks: listTasks(),
+    runningTaskId: getPrimaryRunningTaskId(),
+    runningTaskIds: getRunningTaskIds(),
+  });
+});
+
 app.delete("/api/tasks", async (_request, response) => {
   const taskIdsToClear = Array.from(tasks.keys());
 
@@ -518,10 +554,19 @@ wss.on("connection", (socket) => {
     }
 
     if (message.type === "input") {
-      const activePty = activePtys.get(message.taskId);
+      const taskId = String(message.taskId || "").trim();
+      const task = tasks.get(taskId);
+      const activePty = activePtys.get(taskId);
+      if (task?.terminalInputLockedAt) {
+        send(socket, { type: "error", message: "Terminal input is locked for this task." });
+        if (inputDebugEnabled) {
+          console.log(`[TaskDeck input] ignored task=${taskId || "-"} reason=terminal-input-locked`);
+        }
+        return;
+      }
       if (activePty && typeof message.data === "string") {
         logInputDebug(message.taskId, message.data, message.source || "client");
-        updateAgentStateFromTaskDeckEvent(message.taskId, AgentState.WORKING, {
+        updateAgentStateFromTaskDeckEvent(taskId, AgentState.WORKING, {
           reason: "User input was sent to the PTY.",
           source: AgentStateSource.TASKDECK_EVENT,
           confidence: AgentStateConfidence.HIGH,
