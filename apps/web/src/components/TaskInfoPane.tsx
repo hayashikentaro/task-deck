@@ -1,4 +1,5 @@
 import type { AgentState, AttentionState, Task } from "../types";
+import { Button } from "./ui/Button";
 
 type TaskInfoPaneProps = {
   actionError: string;
@@ -16,13 +17,13 @@ export function TaskInfoPane({ actionError, task, onInterrupt, onRerun }: TaskIn
         <h2>Task State</h2>
         <div className="pane-actions">
           {canShowRerun ? (
-            <button onClick={onRerun} type="button">
+            <Button size="sm" variant="panel" onClick={onRerun}>
               Rerun
-            </button>
+            </Button>
           ) : null}
-          <button disabled={task?.status !== "running"} onClick={onInterrupt} type="button">
+          <Button disabled={task?.status !== "running"} size="sm" variant="panel" onClick={onInterrupt}>
             Interrupt
-          </button>
+          </Button>
         </div>
       </div>
       {actionError ? <p className="task-action-error">{actionError}</p> : null}

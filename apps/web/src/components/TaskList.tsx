@@ -1,6 +1,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import { taskIdentityCssProperties } from "../taskIdentity";
 import type { AttentionState, Task } from "../types";
+import { Button } from "./ui/Button";
 
 type TaskFilter = "all" | "needs_you" | "not_now";
 
@@ -94,12 +95,12 @@ export function TaskList({
             <h3 id="clear-all-title">Clear all tasks?</h3>
             <p>This will stop running PTYs and remove all task records and logs from TaskDeck.</p>
             <div className="confirmation-actions">
-              <button data-priority="secondary" onClick={() => setIsClearAllConfirmOpen(false)} type="button">
+              <Button variant="secondary" onClick={() => setIsClearAllConfirmOpen(false)}>
                 Cancel
-              </button>
-              <button data-priority="danger" onClick={confirmClearAll} type="button">
+              </Button>
+              <Button variant="danger" onClick={confirmClearAll}>
                 Clear
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -130,12 +131,12 @@ export function TaskList({
                     onChange={(event) => setEditingTitle(event.target.value)}
                   />
                   <div className="task-title-edit-actions">
-                    <button disabled={isRenaming || !editingTitle.trim()} type="submit">
+                    <Button disabled={isRenaming || !editingTitle.trim()} size="sm" type="submit" variant="panel">
                       Save
-                    </button>
-                    <button data-priority="secondary" disabled={isRenaming} onClick={cancelEditingTitle} type="button">
+                    </Button>
+                    <Button disabled={isRenaming} size="sm" variant="secondary" onClick={cancelEditingTitle}>
                       Cancel
-                    </button>
+                    </Button>
                   </div>
                 </form>
               ) : (

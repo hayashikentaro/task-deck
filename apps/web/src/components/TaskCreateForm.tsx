@@ -5,6 +5,7 @@ import {
   type CodexPermissionLevel,
 } from "../codexPermissions";
 import type { AgentProfile, CreateTaskInput, ProjectSuggestion, SavedCodexSession, TaskDeckContext } from "../types";
+import { Button } from "./ui/Button";
 
 type TaskCreateFormProps = {
   context: TaskDeckContext | null;
@@ -177,9 +178,9 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
             <small className="saved-session-empty">Saved sessions for this Codex profile appear after TaskDeck detects a session id.</small>
           ) : null}
         </label>
-        <button disabled={!canStart} type="submit">
+        <Button disabled={!canStart} fullWidth type="submit" variant="panel">
           Start Session
-        </button>
+        </Button>
       </form>
     </section>
   );
