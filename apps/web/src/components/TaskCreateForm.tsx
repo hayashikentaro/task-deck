@@ -88,8 +88,15 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
 
   const handleSessionChange = (value: string) => {
     if (value.startsWith("saved:")) {
+      const nextSavedSessionKey = value.slice("saved:".length);
+      const nextSavedSession = matchingSavedCodexSessions.find((session) => session.key === nextSavedSessionKey);
+
       setSessionMode("saved_codex");
-      setSelectedSavedSessionKey(value.slice("saved:".length));
+      setSelectedSavedSessionKey(nextSavedSessionKey);
+
+      if (nextSavedSession?.cwd && projectSuggestions.some((project) => project.path === nextSavedSession.cwd)) {
+        setSelectedProjectPath(nextSavedSession.cwd);
+      }
       return;
     }
     setSessionMode(value as SessionMode);
