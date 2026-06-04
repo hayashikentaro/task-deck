@@ -39,6 +39,10 @@ const TASK_IDENTITY_VISUAL_MODEL = {
     saturationRatio: 0.82,
     lightnessRatio: 0.68,
   },
+  terminalSelection: {
+    saturationRatio: 1.2,
+    lightnessDelta: 18,
+  },
   accent: {
     saturationRatio: 1.62,
     borderLightnessDelta: 27,
@@ -95,6 +99,7 @@ function taskIdentitySlotIndex({ identityColorSlot, taskId }: TaskIdentityInput)
 function taskIdentityCssPropertiesForSlot(slot: TaskIdentitySlot): TaskIdentityCssProperties {
   const cardTone = compensateToneForHue(slot.hue, TASK_IDENTITY_VISUAL_MODEL.card);
   const terminalTone = terminalToneFromCardTone(cardTone);
+  const terminalSelectionTone = terminalSelectionToneFromCardTone(cardTone);
   const accentTone = accentToneFromCardTone(cardTone);
   const gradient = identityGradientAlphas(TASK_IDENTITY_VISUAL_MODEL.gradient.baseAlpha);
   const swatches = taskIdentitySwatches(slot.hue);
@@ -112,6 +117,7 @@ function taskIdentityCssPropertiesForSlot(slot: TaskIdentitySlot): TaskIdentityC
     "--task-terminal-tint-soft": hsl(slot.hue, terminalTone.saturation * 0.82, terminalTone.lightness * 0.92, gradient.soft),
     "--task-terminal-tint-faint": hsl(slot.hue, terminalTone.saturation * 0.68, terminalTone.lightness * 0.84, gradient.faint),
     "--task-terminal-border": hsl(slot.hue, accentTone.saturation, accentTone.borderLightness, gradient.terminalBorder),
+    "--task-terminal-selection": hsl(slot.hue, terminalSelectionTone.saturation, terminalSelectionTone.lightness),
   };
 }
 
@@ -147,6 +153,14 @@ function terminalToneFromCardTone(cardTone: { saturation: number; lightness: num
   return {
     saturation: cardTone.saturation * terminal.saturationRatio,
     lightness: cardTone.lightness * terminal.lightnessRatio,
+  };
+}
+
+function terminalSelectionToneFromCardTone(cardTone: { saturation: number; lightness: number }) {
+  const { terminalSelection } = TASK_IDENTITY_VISUAL_MODEL;
+  return {
+    saturation: cardTone.saturation * terminalSelection.saturationRatio,
+    lightness: cardTone.lightness + terminalSelection.lightnessDelta,
   };
 }
 
