@@ -926,7 +926,7 @@ dd {
   background: transparent;
   color: inherit;
   cursor: pointer;
-  padding: 10px;
+  padding: 10px 36px 10px 10px;
   text-align: left;
 }
 
@@ -935,8 +935,7 @@ dd {
   outline-offset: -2px;
 }
 
-.task-clear-button,
-.task-terminal-input-lock-button {
+.task-clear-button {
   width: 24px;
   height: 24px;
   min-height: 24px;
@@ -944,6 +943,22 @@ dd {
   border: 0;
   border-radius: 0;
   background: transparent;
+  color: var(--text-muted);
+  display: grid;
+  place-items: center;
+}
+
+.task-terminal-input-lock-button {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-raised) 78%, transparent);
   color: var(--text-muted);
   display: grid;
   place-items: center;
@@ -1765,8 +1780,7 @@ dd {
 }
 
 .task-card-actions .task-clear-button,
-.task-card-actions .task-edit-title-button,
-.task-card-actions .task-terminal-input-lock-button {
+.task-card-actions .task-edit-title-button {
   padding: 0;
 }
 
@@ -1779,6 +1793,7 @@ dd {
 }
 
 .task-terminal-input-lock-button[data-active="true"] {
+  background: color-mix(in srgb, var(--task-card-band) 18%, var(--surface-raised));
   color: var(--status-focus);
 }
 

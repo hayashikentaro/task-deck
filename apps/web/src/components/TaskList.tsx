@@ -179,30 +179,6 @@ export function TaskList({
               )}
               <div className="task-card-actions">
                 <button
-                  aria-label={terminalInputLockLabel}
-                  aria-pressed={isTerminalInputLocked}
-                  className="task-terminal-input-lock-button"
-                  data-active={isTerminalInputLocked ? "true" : "false"}
-                  disabled={task.status !== "running"}
-                  onClick={() => onToggleTerminalInputLock(task.id, !isTerminalInputLocked)}
-                  title={terminalInputLockLabel}
-                  type="button"
-                >
-                  {isTerminalInputLocked ? (
-                    <svg aria-hidden="true" className="task-terminal-input-lock-icon" focusable="false" viewBox="0 0 16 16">
-                      <path d="M5 7V5.5a3 3 0 0 1 5.6-1.5" />
-                      <path d="M4.5 7.5h7v6h-7z" />
-                      <path d="M8 10v1.5" />
-                    </svg>
-                  ) : (
-                    <svg aria-hidden="true" className="task-terminal-input-lock-icon" focusable="false" viewBox="0 0 16 16">
-                      <path d="M5 7V5.5a3 3 0 0 1 6 0V7" />
-                      <path d="M4.5 7.5h7v6h-7z" />
-                      <path d="M8 10v1.5" />
-                    </svg>
-                  )}
-                </button>
-                <button
                   aria-label="Edit TaskDeck display name"
                   className="task-edit-title-button"
                   onClick={() => startEditingTitle(task)}
@@ -220,6 +196,30 @@ export function TaskList({
                   </svg>
                 </button>
               </div>
+              <button
+                aria-label={terminalInputLockLabel}
+                aria-pressed={isTerminalInputLocked}
+                className="task-terminal-input-lock-button"
+                data-active={isTerminalInputLocked ? "true" : "false"}
+                disabled={task.status !== "running"}
+                onClick={() => onToggleTerminalInputLock(task.id, !isTerminalInputLocked)}
+                title={terminalInputLockLabel}
+                type="button"
+              >
+                {isTerminalInputLocked ? (
+                  <svg aria-hidden="true" className="task-terminal-input-lock-icon" focusable="false" viewBox="0 0 16 16">
+                    <path d="M5 7V5.5a3 3 0 0 1 6 0V7" />
+                    <path d="M4.5 7.5h7v6h-7z" />
+                    <path d="M8 10v1.5" />
+                  </svg>
+                ) : (
+                  <svg aria-hidden="true" className="task-terminal-input-lock-icon" focusable="false" viewBox="0 0 16 16">
+                    <path d="M5 7V5.5a3 3 0 0 1 5.6-1.5" />
+                    <path d="M4.5 7.5h7v6h-7z" />
+                    <path d="M8 10v1.5" />
+                  </svg>
+                )}
+              </button>
             </article>
           );
         })}
