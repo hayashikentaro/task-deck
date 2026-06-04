@@ -1251,9 +1251,10 @@ async function buildProjectSuggestions(projectRoots = null) {
   const roots = projectRoots ?? await resolveProjectRoots();
   const suggestions = [];
   const defaultProjectRoot = roots[0] || repoRoot;
-  const rootProjectPath = hostProjectPathForRepoRoot(defaultProjectRoot);
+  const rootProjectPath = defaultProjectRoot;
+  const accessibleRootProjectPath = serverAccessibleProjectRootForHostRoot(defaultProjectRoot) ?? defaultProjectRoot;
   if (!isIgnoredProjectPath(rootProjectPath)) {
-    suggestions.push(await buildProjectSuggestion(rootProjectPath, repoRoot));
+    suggestions.push(await buildProjectSuggestion(rootProjectPath, accessibleRootProjectPath));
   }
 
   for (const projectRoot of roots) {
@@ -1290,7 +1291,7 @@ async function buildProjectSuggestions(projectRoots = null) {
   }
 
   if (suggestions.length === 0 && !isIgnoredProjectPath(rootProjectPath)) {
-    suggestions.push(await buildProjectSuggestion(rootProjectPath, repoRoot));
+    suggestions.push(await buildProjectSuggestion(rootProjectPath, accessibleRootProjectPath));
   }
 
   return dedupeProjectSuggestions(suggestions).sort((left, right) => {
