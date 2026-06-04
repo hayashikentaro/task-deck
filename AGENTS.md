@@ -101,9 +101,8 @@ Keep state, risk, diffs, review, and agent supervision central. Terminal/PTY int
 - When changing API routes or response shapes, update README and frontend types together.
 - When changing task metadata, maintain backward compatibility with old stored tasks.
 - Use `docs/issues/` for deferred product decisions, domain-model questions, and implementation tradeoffs that should stay close to the codebase. Treat these files as decision records rather than a general TODO backlog.
-- For icon-only controls such as disclosure, close, clear, expand/collapse, and directional buttons, use vector icons such as inline SVG instead of text glyphs. Keep dimensions fixed and rotate/reuse one vector when representing state changes so the visual size does not shift.
-- New interactive buttons in `apps/web` should use `apps/web/src/components/ui/Button.tsx`. Limit raw `<button>` usage to the `Button` implementation, documented exceptions, and temporary migration cases.
-- Control button appearance through `variant`, `size`, and `fullWidth`. Do not add ad-hoc colors through parent inheritance or local selectors; add or revise a `Button` variant when a new visual style is needed. Keep disabled button styling centralized in the shared Button styles.
+- Keep responsibility-specific implementation guidance in dedicated files under `docs/guides/`, not directly in this top-level router. When introducing or changing a recurring area-specific rule, create or update the relevant guide and link it from this file.
+- When changing `apps/web` UI styling or reusable UI components, read `docs/guides/ui-style.md`.
 
 ## Change Authorization Boundary
 
