@@ -103,6 +103,16 @@ Keep state, risk, diffs, review, and agent supervision central. Terminal/PTY int
 - Use `docs/issues/` for deferred product decisions, domain-model questions, and implementation tradeoffs that should stay close to the codebase. Treat these files as decision records rather than a general TODO backlog.
 - For icon-only controls such as disclosure, close, clear, expand/collapse, and directional buttons, use vector icons such as inline SVG instead of text glyphs. Keep dimensions fixed and rotate/reuse one vector when representing state changes so the visual size does not shift.
 
+## Change Authorization Boundary
+
+Only edit files that are directly required by the user's requested task.
+
+Do not turn analysis, diagnosis, recommendations, or proposals into repository changes unless the user explicitly asks for repository edits.
+
+Optional cleanup, docs updates, issue updates, rule updates, formatting sweeps, and adjacent refactors require explicit user approval.
+
+The commit-and-push rule applies only after an authorized repository change has been made. It does not authorize making repository changes.
+
 ## Standard Task Workflow
 
 For every implementation task in this repository, follow this workflow unless the user explicitly says otherwise.
