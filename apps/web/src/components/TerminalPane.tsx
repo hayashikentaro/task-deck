@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { InputComposer } from "./InputComposer";
 import { taskIdentityCssProperties } from "../taskIdentity";
 import type { OutputEvent, Task } from "../types";
+import { IconButton } from "./ui/IconButton";
 
 type TerminalPaneProps = {
   composerValue: string;
@@ -281,11 +282,11 @@ export function TerminalPane({
               {searchMatchCount} match{searchMatchCount === 1 ? "" : "es"}
             </span>
           ) : null}
-          <button aria-label="Reload log" disabled={!task} onClick={reloadLog} title="Reload log" type="button">
+          <IconButton label="Reload log" disabled={!task} size="sm" variant="ghost" onClick={reloadLog} title="Reload log">
             <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
               <path d="M13 8a5 5 0 1 1-1.46-3.54M13 2.5v4h-4" />
             </svg>
-          </button>
+          </IconButton>
         </div>
       </div>
       {terminalMessage ? <p className="terminal-message">{terminalMessage}</p> : null}
