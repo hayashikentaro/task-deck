@@ -23,14 +23,18 @@ Read this guide when:
 ## Icon-Only Controls
 
 - Icon-only controls must have accessible labels, such as `aria-label`, unless visible text is also present.
-- Prefer a future shared `IconButton` or `Button variant="icon"` path instead of ad-hoc raw buttons.
+- Use `apps/web/src/components/ui/IconButton.tsx` for icon-only buttons where the control has no visible text label.
+- `IconButton` requires `label`, which becomes the native button's `aria-label`, and accepts inline SVG as children.
+- Use its existing `variant: "panel" | "secondary" | "danger" | "ghost"` and `size: "sm" | "md"` API.
+- Prefer `IconButton` over raw `<button>` for compact toolbar and task-card controls unless there is a documented exception.
+- If a control has visible text, use `Button`, not `IconButton`.
 - Keep fixed dimensions for compact icon controls.
-- Avoid text glyphs such as `x`, `>`, or `...` when an inline SVG would be more stable.
+- Avoid text glyphs such as `×`, `▸`, or `…` when an inline SVG would be more stable.
 - For icon-only controls such as disclosure, close, clear, expand/collapse, and directional buttons, use vector icons such as inline SVG instead of text glyphs.
 - Reuse or rotate one vector when representing state changes so the visual size does not shift.
 
 ## Migration Notes
 
-Some raw compact and icon buttons remain temporarily, including TaskList compact toolbar/task-card icons, Terminal reload, Codex refresh, and InputComposer attachment/send controls.
+Some raw compact and icon buttons remain temporarily, including TaskList compact toolbar/task-card icons and InputComposer attachment/send controls.
 
-Future work should migrate them deliberately after deciding whether `Button variant="icon"` is sufficient or a dedicated `IconButton` component is needed.
+Future work should migrate them deliberately after confirming that `IconButton` fits their layout and behavior.

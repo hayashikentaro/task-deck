@@ -15,3 +15,4 @@ Reusable component responsibility and icon-only controls are covered in `docs/gu
 - Do not add ad-hoc button colors through parent color inheritance or local selectors.
 - Keep disabled button styling centralized in the `.td-button` styles.
 - Keep global `button` CSS at reset level only. It must not define application colors, borders, backgrounds, hover, focus, or disabled visuals.
+- Keep icon-only control visuals centralized in the `.td-icon-button` styles.
