@@ -1,12 +1,12 @@
 # UI Style Guide
 
-This guide records current operational rules for `apps/web` UI styling and reusable UI components. Read it before changing shared UI components, buttons, or related styles.
+This guide records current operational rules for `apps/web` UI styling, CSS ownership, and visual variants. Read it before changing shared UI styles or Button visual behavior.
+
+Reusable component responsibility and icon-only controls are covered in `docs/guides/ui-components.md`.
 
 ## Button Usage
 
-- New interactive buttons in `apps/web` should use `apps/web/src/components/ui/Button.tsx`.
-- Raw `<button>` usage is limited to the `Button` implementation, clearly documented exceptions, and temporary migration cases.
-- Use `Button` for standard action buttons. Some compact icon and special-layout controls remain raw buttons during migration; future replacements should prefer `Button` unless an exception is documented.
+- New interactive buttons in `apps/web` should use `apps/web/src/components/ui/Button.tsx`; component boundaries and raw-button exceptions are covered in `docs/guides/ui-components.md`.
 - Control Button appearance through the existing API:
   - `variant: "panel" | "secondary" | "danger" | "icon"`
   - `size: "sm" | "md"`
@@ -15,5 +15,3 @@ This guide records current operational rules for `apps/web` UI styling and reusa
 - Do not add ad-hoc button colors through parent color inheritance or local selectors.
 - Keep disabled button styling centralized in the `.td-button` styles.
 - Keep global `button` CSS at reset level only. It must not define application colors, borders, backgrounds, hover, focus, or disabled visuals.
-
-For icon-only controls such as disclosure, close, clear, expand/collapse, and directional buttons, use vector icons such as inline SVG instead of text glyphs. Keep dimensions fixed and rotate or reuse one vector for state changes so the visual size does not shift.

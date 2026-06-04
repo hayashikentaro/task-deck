@@ -102,7 +102,7 @@ Keep state, risk, diffs, review, and agent supervision central. Terminal/PTY int
 - When changing task metadata, maintain backward compatibility with old stored tasks.
 - Use `docs/issues/` for deferred product decisions, domain-model questions, and implementation tradeoffs that should stay close to the codebase. Treat these files as decision records rather than a general TODO backlog.
 - Keep responsibility-specific implementation guidance in dedicated files under `docs/guides/`, not directly in this top-level router. When introducing or changing a recurring area-specific rule, create or update the relevant guide and link it from this file.
-- When changing `apps/web` UI styling or reusable UI components, read `docs/guides/ui-style.md`.
+- When changing `apps/web` UI styling, read `docs/guides/ui-style.md`. When changing reusable UI components, shared controls, or icon-only controls, read `docs/guides/ui-components.md`.
 
 ## Change Authorization Boundary
 
