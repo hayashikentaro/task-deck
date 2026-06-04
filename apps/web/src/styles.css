@@ -944,42 +944,6 @@ dd {
   color: var(--status-muted);
 }
 
-.task-identity-token {
-  width: 18px;
-  height: 18px;
-  display: inline-grid;
-  grid-template-columns: repeat(2, 1fr);
-  grid-template-rows: repeat(2, 1fr);
-  gap: 1px;
-  padding: 1px;
-  border: 1px solid color-mix(in srgb, var(--task-terminal-border) 72%, var(--line));
-  border-radius: 5px;
-  background: rgb(0 0 0 / 18%);
-  box-shadow: 0 0 0 1px rgb(0 0 0 / 16%);
-}
-
-.task-identity-token span {
-  min-width: 0;
-  min-height: 0;
-  border-radius: 2.5px;
-}
-
-.task-identity-token span[data-cell="a"] {
-  background: var(--task-identity-a);
-}
-
-.task-identity-token span[data-cell="b"] {
-  background: var(--task-identity-b);
-}
-
-.task-identity-token span[data-cell="c"] {
-  background: var(--task-identity-c);
-}
-
-.task-identity-token span[data-cell="d"] {
-  background: var(--task-identity-d);
-}
-
 .terminal-pane {
   min-height: 0;
   display: grid;
@@ -1010,10 +974,6 @@ dd {
   display: flex;
   gap: 8px;
   align-items: center;
-}
-
-.terminal-identity-token {
-  flex: 0 0 auto;
 }
 
 .terminal-tui-choice-indicator {

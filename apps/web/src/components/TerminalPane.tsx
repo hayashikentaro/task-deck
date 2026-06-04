@@ -2,7 +2,6 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { InputComposer } from "./InputComposer";
-import { TaskIdentityToken } from "./TaskIdentityToken";
 import { taskIdentityCssProperties } from "../taskIdentity";
 import type { OutputEvent, Task } from "../types";
 
@@ -239,7 +238,6 @@ export function TerminalPane({
     <section className="terminal-pane" aria-label="Terminal" data-has-task={task ? "true" : undefined} style={taskIdentityStyle}>
       <div className="terminal-toolbar">
         <div className="terminal-observations">
-          {task ? <TaskIdentityToken className="terminal-identity-token" /> : null}
           {hasTuiChoice ? (
             <span
               aria-label="Possible TUI choice detected"
