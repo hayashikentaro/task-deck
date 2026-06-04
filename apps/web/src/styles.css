@@ -823,10 +823,6 @@ dd {
     0 10px 24px rgb(0 0 0 / 28%);
 }
 
-.task-list-item[data-selected="true"] .task-select-button {
-  padding-left: 11px;
-}
-
 .task-list-item[data-selected="true"][data-tone="risk"],
 .task-list-item[data-selected="true"][data-tone="waiting_input"],
 .task-list-item[data-selected="true"][data-tone="waiting_approval"],
@@ -945,7 +941,7 @@ dd {
   background: transparent;
   color: inherit;
   cursor: pointer;
-  padding: 10px 36px 10px 10px;
+  padding: 10px 36px 10px 14px;
   text-align: left;
 }
 
