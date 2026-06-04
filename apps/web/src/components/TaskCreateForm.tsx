@@ -5,6 +5,7 @@ import {
   type CodexPermissionLevel,
 } from "../codexPermissions";
 import type { AgentProfile, CreateTaskInput, ProjectSuggestion, SavedCodexSession, TaskDeckContext } from "../types";
+import { Button } from "./ui/Button";
 import { SelectField } from "./ui/SelectField";
 
 type TaskCreateFormProps = {
@@ -186,9 +187,9 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
             </optgroup>
           ) : null}
         </SelectField>
-        <button disabled={!canStart} type="submit">
+        <Button disabled={!canStart} fullWidth type="submit" variant="panel">
           Start Session
-        </button>
+        </Button>
       </form>
     </section>
   );
