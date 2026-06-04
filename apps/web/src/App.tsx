@@ -271,6 +271,9 @@ export function App() {
         throw new Error(payload.error || "Unable to toggle terminal input lock.");
       }
       applyTaskList(payload.tasks, getRunningTaskIdsFromMessage(payload));
+      if (!locked) {
+        setSelectedTaskId(taskId);
+      }
       return true;
     } catch (error) {
       console.error(error instanceof Error ? error.message : "Unable to toggle terminal input lock.");
