@@ -13,6 +13,18 @@ const TASK_IDENTITY_SLOTS = [
   { hue: 302, anchorSaturation: 56, anchorLightness: 58 },
   { hue: 332, anchorSaturation: 60, anchorLightness: 58 },
   { hue: 358, anchorSaturation: 60, anchorLightness: 56 },
+  { hue: 27, anchorSaturation: 58, anchorLightness: 58 },
+  { hue: 58, anchorSaturation: 52, anchorLightness: 56 },
+  { hue: 92, anchorSaturation: 46, anchorLightness: 53 },
+  { hue: 126, anchorSaturation: 44, anchorLightness: 53 },
+  { hue: 159, anchorSaturation: 45, anchorLightness: 53 },
+  { hue: 191, anchorSaturation: 50, anchorLightness: 54 },
+  { hue: 222, anchorSaturation: 54, anchorLightness: 57 },
+  { hue: 255, anchorSaturation: 53, anchorLightness: 58 },
+  { hue: 287, anchorSaturation: 54, anchorLightness: 58 },
+  { hue: 318, anchorSaturation: 58, anchorLightness: 58 },
+  { hue: 346, anchorSaturation: 60, anchorLightness: 57 },
+  { hue: 6, anchorSaturation: 60, anchorLightness: 57 },
 ] as const;
 
 const TASK_IDENTITY_SWATCH_SATURATION = 52;

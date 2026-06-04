@@ -40,7 +40,7 @@ export const AttentionState = Object.freeze({
   FAILED: "failed",
 });
 
-export const TASK_IDENTITY_COLOR_SLOT_COUNT = 12;
+export const TASK_IDENTITY_COLOR_SLOT_COUNT = 24;
 
 const dangerousPatterns = [
   /\brm\s+-rf\b/,
