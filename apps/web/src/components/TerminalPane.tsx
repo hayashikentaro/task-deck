@@ -72,7 +72,8 @@ export function TerminalPane({
     () => (task ? taskIdentityCssProperties({ taskId: task.id, identityColorSlot: task.identityColorSlot }) : undefined),
     [task?.id, task?.identityColorSlot],
   );
-  const taskTerminalSelection = taskIdentityStyle?.["--task-terminal-selection"];
+  const terminalSelectionBackground =
+    taskIdentityStyle?.["--task-terminal-selection"] ?? terminalTheme.selectionBackground;
 
   const updateTerminalMessage = useCallback(
     (value: string) => {
@@ -164,9 +165,9 @@ export function TerminalPane({
     terminal.options.theme = {
       ...terminalTheme,
       background: taskId ? transparentTerminalBackground : terminalTheme.background,
-      selectionBackground: taskTerminalSelection ?? terminalTheme.selectionBackground,
+      selectionBackground: taskId ? terminalSelectionBackground : terminalTheme.selectionBackground,
     };
-  }, [taskId, taskTerminalSelection]);
+  }, [taskId, terminalSelectionBackground]);
 
   const loadPersistedLog = useCallback((nextTask: Task | null) => {
     const terminal = terminalRef.current;
