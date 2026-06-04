@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { AgentProfile, CreateTaskInput, TaskDeckContext } from "../types";
+import { Button } from "./ui/Button";
 
 type ToolsPaneProps = {
   context: TaskDeckContext | null;
@@ -78,9 +79,9 @@ export function ToolsPane({
         <div className="tool-section" aria-labelledby="tools-terminal-title">
           <h3 id="tools-terminal-title">Terminal</h3>
           <div className="tool-action-group" data-layout="single">
-            <button type="button" onClick={openDirectInput}>
+            <Button fullWidth variant="panel" onClick={openDirectInput}>
               Open Direct Input
-            </button>
+            </Button>
           </div>
         </div>
         <div className="tool-section" aria-labelledby="tools-account-title">
@@ -88,13 +89,14 @@ export function ToolsPane({
           <div className="tool-actions" aria-label="Codex auth actions">
             {codexContainers.map((containerName) => (
               <div className="tool-action-group" data-layout="single" key={containerName}>
-                <button
+                <Button
                   disabled={!isConnected}
-                  type="button"
+                  fullWidth
+                  variant="panel"
                   onClick={() => startCodexAuthTask(containerName, "device-login")}
                 >
                   Codex login
-                </button>
+                </Button>
               </div>
             ))}
           </div>
@@ -102,17 +104,22 @@ export function ToolsPane({
         <div className="tool-section" aria-labelledby="tools-log-title">
           <h3 id="tools-log-title">Log</h3>
           <div className="tool-action-group" data-layout="single">
-            <button disabled={!canCopyLog} type="button" onClick={onCopyLog}>
+            <Button disabled={!canCopyLog} fullWidth variant="panel" onClick={onCopyLog}>
               Copy log
-            </button>
+            </Button>
           </div>
         </div>
         <div className="tool-section" aria-labelledby="tools-system-title">
           <h3 id="tools-system-title">System</h3>
           <div className="tool-action-group" data-layout="single">
-            <button disabled={!isConnected || isRestarting} type="button" onClick={() => setIsRestartConfirmOpen(true)}>
+            <Button
+              disabled={!isConnected || isRestarting}
+              fullWidth
+              variant="panel"
+              onClick={() => setIsRestartConfirmOpen(true)}
+            >
               Restart TaskDeck
-            </button>
+            </Button>
           </div>
         </div>
         {statusMessage ? <p className="tool-status">{statusMessage}</p> : null}
@@ -127,17 +134,12 @@ export function ToolsPane({
               be interrupted.
             </p>
             <div className="confirmation-actions">
-              <button
-                data-priority="secondary"
-                disabled={isRestarting}
-                onClick={() => setIsRestartConfirmOpen(false)}
-                type="button"
-              >
+              <Button disabled={isRestarting} variant="secondary" onClick={() => setIsRestartConfirmOpen(false)}>
                 Cancel
-              </button>
-              <button data-priority="danger" disabled={isRestarting} onClick={requestRestart} type="button">
+              </Button>
+              <Button disabled={isRestarting} variant="danger" onClick={requestRestart}>
                 Restart TaskDeck
-              </button>
+              </Button>
             </div>
           </div>
         </div>
