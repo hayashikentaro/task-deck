@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { taskIdentityCssProperties } from "../taskIdentity";
 import type { AttentionState, Task } from "../types";
 
@@ -30,8 +30,65 @@ export function TaskList({
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
+  const itemRefs = useRef(new Map<string, HTMLElement>());
+  const previousRectsRef = useRef(new Map<string, DOMRect>());
+  const reorderAnimationFrameRef = useRef<number | null>(null);
   const runningTaskIdSet = useMemo(() => new Set(runningTaskIds), [runningTaskIds]);
   const visibleTasks = useMemo(() => sortTasksBySupervision(tasks.filter((task) => matchesFilter(task, filter))), [filter, tasks]);
+  const visibleTaskOrderKey = visibleTasks.map((task) => task.id).join("|");
+
+  useLayoutEffect(() => {
+    if (reorderAnimationFrameRef.current !== null) {
+      cancelAnimationFrame(reorderAnimationFrameRef.current);
+      reorderAnimationFrameRef.current = null;
+    }
+
+    const nextRects = new Map<string, DOMRect>();
+    itemRefs.current.forEach((element, taskId) => {
+      nextRects.set(taskId, element.getBoundingClientRect());
+    });
+
+    const movedElements: HTMLElement[] = [];
+    if (previousRectsRef.current.size > 0 && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      itemRefs.current.forEach((element, taskId) => {
+        const previousRect = previousRectsRef.current.get(taskId);
+        const nextRect = nextRects.get(taskId);
+        if (!previousRect || !nextRect) {
+          return;
+        }
+        const deltaY = previousRect.top - nextRect.top;
+        if (Math.abs(deltaY) < 1) {
+          return;
+        }
+        element.style.transition = "none";
+        element.style.transform = `translateY(${deltaY}px)`;
+        movedElements.push(element);
+      });
+
+      if (movedElements.length > 0) {
+        reorderAnimationFrameRef.current = requestAnimationFrame(() => {
+          movedElements.forEach((element) => {
+            element.style.transition = "";
+            element.style.transform = "";
+          });
+          reorderAnimationFrameRef.current = null;
+        });
+      }
+    }
+
+    previousRectsRef.current = nextRects;
+
+    return () => {
+      if (reorderAnimationFrameRef.current !== null) {
+        cancelAnimationFrame(reorderAnimationFrameRef.current);
+        reorderAnimationFrameRef.current = null;
+      }
+      movedElements.forEach((element) => {
+        element.style.transition = "";
+        element.style.transform = "";
+      });
+    };
+  }, [visibleTaskOrderKey]);
 
   const selectTask = (taskId: string) => {
     onSelectTask(taskId);
@@ -124,6 +181,13 @@ export function TaskList({
               data-terminal-input-locked={isTerminalInputLocked ? "true" : undefined}
               data-tone={taskTone(task, runningTaskIdSet)}
               key={task.id}
+              ref={(element) => {
+                if (element) {
+                  itemRefs.current.set(task.id, element);
+                } else {
+                  itemRefs.current.delete(task.id);
+                }
+              }}
               style={taskIdentityCssProperties({ taskId: task.id, identityColorSlot: task.identityColorSlot })}
             >
               {isEditingTitle ? (

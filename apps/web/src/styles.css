@@ -804,6 +804,7 @@ dd {
     inset 2px 0 0 var(--task-card-band),
     inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 54%, transparent),
     0 0 0 1px rgb(0 0 0 / 16%);
+  transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .task-list-item[data-selected="true"] {
@@ -927,6 +928,12 @@ dd {
 
 .task-list-item[data-tone="subdued"] {
   opacity: 0.82;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-list-item {
+    transition: none;
+  }
 }
 
 .task-select-button {
