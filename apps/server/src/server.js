@@ -1250,6 +1250,12 @@ async function buildProjectRoots() {
 async function buildProjectSuggestions(projectRoots = null) {
   const roots = projectRoots ?? await resolveProjectRoots();
   const suggestions = [];
+  const defaultProjectRoot = roots[0] || repoRoot;
+  const rootProjectPath = hostProjectPathForRepoRoot(defaultProjectRoot);
+  if (!isIgnoredProjectPath(rootProjectPath)) {
+    suggestions.push(await buildProjectSuggestion(rootProjectPath, repoRoot));
+  }
+
   for (const projectRoot of roots) {
     let entries = [];
     let readableProjectRoot = projectRoot;
@@ -1275,16 +1281,16 @@ async function buildProjectSuggestions(projectRoots = null) {
     }
 
     for (const entry of entries) {
-      if (!entry.isDirectory() || shouldExcludeProjectDirectory(entry.name)) {
+      const projectPath = path.join(projectRoot, entry.name);
+      if (!entry.isDirectory() || shouldExcludeProjectDirectory(entry.name) || isIgnoredProjectPath(projectPath)) {
         continue;
       }
-      suggestions.push(await buildProjectSuggestion(path.join(projectRoot, entry.name), path.join(readableProjectRoot, entry.name)));
+      suggestions.push(await buildProjectSuggestion(projectPath, path.join(readableProjectRoot, entry.name)));
     }
   }
 
-  if (suggestions.length === 0) {
-    const defaultProjectRoot = roots[0] || repoRoot;
-    suggestions.push(await buildProjectSuggestion(hostProjectPathForRepoRoot(defaultProjectRoot), repoRoot));
+  if (suggestions.length === 0 && !isIgnoredProjectPath(rootProjectPath)) {
+    suggestions.push(await buildProjectSuggestion(rootProjectPath, repoRoot));
   }
 
   return dedupeProjectSuggestions(suggestions).sort((left, right) => {
@@ -1337,6 +1343,14 @@ function shouldExcludeProjectDirectory(name) {
     ".vite",
   ]);
   return name.startsWith(".") || excludedNames.has(name);
+}
+
+function isIgnoredProjectPath(projectPath) {
+  const ignoredSegments = new Set(["recicle.bin", "recycle.bin", "$recycle.bin", ".trash", "trash"]);
+  return String(projectPath || "")
+    .split(/[\\/]+/)
+    .filter(Boolean)
+    .some((segment) => ignoredSegments.has(segment.toLowerCase()));
 }
 
 function dedupeProjectSuggestions(suggestions) {
