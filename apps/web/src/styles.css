@@ -801,14 +801,22 @@ dd {
     linear-gradient(135deg, var(--task-card-wash) 0%, var(--task-card-wash-soft) 64%, transparent 100%),
     var(--surface-raised);
   box-shadow:
-    inset 5px 0 0 var(--task-card-band),
+    inset 2px 0 0 var(--task-card-band),
     inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 54%, transparent),
     0 0 0 1px rgb(0 0 0 / 16%);
 }
 
 .task-list-item[data-selected="true"] {
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--task-card-wash) 72%, var(--task-card-band) 28%) 0%,
+      color-mix(in srgb, var(--task-card-wash-soft) 76%, var(--task-card-border) 24%) 68%,
+      color-mix(in srgb, var(--surface-raised) 86%, var(--task-card-band) 14%) 100%
+    );
   box-shadow:
-    inset 6px 0 0 var(--task-card-band),
+    inset 8px 0 0 var(--task-card-band),
+    inset 0 0 0 1px color-mix(in srgb, var(--status-focus) 28%, transparent),
     inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 66%, transparent),
     0 0 22px var(--task-card-glow),
     0 10px 24px rgb(0 0 0 / 28%);
@@ -823,7 +831,8 @@ dd {
 .task-list-item[data-selected="true"][data-tone="waiting_approval"],
 .task-list-item[data-selected="true"][data-tone="review_ready"] {
   box-shadow:
-    inset 6px 0 0 var(--task-card-band),
+    inset 8px 0 0 var(--task-card-band),
+    inset 0 0 0 1px color-mix(in srgb, var(--status-focus) 28%, transparent),
     inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 66%, transparent),
     0 0 22px var(--task-card-glow),
     0 10px 24px rgb(0 0 0 / 28%);
@@ -857,7 +866,7 @@ dd {
 .task-list-item[data-tone="waiting_input"] {
   border-color: color-mix(in srgb, var(--task-card-border) 82%, var(--line));
   box-shadow:
-    inset 5px 0 0 var(--task-card-band),
+    inset 2px 0 0 var(--task-card-band),
     inset 0 2px 0 color-mix(in srgb, var(--task-card-band) 58%, transparent),
     inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 54%, transparent),
     0 0 0 1px rgb(0 0 0 / 16%);
@@ -866,7 +875,7 @@ dd {
 .task-list-item[data-tone="waiting_approval"] {
   border-color: color-mix(in srgb, var(--task-card-border) 82%, var(--line));
   box-shadow:
-    inset 5px 0 0 var(--task-card-band),
+    inset 2px 0 0 var(--task-card-band),
     inset 0 2px 0 color-mix(in srgb, var(--task-card-band) 58%, transparent),
     inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 54%, transparent),
     0 0 0 1px rgb(0 0 0 / 16%);
@@ -875,7 +884,7 @@ dd {
 .task-list-item[data-tone="review_ready"] {
   border-color: color-mix(in srgb, var(--task-card-border) 82%, var(--line));
   box-shadow:
-    inset 5px 0 0 var(--task-card-band),
+    inset 2px 0 0 var(--task-card-band),
     inset 0 2px 0 color-mix(in srgb, var(--task-card-band) 58%, transparent),
     inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 54%, transparent),
     0 0 0 1px rgb(0 0 0 / 16%);
@@ -884,7 +893,8 @@ dd {
 .task-list-item[data-selected="true"][data-tone="risk"],
 .task-list-item[data-selected="true"][data-tone="waiting_input"] {
   box-shadow:
-    inset 6px 0 0 var(--task-card-band),
+    inset 8px 0 0 var(--task-card-band),
+    inset 0 0 0 1px color-mix(in srgb, var(--status-focus) 28%, transparent),
     inset 0 2px 0 color-mix(in srgb, var(--task-card-band) 64%, transparent),
     inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 66%, transparent),
     0 0 22px var(--task-card-glow),
@@ -893,7 +903,8 @@ dd {
 
 .task-list-item[data-selected="true"][data-tone="waiting_approval"] {
   box-shadow:
-    inset 6px 0 0 var(--task-card-band),
+    inset 8px 0 0 var(--task-card-band),
+    inset 0 0 0 1px color-mix(in srgb, var(--status-focus) 28%, transparent),
     inset 0 2px 0 color-mix(in srgb, var(--task-card-band) 64%, transparent),
     inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 66%, transparent),
     0 0 22px var(--task-card-glow),
@@ -902,7 +913,8 @@ dd {
 
 .task-list-item[data-selected="true"][data-tone="review_ready"] {
   box-shadow:
-    inset 6px 0 0 var(--task-card-band),
+    inset 8px 0 0 var(--task-card-band),
+    inset 0 0 0 1px color-mix(in srgb, var(--status-focus) 28%, transparent),
     inset 0 2px 0 color-mix(in srgb, var(--task-card-band) 64%, transparent),
     inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 66%, transparent),
     0 0 22px var(--task-card-glow),
