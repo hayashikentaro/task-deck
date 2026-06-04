@@ -1,31 +1,33 @@
 import type { CSSProperties } from "react";
 
 const TASK_IDENTITY_SLOTS = [
-  { hue: 14, anchorSaturation: 62, anchorLightness: 58 },
-  { hue: 42, anchorSaturation: 56, anchorLightness: 58 },
-  { hue: 74, anchorSaturation: 48, anchorLightness: 54 },
-  { hue: 110, anchorSaturation: 44, anchorLightness: 52 },
-  { hue: 144, anchorSaturation: 44, anchorLightness: 54 },
-  { hue: 176, anchorSaturation: 46, anchorLightness: 52 },
-  { hue: 206, anchorSaturation: 54, anchorLightness: 56 },
-  { hue: 238, anchorSaturation: 54, anchorLightness: 58 },
-  { hue: 272, anchorSaturation: 52, anchorLightness: 58 },
-  { hue: 302, anchorSaturation: 56, anchorLightness: 58 },
-  { hue: 332, anchorSaturation: 60, anchorLightness: 58 },
-  { hue: 358, anchorSaturation: 60, anchorLightness: 56 },
+  { hue: 14 },
+  { hue: 42 },
+  { hue: 74 },
+  { hue: 110 },
+  { hue: 144 },
+  { hue: 176 },
+  { hue: 206 },
+  { hue: 238 },
+  { hue: 272 },
+  { hue: 302 },
+  { hue: 332 },
+  { hue: 358 },
 ] as const;
 
-const TASK_IDENTITY_SWATCH_SATURATION = 52;
-const TASK_IDENTITY_SWATCH_LIGHTNESS = 57;
-const TASK_IDENTITY_CELL_HUE_OFFSETS = [0, 24, -18, 180] as const;
 const TASK_IDENTITY_VISUAL_MODEL = {
   card: {
     saturation: 32,
     lightness: 18,
+    softSaturationRatio: 0.82,
   },
   terminal: {
     saturationRatio: 0.82,
     lightnessRatio: 0.68,
+    softSaturationRatio: 0.82,
+    softLightnessRatio: 0.92,
+    faintSaturationRatio: 0.68,
+    faintLightnessRatio: 0.84,
   },
   accent: {
     saturationRatio: 1.62,
@@ -56,9 +58,12 @@ const TASK_IDENTITY_VISUAL_MODEL = {
 export type TaskIdentityCssProperties = CSSProperties & Record<`--task-${string}`, string>;
 
 type TaskIdentitySlot = {
-  anchorLightness: number;
-  anchorSaturation: number;
   hue: number;
+};
+
+type Tone = {
+  saturation: number;
+  lightness: number;
 };
 
 // Identity color is separate from task state. The slot is derived only from
@@ -71,40 +76,41 @@ export function taskIdentityCssProperties(taskId: string): TaskIdentityCssProper
 
 function taskIdentityCssPropertiesForSlot(slot: TaskIdentitySlot): TaskIdentityCssProperties {
   const cardTone = compensateToneForHue(slot.hue, TASK_IDENTITY_VISUAL_MODEL.card);
+  const cardSoftTone = cardSoftToneFromCardTone(cardTone);
   const terminalTone = terminalToneFromCardTone(cardTone);
+  const terminalSoftTone = terminalSoftToneFromTerminalTone(terminalTone);
+  const terminalFaintTone = terminalFaintToneFromTerminalTone(terminalTone);
   const accentTone = accentToneFromCardTone(cardTone);
   const gradient = identityGradientAlphas(TASK_IDENTITY_VISUAL_MODEL.gradient.baseAlpha);
-  const swatches = taskIdentitySwatches(slot.hue);
+
   return {
-    "--task-identity-a": swatches[0],
-    "--task-identity-b": swatches[1],
-    "--task-identity-c": swatches[2],
-    "--task-identity-d": swatches[3],
     "--task-card-wash": hsl(slot.hue, cardTone.saturation, cardTone.lightness, gradient.base),
-    "--task-card-wash-soft": hsl(slot.hue, cardTone.saturation * 0.82, cardTone.lightness, gradient.soft),
+    "--task-card-wash-soft": hsl(slot.hue, cardSoftTone.saturation, cardSoftTone.lightness, gradient.soft),
     "--task-card-border": hsl(slot.hue, accentTone.saturation, accentTone.borderLightness, gradient.border),
     "--task-card-band": hsl(slot.hue, accentTone.saturation, accentTone.bandLightness, gradient.band),
     "--task-card-glow": hsl(slot.hue, accentTone.saturation, accentTone.bandLightness, gradient.glow),
     "--task-terminal-tint": hsl(slot.hue, terminalTone.saturation, terminalTone.lightness, gradient.base),
-    "--task-terminal-tint-soft": hsl(slot.hue, terminalTone.saturation * 0.82, terminalTone.lightness * 0.92, gradient.soft),
-    "--task-terminal-tint-faint": hsl(slot.hue, terminalTone.saturation * 0.68, terminalTone.lightness * 0.84, gradient.faint),
+    "--task-terminal-tint-soft": hsl(
+      slot.hue,
+      terminalSoftTone.saturation,
+      terminalSoftTone.lightness,
+      gradient.soft,
+    ),
+    "--task-terminal-tint-faint": hsl(
+      slot.hue,
+      terminalFaintTone.saturation,
+      terminalFaintTone.lightness,
+      gradient.faint,
+    ),
     "--task-terminal-border": hsl(slot.hue, accentTone.saturation, accentTone.borderLightness, gradient.terminalBorder),
   };
 }
 
-function taskIdentitySwatches(hue: number) {
-  return TASK_IDENTITY_CELL_HUE_OFFSETS.map((offset, index) => {
-    const nextHue = normalizeHue(hue + offset);
-    const saturation = index === 3 ? TASK_IDENTITY_SWATCH_SATURATION * 0.62 : TASK_IDENTITY_SWATCH_SATURATION;
-    const lightness = index === 3 ? TASK_IDENTITY_SWATCH_LIGHTNESS * 0.82 : TASK_IDENTITY_SWATCH_LIGHTNESS;
-    return hsl(nextHue, saturation, lightness);
-  });
-}
-
-function compensateToneForHue(hue: number, tone: { saturation: number; lightness: number }) {
+function compensateToneForHue(hue: number, tone: Tone): Tone {
   const { hueBalance } = TASK_IDENTITY_VISUAL_MODEL;
   const perceivedBrightness = helmholtzKohlrauschHueResponse(hue);
   const inverseCorrection = 1 - hueBalance.strength * (perceivedBrightness - hueBalance.reference);
+
   return {
     saturation: clamp(
       tone.saturation + (inverseCorrection - 1) * hueBalance.saturationResponse,
@@ -119,7 +125,15 @@ function compensateToneForHue(hue: number, tone: { saturation: number; lightness
   };
 }
 
-function terminalToneFromCardTone(cardTone: { saturation: number; lightness: number }) {
+function cardSoftToneFromCardTone(cardTone: Tone): Tone {
+  const { card } = TASK_IDENTITY_VISUAL_MODEL;
+  return {
+    saturation: cardTone.saturation * card.softSaturationRatio,
+    lightness: cardTone.lightness,
+  };
+}
+
+function terminalToneFromCardTone(cardTone: Tone): Tone {
   const { terminal } = TASK_IDENTITY_VISUAL_MODEL;
   return {
     saturation: cardTone.saturation * terminal.saturationRatio,
@@ -127,7 +141,23 @@ function terminalToneFromCardTone(cardTone: { saturation: number; lightness: num
   };
 }
 
-function accentToneFromCardTone(cardTone: { saturation: number; lightness: number }) {
+function terminalSoftToneFromTerminalTone(terminalTone: Tone): Tone {
+  const { terminal } = TASK_IDENTITY_VISUAL_MODEL;
+  return {
+    saturation: terminalTone.saturation * terminal.softSaturationRatio,
+    lightness: terminalTone.lightness * terminal.softLightnessRatio,
+  };
+}
+
+function terminalFaintToneFromTerminalTone(terminalTone: Tone): Tone {
+  const { terminal } = TASK_IDENTITY_VISUAL_MODEL;
+  return {
+    saturation: terminalTone.saturation * terminal.faintSaturationRatio,
+    lightness: terminalTone.lightness * terminal.faintLightnessRatio,
+  };
+}
+
+function accentToneFromCardTone(cardTone: Tone) {
   const { accent } = TASK_IDENTITY_VISUAL_MODEL;
   return {
     saturation: cardTone.saturation * accent.saturationRatio,
