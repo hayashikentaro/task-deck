@@ -58,6 +58,7 @@ export function TerminalPane({
   const hostRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const resizeAnimationFrameRef = useRef<number | null>(null);
   const selectedTaskIdRef = useRef<string | null>(null);
   const selectedTaskTerminalInputLockedRef = useRef(false);
   const directInputDebugRef = useRef(isDirectInputDebugEnabled());
@@ -83,6 +84,36 @@ export function TerminalPane({
     },
     [onTerminalMessageChange],
   );
+
+  useEffect(() => {
+    selectedTaskIdRef.current = taskId;
+  }, [taskId]);
+
+  const fitTerminalToHost = useCallback(() => {
+    const terminal = terminalRef.current;
+    const fitAddon = fitAddonRef.current;
+    if (!terminal || !fitAddon) {
+      return;
+    }
+
+    fitAddon.fit();
+
+    const taskId = selectedTaskIdRef.current;
+    if (taskId) {
+      send({ type: "resize", taskId, cols: terminal.cols, rows: terminal.rows });
+    }
+  }, [send]);
+
+  const scheduleFitTerminalToHost = useCallback(() => {
+    if (resizeAnimationFrameRef.current !== null) {
+      return;
+    }
+
+    resizeAnimationFrameRef.current = requestAnimationFrame(() => {
+      resizeAnimationFrameRef.current = null;
+      fitTerminalToHost();
+    });
+  }, [fitTerminalToHost]);
 
   useEffect(() => {
     onLogBufferChange(logBuffer);
@@ -120,43 +151,50 @@ export function TerminalPane({
         send({ type: "input", taskId, data, source: "xterm" });
       }
     });
-    fitAddon.fit();
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
+    fitTerminalToHost();
 
-    const resize = () => {
-      fitAddon.fit();
-      const taskId = selectedTaskIdRef.current;
-      if (taskId) {
-        send({ type: "resize", taskId, cols: terminal.cols, rows: terminal.rows });
-      }
-    };
-    window.addEventListener("resize", resize);
+    window.addEventListener("resize", scheduleFitTerminalToHost);
 
     return () => {
-      window.removeEventListener("resize", resize);
+      window.removeEventListener("resize", scheduleFitTerminalToHost);
+      if (resizeAnimationFrameRef.current !== null) {
+        cancelAnimationFrame(resizeAnimationFrameRef.current);
+        resizeAnimationFrameRef.current = null;
+      }
       terminal.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;
     };
-  }, [send]);
+  }, [fitTerminalToHost, scheduleFitTerminalToHost]);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) {
+      return;
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      scheduleFitTerminalToHost();
+    });
+    resizeObserver.observe(host);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [scheduleFitTerminalToHost]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
-    const fitAddon = fitAddonRef.current;
-    if (!terminal || !fitAddon) {
+    if (!terminal || !fitAddonRef.current) {
       return;
     }
 
     terminal.options.fontSize = terminalFontSize;
     window.localStorage.setItem(terminalFontSizeStorageKey, String(terminalFontSize));
-    fitAddon.fit();
-
-    const taskId = selectedTaskIdRef.current;
-    if (taskId) {
-      send({ type: "resize", taskId, cols: terminal.cols, rows: terminal.rows });
-    }
-  }, [send, terminalFontSize]);
+    fitTerminalToHost();
+  }, [fitTerminalToHost, terminalFontSize]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -224,7 +262,6 @@ export function TerminalPane({
   }, [updateTerminalMessage]);
 
   useEffect(() => {
-    selectedTaskIdRef.current = taskId;
     setSearchTerm("");
     return loadPersistedLog(task);
   }, [loadPersistedLog, taskId]);
