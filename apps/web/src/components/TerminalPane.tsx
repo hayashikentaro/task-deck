@@ -22,6 +22,7 @@ const logTailLength = 200_000;
 const terminalFontSizeStorageKey = "taskdeck.terminalFontSize";
 const terminalFontSizes = [11, 12, 13, 14, 15, 16, 18];
 const terminalComposerGrowthSlackPx = 120;
+const terminalBottomScrollTolerancePx = 4;
 const transparentTerminalBackground = "rgba(0, 0, 0, 0)";
 const terminalTheme = {
   background: "#080907",
@@ -61,6 +62,8 @@ export function TerminalPane({
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const resizeAnimationFrameRef = useRef<number | null>(null);
+  const scrollAnimationFrameRef = useRef<number | null>(null);
+  const userScrolledTerminalAwayFromBottomRef = useRef(false);
   const lastSentTerminalSizeRef = useRef<{ cols: number; rows: number } | null>(null);
   const selectedTaskIdRef = useRef<string | null>(null);
   const selectedTaskTerminalInputLockedRef = useRef(false);
@@ -90,6 +93,7 @@ export function TerminalPane({
 
   useEffect(() => {
     selectedTaskIdRef.current = taskId;
+    userScrolledTerminalAwayFromBottomRef.current = false;
     lastSentTerminalSizeRef.current = null;
   }, [taskId]);
 
@@ -122,6 +126,29 @@ export function TerminalPane({
       lastSentTerminalSizeRef.current = nextSize;
     }
   }, [send, updateTerminalSurfaceHeight]);
+
+  const getTerminalViewportElement = useCallback(() => {
+    return hostRef.current?.querySelector<HTMLElement>(".xterm-viewport") ?? null;
+  }, []);
+
+  const scrollTerminalViewportToBottomAfterFrame = useCallback(() => {
+    if (userScrolledTerminalAwayFromBottomRef.current) {
+      return;
+    }
+
+    if (scrollAnimationFrameRef.current !== null) {
+      cancelAnimationFrame(scrollAnimationFrameRef.current);
+    }
+
+    scrollAnimationFrameRef.current = requestAnimationFrame(() => {
+      scrollAnimationFrameRef.current = null;
+      const viewport = getTerminalViewportElement();
+      if (!viewport || userScrolledTerminalAwayFromBottomRef.current) {
+        return;
+      }
+      viewport.scrollTop = viewport.scrollHeight;
+    });
+  }, [getTerminalViewportElement]);
 
   const scheduleFitTerminalToHost = useCallback(() => {
     if (resizeAnimationFrameRef.current !== null) {
@@ -174,19 +201,35 @@ export function TerminalPane({
     fitAddonRef.current = fitAddon;
     fitTerminalToHost();
 
+    const viewport = getTerminalViewportElement();
+    const handleViewportScroll = () => {
+      if (!viewport) {
+        return;
+      }
+
+      const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+      userScrolledTerminalAwayFromBottomRef.current = distanceFromBottom > terminalBottomScrollTolerancePx;
+    };
+    viewport?.addEventListener("scroll", handleViewportScroll);
+
     window.addEventListener("resize", scheduleFitTerminalToHost);
 
     return () => {
       window.removeEventListener("resize", scheduleFitTerminalToHost);
+      viewport?.removeEventListener("scroll", handleViewportScroll);
       if (resizeAnimationFrameRef.current !== null) {
         cancelAnimationFrame(resizeAnimationFrameRef.current);
         resizeAnimationFrameRef.current = null;
+      }
+      if (scrollAnimationFrameRef.current !== null) {
+        cancelAnimationFrame(scrollAnimationFrameRef.current);
+        scrollAnimationFrameRef.current = null;
       }
       terminal.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;
     };
-  }, [fitTerminalToHost, scheduleFitTerminalToHost]);
+  }, [fitTerminalToHost, getTerminalViewportElement, scheduleFitTerminalToHost]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -220,6 +263,7 @@ export function TerminalPane({
     }
 
     terminal.reset();
+    userScrolledTerminalAwayFromBottomRef.current = false;
     updateTerminalMessage("");
     setLogBuffer("");
 
@@ -260,6 +304,7 @@ export function TerminalPane({
         }
         terminal.write(logs, () => {
           terminal.scrollToBottom();
+          scrollTerminalViewportToBottomAfterFrame();
         });
         setLogBuffer(logs);
         updateTerminalMessage(payload.truncated ? `Showing last ${logTailLength.toLocaleString()} characters.` : "");
@@ -273,7 +318,7 @@ export function TerminalPane({
       });
 
     return () => abortController.abort();
-  }, [updateTerminalMessage]);
+  }, [scrollTerminalViewportToBottomAfterFrame, updateTerminalMessage]);
 
   useEffect(() => {
     setSearchTerm("");
@@ -290,9 +335,12 @@ export function TerminalPane({
     }
     setLogBuffer((current) => `${current}${lastOutput.data}`.slice(-logTailLength));
     terminalRef.current?.write(lastOutput.data, () => {
-      terminalRef.current?.scrollToBottom();
+      if (!userScrolledTerminalAwayFromBottomRef.current) {
+        terminalRef.current?.scrollToBottom();
+        scrollTerminalViewportToBottomAfterFrame();
+      }
     });
-  }, [lastOutput, task?.id]);
+  }, [lastOutput, scrollTerminalViewportToBottomAfterFrame, task?.id]);
 
   const reloadLog = () => {
     loadPersistedLog(task);
