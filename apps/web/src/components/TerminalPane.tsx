@@ -63,6 +63,7 @@ export function TerminalPane({
   const resizeAnimationFrameRef = useRef<number | null>(null);
   const scrollAnimationFrameRef = useRef<number | null>(null);
   const lastSentTerminalSizeRef = useRef<{ cols: number; rows: number } | null>(null);
+  const loadedLogTaskIdRef = useRef<string | null>(null);
   const selectedTaskIdRef = useRef<string | null>(null);
   const selectedTaskTerminalInputLockedRef = useRef(false);
   const directInputDebugRef = useRef(isDirectInputDebugEnabled());
@@ -257,7 +258,7 @@ export function TerminalPane({
     };
   }, [taskId, terminalSelectionBackground]);
 
-  const loadPersistedLog = useCallback((nextTask: Task | null) => {
+  const loadPersistedLog = useCallback((nextTask: Task | null, options?: { force?: boolean }) => {
     const terminal = terminalRef.current;
 
     if (!terminal) {
@@ -265,12 +266,17 @@ export function TerminalPane({
     }
 
     fitTerminalToHost();
-    terminal.reset();
     updateTerminalMessage("");
-    setLogBuffer("");
 
     if (!nextTask) {
+      loadedLogTaskIdRef.current = null;
+      terminal.reset();
+      setLogBuffer("");
       terminal.writeln("No task selected.");
+      return undefined;
+    }
+
+    if (!options?.force && loadedLogTaskIdRef.current === nextTask.id) {
       return undefined;
     }
 
@@ -294,6 +300,7 @@ export function TerminalPane({
           : "";
         fitTerminalToHost();
         terminal.reset();
+        loadedLogTaskIdRef.current = nextTask.id;
         const leadingBlankRows = countLeadingBlankRowsForBottomAnchoredReplay(
           replayHeader ? `${replayHeader}\n${logs}` : logs,
           terminal.cols,
@@ -315,6 +322,9 @@ export function TerminalPane({
         if (abortController.signal.aborted) {
           return;
         }
+        terminal.reset();
+        loadedLogTaskIdRef.current = null;
+        setLogBuffer("");
         terminal.writeln("[TaskDeck] Unable to load task logs.");
         updateTerminalMessage(error instanceof Error ? error.message : "Unable to load task logs.");
       });
@@ -345,7 +355,7 @@ export function TerminalPane({
   }, [isTerminalViewportNearBottom, lastOutput, scrollTerminalToBottomAfterLayout, task?.id]);
 
   const reloadLog = () => {
-    loadPersistedLog(task);
+    loadPersistedLog(task, { force: true });
   };
 
   return (
