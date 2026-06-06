@@ -22,7 +22,7 @@ const logTailLength = 200_000;
 const terminalFontSizeStorageKey = "taskdeck.terminalFontSize";
 const terminalFontSizes = [11, 12, 13, 14, 15, 16, 18];
 const terminalComposerGrowthSlackPx = 120;
-const terminalBottomScrollTolerancePx = 4;
+const terminalBottomScrollTolerancePx = 16;
 const transparentTerminalBackground = "rgba(0, 0, 0, 0)";
 const terminalTheme = {
   background: "#080907",
@@ -63,7 +63,6 @@ export function TerminalPane({
   const fitAddonRef = useRef<FitAddon | null>(null);
   const resizeAnimationFrameRef = useRef<number | null>(null);
   const scrollAnimationFrameRef = useRef<number | null>(null);
-  const userScrolledTerminalAwayFromBottomRef = useRef(false);
   const lastSentTerminalSizeRef = useRef<{ cols: number; rows: number } | null>(null);
   const selectedTaskIdRef = useRef<string | null>(null);
   const selectedTaskTerminalInputLockedRef = useRef(false);
@@ -93,7 +92,6 @@ export function TerminalPane({
 
   useEffect(() => {
     selectedTaskIdRef.current = taskId;
-    userScrolledTerminalAwayFromBottomRef.current = false;
     lastSentTerminalSizeRef.current = null;
   }, [taskId]);
 
@@ -131,24 +129,38 @@ export function TerminalPane({
     return hostRef.current?.querySelector<HTMLElement>(".xterm-viewport") ?? null;
   }, []);
 
-  const scrollTerminalViewportToBottomAfterFrame = useCallback(() => {
-    if (userScrolledTerminalAwayFromBottomRef.current) {
-      return;
+  const isTerminalViewportNearBottom = useCallback(() => {
+    const viewport = getTerminalViewportElement();
+    if (!viewport) {
+      return true;
     }
 
+    const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    return distanceFromBottom <= terminalBottomScrollTolerancePx;
+  }, [getTerminalViewportElement]);
+
+  const scrollTerminalToBottom = useCallback(() => {
+    terminalRef.current?.scrollToBottom();
+    const viewport = getTerminalViewportElement();
+    if (viewport) {
+      viewport.scrollTop = viewport.scrollHeight;
+    }
+  }, [getTerminalViewportElement]);
+
+  const scrollTerminalToBottomAfterLayout = useCallback(() => {
     if (scrollAnimationFrameRef.current !== null) {
       cancelAnimationFrame(scrollAnimationFrameRef.current);
     }
 
+    scrollTerminalToBottom();
     scrollAnimationFrameRef.current = requestAnimationFrame(() => {
-      scrollAnimationFrameRef.current = null;
-      const viewport = getTerminalViewportElement();
-      if (!viewport || userScrolledTerminalAwayFromBottomRef.current) {
-        return;
-      }
-      viewport.scrollTop = viewport.scrollHeight;
+      scrollTerminalToBottom();
+      scrollAnimationFrameRef.current = requestAnimationFrame(() => {
+        scrollAnimationFrameRef.current = null;
+        scrollTerminalToBottom();
+      });
     });
-  }, [getTerminalViewportElement]);
+  }, [scrollTerminalToBottom]);
 
   const scheduleFitTerminalToHost = useCallback(() => {
     if (resizeAnimationFrameRef.current !== null) {
@@ -201,22 +213,10 @@ export function TerminalPane({
     fitAddonRef.current = fitAddon;
     fitTerminalToHost();
 
-    const viewport = getTerminalViewportElement();
-    const handleViewportScroll = () => {
-      if (!viewport) {
-        return;
-      }
-
-      const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-      userScrolledTerminalAwayFromBottomRef.current = distanceFromBottom > terminalBottomScrollTolerancePx;
-    };
-    viewport?.addEventListener("scroll", handleViewportScroll);
-
     window.addEventListener("resize", scheduleFitTerminalToHost);
 
     return () => {
       window.removeEventListener("resize", scheduleFitTerminalToHost);
-      viewport?.removeEventListener("scroll", handleViewportScroll);
       if (resizeAnimationFrameRef.current !== null) {
         cancelAnimationFrame(resizeAnimationFrameRef.current);
         resizeAnimationFrameRef.current = null;
@@ -229,7 +229,7 @@ export function TerminalPane({
       terminalRef.current = null;
       fitAddonRef.current = null;
     };
-  }, [fitTerminalToHost, getTerminalViewportElement, scheduleFitTerminalToHost]);
+  }, [fitTerminalToHost, scheduleFitTerminalToHost]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -263,7 +263,6 @@ export function TerminalPane({
     }
 
     terminal.reset();
-    userScrolledTerminalAwayFromBottomRef.current = false;
     updateTerminalMessage("");
     setLogBuffer("");
 
@@ -303,8 +302,7 @@ export function TerminalPane({
           terminal.writeln(replayHeader);
         }
         terminal.write(logs, () => {
-          terminal.scrollToBottom();
-          scrollTerminalViewportToBottomAfterFrame();
+          scrollTerminalToBottomAfterLayout();
         });
         setLogBuffer(logs);
         updateTerminalMessage(payload.truncated ? `Showing last ${logTailLength.toLocaleString()} characters.` : "");
@@ -318,7 +316,7 @@ export function TerminalPane({
       });
 
     return () => abortController.abort();
-  }, [scrollTerminalViewportToBottomAfterFrame, updateTerminalMessage]);
+  }, [scrollTerminalToBottomAfterLayout, updateTerminalMessage]);
 
   useEffect(() => {
     setSearchTerm("");
@@ -333,14 +331,14 @@ export function TerminalPane({
     if (!lastOutput || lastOutput.taskId !== task?.id) {
       return;
     }
+    const shouldStickToBottom = isTerminalViewportNearBottom();
     setLogBuffer((current) => `${current}${lastOutput.data}`.slice(-logTailLength));
     terminalRef.current?.write(lastOutput.data, () => {
-      if (!userScrolledTerminalAwayFromBottomRef.current) {
-        terminalRef.current?.scrollToBottom();
-        scrollTerminalViewportToBottomAfterFrame();
+      if (shouldStickToBottom) {
+        scrollTerminalToBottomAfterLayout();
       }
     });
-  }, [lastOutput, scrollTerminalViewportToBottomAfterFrame, task?.id]);
+  }, [isTerminalViewportNearBottom, lastOutput, scrollTerminalToBottomAfterLayout, task?.id]);
 
   const reloadLog = () => {
     loadPersistedLog(task);
