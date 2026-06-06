@@ -59,7 +59,6 @@ export function TerminalPane({
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const resizeAnimationFrameRef = useRef<number | null>(null);
-  const settledHostResizeTimeoutRef = useRef<number | null>(null);
   const lastSentTerminalSizeRef = useRef<{ cols: number; rows: number } | null>(null);
   const selectedTaskIdRef = useRef<string | null>(null);
   const selectedTaskTerminalInputLockedRef = useRef(false);
@@ -121,17 +120,6 @@ export function TerminalPane({
     });
   }, [fitTerminalToHost]);
 
-  const scheduleSettledHostFit = useCallback(() => {
-    if (settledHostResizeTimeoutRef.current !== null) {
-      window.clearTimeout(settledHostResizeTimeoutRef.current);
-    }
-
-    settledHostResizeTimeoutRef.current = window.setTimeout(() => {
-      settledHostResizeTimeoutRef.current = null;
-      scheduleFitTerminalToHost();
-    }, 400);
-  }, [scheduleFitTerminalToHost]);
-
   useEffect(() => {
     onLogBufferChange(logBuffer);
   }, [logBuffer, onLogBufferChange]);
@@ -180,35 +168,11 @@ export function TerminalPane({
         cancelAnimationFrame(resizeAnimationFrameRef.current);
         resizeAnimationFrameRef.current = null;
       }
-      if (settledHostResizeTimeoutRef.current !== null) {
-        window.clearTimeout(settledHostResizeTimeoutRef.current);
-        settledHostResizeTimeoutRef.current = null;
-      }
       terminal.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;
     };
   }, [fitTerminalToHost, scheduleFitTerminalToHost]);
-
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host) {
-      return;
-    }
-
-    const resizeObserver = new ResizeObserver(() => {
-      scheduleSettledHostFit();
-    });
-    resizeObserver.observe(host);
-
-    return () => {
-      resizeObserver.disconnect();
-      if (settledHostResizeTimeoutRef.current !== null) {
-        window.clearTimeout(settledHostResizeTimeoutRef.current);
-        settledHostResizeTimeoutRef.current = null;
-      }
-    };
-  }, [scheduleSettledHostFit]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
