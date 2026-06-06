@@ -325,7 +325,9 @@ export function TerminalPane({
         </div>
       </div>
       {terminalMessage ? <p className="terminal-message">{terminalMessage}</p> : null}
-      <div className="terminal-host" ref={hostRef} />
+      <div className="terminal-host">
+        <div className="terminal-fit-host" ref={hostRef} />
+      </div>
       <InputComposer
         isConnected={isConnected}
         task={task}
