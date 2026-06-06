@@ -177,7 +177,6 @@ export function markTaskTerminalInputLocked(task, lockedAt = new Date().toISOStr
   return {
     ...task,
     terminalInputLockedAt: lockedAt,
-    updatedAt: lockedAt,
   };
 }
 
