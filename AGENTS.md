@@ -42,20 +42,20 @@ The long-term goal is for TaskDeck to become an operational cognition system for
 
 Dangerous paths should be structurally constrained where possible. Inside safe capability boundaries, AI agents should be able to operate freely.
 
-## Experimental Direction: Session Identity First Cards
+## UI Direction: Session Identity First Cards
 
-This branch is an experiment in session-identity-first task cards. The experiment is documented in `docs/issues/0015-session-identity-first-cards.md`.
+TaskDeck currently treats stable task/session identity as an important card-level visual layer. In real multi-agent use, quickly recognizing which task card maps to which terminal/session is part of safe supervision.
 
-The working hypothesis is that, in real multi-agent use, the cost of identifying which task card maps to which running terminal/session can be higher than the cost of urgent-task triage. Agents working on this branch should therefore avoid drifting back to a card design where Needs you / Not now state dominates the whole card surface.
+For this direction:
 
-For this experiment:
-
-- Stable task/session identity is allowed to be the primary card-level visual layer.
-- Needs you / Not now supervision remains important, but should be expressed through ordering, badges, acknowledgement controls, and compact state markers.
+- Stable task/session identity may be the primary card-level visual layer.
+- Supervision remains semantically central, but should be expressed through ordering, badges, acknowledgement controls, compact state markers, and action prompts.
 - `attentionState` remains the primary supervision signal for data, sorting, and action prompts; it should not automatically imply full-card state coloration.
+- Avoid drifting back to a design where full-card Needs you / Not now coloration dominates the card surface.
+- Selected task state should be visually distinct from task identity color while still feeling like the same identity is active.
+- Preserve the visual link between task card identity and terminal identity tint.
 - Do not encode session identity and supervision urgency as competing full-card color systems.
-- Preserve the terminal-side identity link through the header identity token and low-saturation terminal tint.
-- Do not remove supervision logic, PTY behavior, task persistence, or existing task metadata semantics as part of this visual experiment.
+- Do not remove supervision logic, PTY behavior, task persistence, or existing task metadata semantics as part of visual work.
 
 ## Current Project State
 
@@ -72,10 +72,18 @@ docs/architecture.md  Project architecture map and refactoring seams
 
 `.taskdeck/` is local runtime state for persisted tasks, logs, presets, and related data. It should not be committed.
 
+## Issues And Repository Docs
+
+GitHub Issues are the source of truth for actionable work, open/closed state, task status, and backlog.
+
+Repository-local docs should not become a parallel issue tracker or task status system. Use them for durable design decisions, architectural notes, product context, setup/API references, and implementation tradeoffs that should live close to the code.
+
+If `docs/issues/` is referenced, treat it as historical or decision-record-like context, not as a general backlog. Do not add task status bookkeeping there when a GitHub Issue is the appropriate source of truth.
+
 ## Domain Concepts
 
 - Task: the central supervision unit, with process status, agent state, risk, logs, metadata, and diff context.
-- Task/session identity: the stable visual link between a task card and its terminal/session. On session-identity-first branches, this may be the dominant card-level visual channel.
+- Task/session identity: the stable visual link between a task card and its terminal/session. This may be the dominant card-level visual channel.
 - Supervision state: whether a task may need attention. This is still driven by TaskDeck state such as `attentionState`, but it may be shown through compact UI channels rather than full-card coloration.
 - PTY: the pseudo-terminal process behind a running task. It is an interaction mechanism, not the product identity.
 - Agent profile: a configured launch profile such as Codex, Goose, container agents, zsh, or custom commands.
@@ -85,7 +93,7 @@ docs/architecture.md  Project architecture map and refactoring seams
 - Saved Codex session: a best-effort session derived from TaskDeck task metadata, not from Codex internal storage.
 - Diagnostics: server/UI checks for Docker, configured agent containers, and configured workspaces.
 
-Keep state, risk, diffs, review, and agent supervision central. Terminal/PTY interaction is a means to supervise work, not a chat surface or decorative terminal skin. On session-identity-first branches, keep supervision semantics central while allowing session identity to dominate the card's first visual read.
+Keep state, risk, diffs, review, and agent supervision central. Terminal/PTY interaction is a means to supervise work, not a chat surface or decorative terminal skin. Keep supervision semantics central while allowing session identity to dominate the card's first visual read.
 
 ## Working Guidelines
 
@@ -95,12 +103,14 @@ Keep state, risk, diffs, review, and agent supervision central. Terminal/PTY int
 - Prefer existing project conventions over introducing new structure.
 - Avoid broad refactors unless they are required for the task.
 - Add or update tests when changing behavior once a test setup exists.
-- Document important setup, API, or workflow changes in the repository rather than only in chat.
+- Document important setup, API, config, persisted metadata, task semantics, or user-facing workflow changes in the repository rather than only in chat.
+- Documentation updates are usually not required for CSS-only visual tuning, spacing, focus rings, animation timing/easing, or small local affordance adjustments unless the change alters user-facing workflow or durable design guidance.
 - Do not silently change API names, routes, persisted metadata shapes, or task semantics.
 - When removing a feature or UI path, remove or clearly deprecate related backend handlers, config fields, types, docs, and examples so dead code is not mistaken for supported behavior.
-- When changing API routes or response shapes, update README and frontend types together.
+- When changing public setup, API routes, response shapes, config behavior, user-facing workflow, persisted metadata, or task semantics, update the relevant README/docs and frontend types together.
 - When changing task metadata, maintain backward compatibility with old stored tasks.
-- Use `docs/issues/` for deferred product decisions, domain-model questions, and implementation tradeoffs that should stay close to the codebase. Treat these files as decision records rather than a general TODO backlog.
+- Use GitHub Issues for actionable follow-up work and backlog items.
+- Use repo-local docs for durable context and decisions. Treat `docs/issues/` as historical or decision-record-like context, not as the current backlog.
 - Keep responsibility-specific implementation guidance in dedicated files under `docs/guides/`, not directly in this top-level router. When introducing or changing a recurring area-specific rule, create or update the relevant guide and link it from this file.
 - When changing `apps/web` UI styling, read `docs/guides/ui-style.md`. When changing reusable UI components, shared controls, or icon-only controls, read `docs/guides/ui-components.md`.
 
@@ -153,7 +163,9 @@ When finished:
 
 Agents working in this repository should read and follow this `AGENTS.md` before making changes.
 
-Task-specific prompts should focus on the requested change, relevant context, non-goals, acceptance criteria, and task-specific verification. Repository-wide workflow rules are defined in this file.
+Task-specific prompts should focus on the goal, allowed files, current context, required behavior, non-goals, acceptance/manual QA, and task-specific verification.
+
+Repository-wide workflow, commit/push behavior, and standard reporting live in this file and do not need to be repeated in every prompt. Repeating key constraints is still fine for risky or high-blast-radius tasks.
 
 If a task-specific user instruction conflicts with this file, stop and report the conflict unless the user's instruction clearly and safely overrides a non-safety process preference.
 
@@ -164,7 +176,7 @@ If a task-specific user instruction conflicts with this file, stop and report th
 - PTY process lifecycle, interrupts, server restarts, and task clearing should remain predictable.
 - WebSocket task updates should keep task lists, selected task behavior, terminal output, and session metadata in sync.
 - Treat `attentionState` as the supervision UI's primary signal for whether the user should look at a task. Prefer `may_need_user` over hiding possibly blocked tasks as merely running.
-- On session-identity-first branches, `attentionState` remains primary for supervision semantics, sorting, and action prompts, but must not by itself pull the visual design back to full-card Needs you / Not now coloration.
+- `attentionState` remains primary for supervision semantics, sorting, and action prompts, but must not by itself pull the visual design back to full-card Needs you / Not now coloration.
 - Agent state should be driven primarily by TaskDeck events such as start, input, PTY output activity, and exit. Do not infer thinking from silence; quiet running PTYs should keep their last known supervisor state until a stronger signal arrives. Treat TUI text matching as a fallback for explicit user-action prompts only.
 - Do not add one-off Goose/Codex spinner phrases to infer thinking. Prefer TaskDeck-owned events, process observations, or explicit action prompts. If TUI fallback is used, include reason/source/confidence metadata.
 - Keep agent state inference split by adapter (`goose`, `codex`, and `generic`) so Goose behavior can be tuned without accidentally changing Codex supervision semantics.
@@ -185,7 +197,7 @@ If a task-specific user instruction conflicts with this file, stop and report th
 - Do not commit generated runtime state unless explicitly requested.
 - Do not delete untracked files unless the task explicitly asks for cleanup and the file is clearly generated.
 - If unexpected untracked files exist, report them rather than modifying them.
-- Current observed untracked path: `packages/core/src/tools/`. Do not touch it unless explicitly requested.
+- Always use the current `git status --short --branch` output to identify unexpected untracked files. Do not modify or delete them unless explicitly requested.
 
 ## Commit and Push Rule
 

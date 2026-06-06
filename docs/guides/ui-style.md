@@ -4,6 +4,8 @@ This guide records current operational rules for `apps/web` UI styling, CSS owne
 
 Reusable component responsibility and icon-only controls are covered in `docs/guides/ui-components.md`.
 
+Small CSS-only tuning such as spacing, focus rings, animation timing, and local affordance adjustments usually does not require repository docs updates unless it creates or changes a recurring style rule.
+
 ## Button Usage
 
 - New interactive buttons in `apps/web` should use `apps/web/src/components/ui/Button.tsx`; component boundaries and raw-button exceptions are covered in `docs/guides/ui-components.md`.
@@ -17,3 +19,4 @@ Reusable component responsibility and icon-only controls are covered in `docs/gu
 - Keep global `button` CSS at reset level only. It must not define application colors, borders, backgrounds, hover, focus, or disabled visuals.
 - Keep icon-only control visuals centralized in the `.td-icon-button` styles.
 - Keep select control visuals under shared select/control classes such as `.td-select-field__control`, not local parent selectors.
+- Native select visual tuning should stay within the shared select/control style boundary; custom dropdown behavior is a separate component/product decision.
