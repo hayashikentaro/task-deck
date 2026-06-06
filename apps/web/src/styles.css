@@ -1334,7 +1334,7 @@ dd {
   bottom: 0;
   width: 100%;
   max-width: 100%;
-  height: auto;
+  height: 100%;
   min-height: 100%;
 }
 
