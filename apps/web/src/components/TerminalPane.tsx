@@ -59,6 +59,7 @@ export function TerminalPane({
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const resizeAnimationFrameRef = useRef<number | null>(null);
+  const lastSentTerminalSizeRef = useRef<{ cols: number; rows: number } | null>(null);
   const selectedTaskIdRef = useRef<string | null>(null);
   const selectedTaskTerminalInputLockedRef = useRef(false);
   const directInputDebugRef = useRef(isDirectInputDebugEnabled());
@@ -87,6 +88,7 @@ export function TerminalPane({
 
   useEffect(() => {
     selectedTaskIdRef.current = taskId;
+    lastSentTerminalSizeRef.current = null;
   }, [taskId]);
 
   const fitTerminalToHost = useCallback(() => {
@@ -99,14 +101,17 @@ export function TerminalPane({
     fitAddon.fit();
 
     const taskId = selectedTaskIdRef.current;
-    if (taskId) {
-      send({ type: "resize", taskId, cols: terminal.cols, rows: terminal.rows });
+    const nextSize = { cols: terminal.cols, rows: terminal.rows };
+    const previousSize = lastSentTerminalSizeRef.current;
+    if (taskId && (!previousSize || previousSize.cols !== nextSize.cols || previousSize.rows !== nextSize.rows)) {
+      send({ type: "resize", taskId, cols: nextSize.cols, rows: nextSize.rows });
+      lastSentTerminalSizeRef.current = nextSize;
     }
   }, [send]);
 
   const scheduleFitTerminalToHost = useCallback(() => {
     if (resizeAnimationFrameRef.current !== null) {
-      return;
+      cancelAnimationFrame(resizeAnimationFrameRef.current);
     }
 
     resizeAnimationFrameRef.current = requestAnimationFrame(() => {
