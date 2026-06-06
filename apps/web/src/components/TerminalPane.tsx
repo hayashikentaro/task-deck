@@ -55,6 +55,7 @@ export function TerminalPane({
   onTerminalMessageChange,
   send,
 }: TerminalPaneProps) {
+  const terminalViewportRef = useRef<HTMLDivElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -92,13 +93,14 @@ export function TerminalPane({
   }, [taskId]);
 
   const updateTerminalSurfaceHeight = useCallback(() => {
-    const host = hostRef.current;
-    if (!host) {
+    const surfaceHost = hostRef.current;
+    if (!surfaceHost) {
       return;
     }
 
-    const surfaceHeight = Math.max(window.innerHeight, host.clientHeight);
-    host.style.setProperty("--terminal-surface-height", `${surfaceHeight}px`);
+    const visibleHeight = terminalViewportRef.current?.clientHeight ?? surfaceHost.clientHeight;
+    const surfaceHeight = Math.max(window.innerHeight, visibleHeight);
+    surfaceHost.style.setProperty("--terminal-surface-height", `${surfaceHeight}px`);
   }, []);
 
   const fitTerminalToHost = useCallback(() => {
@@ -337,7 +339,9 @@ export function TerminalPane({
       </div>
       {terminalMessage ? <p className="terminal-message">{terminalMessage}</p> : null}
       <div className="terminal-host">
-        <div className="terminal-fit-host" ref={hostRef} />
+        <div className="terminal-fit-host" ref={terminalViewportRef}>
+          <div className="terminal-surface-host" ref={hostRef} />
+        </div>
       </div>
       <InputComposer
         isConnected={isConnected}

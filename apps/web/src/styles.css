@@ -1328,7 +1328,7 @@ dd {
   overflow: hidden;
 }
 
-.terminal-fit-host .xterm {
+.terminal-surface-host {
   position: absolute;
   inset-inline: 0;
   bottom: 0;
@@ -1336,11 +1336,19 @@ dd {
   max-width: 100%;
   height: var(--terminal-surface-height, 100%);
   min-height: var(--terminal-surface-height, 100%);
+  overflow: hidden;
 }
 
-.terminal-fit-host .xterm,
-.terminal-fit-host .xterm-viewport,
-.terminal-fit-host .xterm-screen {
+.terminal-surface-host .xterm {
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  min-height: 100%;
+}
+
+.terminal-surface-host .xterm,
+.terminal-surface-host .xterm-viewport,
+.terminal-surface-host .xterm-screen {
   background: transparent;
 }
 
