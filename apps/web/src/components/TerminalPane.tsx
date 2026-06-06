@@ -242,9 +242,20 @@ export function TerminalPane({
           return;
         }
         const logs = payload.logs || "";
+        const replayHeader = payload.truncated
+          ? `[TaskDeck] Showing last ${logTailLength.toLocaleString()} characters of persisted log.`
+          : "";
         terminal.reset();
-        if (payload.truncated) {
-          terminal.writeln(`[TaskDeck] Showing last ${logTailLength.toLocaleString()} characters of persisted log.`);
+        const leadingBlankRows = countLeadingBlankRowsForBottomAnchoredReplay(
+          replayHeader ? `${replayHeader}\n${logs}` : logs,
+          terminal.cols,
+          terminal.rows,
+        );
+        if (leadingBlankRows > 0) {
+          terminal.write("\r\n".repeat(leadingBlankRows));
+        }
+        if (replayHeader) {
+          terminal.writeln(replayHeader);
         }
         terminal.write(logs, () => {
           terminal.scrollToBottom();
@@ -374,6 +385,27 @@ function countMatches(value: string, searchTerm: string) {
   }
 
   return count;
+}
+
+function countLeadingBlankRowsForBottomAnchoredReplay(value: string, cols: number, rows: number) {
+  if (!value || cols <= 0 || rows <= 0) {
+    return 0;
+  }
+
+  const replayRows = countTerminalRows(value, cols);
+  return Math.max(0, rows - replayRows);
+}
+
+function countTerminalRows(value: string, cols: number) {
+  return value
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .reduce((rowCount, line) => rowCount + Math.max(1, Math.ceil(visibleTerminalTextLength(line) / cols)), 0);
+}
+
+function visibleTerminalTextLength(value: string) {
+  return value.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "").length;
 }
 
 function detectTuiChoice(value: string) {
