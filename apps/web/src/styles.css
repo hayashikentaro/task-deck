@@ -1334,8 +1334,8 @@ dd {
   bottom: 0;
   width: 100%;
   max-width: 100%;
-  height: var(--terminal-surface-height, 4096px);
-  min-height: var(--terminal-surface-height, 4096px);
+  height: var(--terminal-surface-height, 100%);
+  min-height: var(--terminal-surface-height, 100%);
   overflow: hidden;
 }
 

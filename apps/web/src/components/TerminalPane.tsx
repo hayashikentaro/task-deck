@@ -21,7 +21,6 @@ type TerminalPaneProps = {
 const logTailLength = 200_000;
 const terminalFontSizeStorageKey = "taskdeck.terminalFontSize";
 const terminalFontSizes = [11, 12, 13, 14, 15, 16, 18];
-const terminalSurfaceHeightBudgetPx = 4096;
 const transparentTerminalBackground = "rgba(0, 0, 0, 0)";
 const terminalTheme = {
   background: "#080907",
@@ -99,7 +98,9 @@ export function TerminalPane({
       return;
     }
 
-    surfaceHost.style.setProperty("--terminal-surface-height", `${terminalSurfaceHeightBudgetPx}px`);
+    const visibleHeight = terminalViewportRef.current?.clientHeight ?? surfaceHost.clientHeight;
+    const surfaceHeight = Math.max(window.innerHeight, visibleHeight);
+    surfaceHost.style.setProperty("--terminal-surface-height", `${surfaceHeight}px`);
   }, []);
 
   const fitTerminalToHost = useCallback(() => {
