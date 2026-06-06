@@ -21,7 +21,6 @@ type TerminalPaneProps = {
 const logTailLength = 200_000;
 const terminalFontSizeStorageKey = "taskdeck.terminalFontSize";
 const terminalFontSizes = [11, 12, 13, 14, 15, 16, 18];
-const terminalComposerGrowthSlackPx = 120;
 const terminalBottomScrollTolerancePx = 16;
 const transparentTerminalBackground = "rgba(0, 0, 0, 0)";
 const terminalTheme = {
@@ -95,17 +94,6 @@ export function TerminalPane({
     lastSentTerminalSizeRef.current = null;
   }, [taskId]);
 
-  const updateTerminalSurfaceHeight = useCallback(() => {
-    const surfaceHost = hostRef.current;
-    if (!surfaceHost) {
-      return;
-    }
-
-    const visibleHeight = terminalViewportRef.current?.clientHeight ?? surfaceHost.clientHeight;
-    const surfaceHeight = Math.ceil(visibleHeight + terminalComposerGrowthSlackPx);
-    surfaceHost.style.setProperty("--terminal-surface-height", `${surfaceHeight}px`);
-  }, []);
-
   const fitTerminalToHost = useCallback(() => {
     const terminal = terminalRef.current;
     const fitAddon = fitAddonRef.current;
@@ -113,7 +101,6 @@ export function TerminalPane({
       return;
     }
 
-    updateTerminalSurfaceHeight();
     fitAddon.fit();
 
     const taskId = selectedTaskIdRef.current;
@@ -123,7 +110,7 @@ export function TerminalPane({
       send({ type: "resize", taskId, cols: nextSize.cols, rows: nextSize.rows });
       lastSentTerminalSizeRef.current = nextSize;
     }
-  }, [send, updateTerminalSurfaceHeight]);
+  }, [send]);
 
   const getTerminalViewportElement = useCallback(() => {
     return hostRef.current?.querySelector<HTMLElement>(".xterm-viewport") ?? null;
@@ -213,10 +200,20 @@ export function TerminalPane({
     fitAddonRef.current = fitAddon;
     fitTerminalToHost();
 
+    const terminalViewport = terminalViewportRef.current;
+    const resizeObserver =
+      terminalViewport && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            scheduleFitTerminalToHost();
+          })
+        : null;
+    resizeObserver?.observe(terminalViewport);
+
     window.addEventListener("resize", scheduleFitTerminalToHost);
 
     return () => {
       window.removeEventListener("resize", scheduleFitTerminalToHost);
+      resizeObserver?.disconnect();
       if (resizeAnimationFrameRef.current !== null) {
         cancelAnimationFrame(resizeAnimationFrameRef.current);
         resizeAnimationFrameRef.current = null;
@@ -262,6 +259,7 @@ export function TerminalPane({
       return undefined;
     }
 
+    fitTerminalToHost();
     terminal.reset();
     updateTerminalMessage("");
     setLogBuffer("");
@@ -289,6 +287,7 @@ export function TerminalPane({
         const replayHeader = payload.truncated
           ? `[TaskDeck] Showing last ${logTailLength.toLocaleString()} characters of persisted log.`
           : "";
+        fitTerminalToHost();
         terminal.reset();
         const leadingBlankRows = countLeadingBlankRowsForBottomAnchoredReplay(
           replayHeader ? `${replayHeader}\n${logs}` : logs,
@@ -316,7 +315,7 @@ export function TerminalPane({
       });
 
     return () => abortController.abort();
-  }, [scrollTerminalToBottomAfterLayout, updateTerminalMessage]);
+  }, [fitTerminalToHost, scrollTerminalToBottomAfterLayout, updateTerminalMessage]);
 
   useEffect(() => {
     setSearchTerm("");
