@@ -21,7 +21,6 @@ type TerminalPaneProps = {
 const logTailLength = 200_000;
 const terminalFontSizeStorageKey = "taskdeck.terminalFontSize";
 const terminalFontSizes = [11, 12, 13, 14, 15, 16, 18];
-const terminalComposerGrowthSlackPx = 120;
 const terminalBottomScrollTolerancePx = 16;
 const transparentTerminalBackground = "rgba(0, 0, 0, 0)";
 const terminalTheme = {
@@ -64,6 +63,7 @@ export function TerminalPane({
   const resizeAnimationFrameRef = useRef<number | null>(null);
   const scrollAnimationFrameRef = useRef<number | null>(null);
   const lastSentTerminalSizeRef = useRef<{ cols: number; rows: number } | null>(null);
+  const shouldStickToTerminalBottomRef = useRef(true);
   const selectedTaskIdRef = useRef<string | null>(null);
   const selectedTaskTerminalInputLockedRef = useRef(false);
   const directInputDebugRef = useRef(isDirectInputDebugEnabled());
@@ -93,18 +93,8 @@ export function TerminalPane({
   useEffect(() => {
     selectedTaskIdRef.current = taskId;
     lastSentTerminalSizeRef.current = null;
+    shouldStickToTerminalBottomRef.current = true;
   }, [taskId]);
-
-  const updateTerminalSurfaceHeight = useCallback(() => {
-    const surfaceHost = hostRef.current;
-    if (!surfaceHost) {
-      return;
-    }
-
-    const visibleHeight = terminalViewportRef.current?.clientHeight ?? surfaceHost.clientHeight;
-    const surfaceHeight = Math.ceil(visibleHeight + terminalComposerGrowthSlackPx);
-    surfaceHost.style.setProperty("--terminal-surface-height", `${surfaceHeight}px`);
-  }, []);
 
   const fitTerminalToHost = useCallback(() => {
     const terminal = terminalRef.current;
@@ -113,7 +103,6 @@ export function TerminalPane({
       return;
     }
 
-    updateTerminalSurfaceHeight();
     fitAddon.fit();
 
     const taskId = selectedTaskIdRef.current;
@@ -123,7 +112,7 @@ export function TerminalPane({
       send({ type: "resize", taskId, cols: nextSize.cols, rows: nextSize.rows });
       lastSentTerminalSizeRef.current = nextSize;
     }
-  }, [send, updateTerminalSurfaceHeight]);
+  }, [send]);
 
   const getTerminalViewportElement = useCallback(() => {
     return hostRef.current?.querySelector<HTMLElement>(".xterm-viewport") ?? null;
@@ -145,6 +134,7 @@ export function TerminalPane({
     if (viewport) {
       viewport.scrollTop = viewport.scrollHeight;
     }
+    shouldStickToTerminalBottomRef.current = true;
   }, [getTerminalViewportElement]);
 
   const scrollTerminalToBottomAfterLayout = useCallback(() => {
@@ -162,7 +152,9 @@ export function TerminalPane({
     });
   }, [scrollTerminalToBottom]);
 
-  const scheduleFitTerminalToHost = useCallback(() => {
+  const scheduleFitTerminalToHost = useCallback((options?: { preserveBottom?: boolean }) => {
+    const shouldPreserveBottom = options?.preserveBottom ? shouldStickToTerminalBottomRef.current : false;
+
     if (resizeAnimationFrameRef.current !== null) {
       cancelAnimationFrame(resizeAnimationFrameRef.current);
     }
@@ -170,8 +162,11 @@ export function TerminalPane({
     resizeAnimationFrameRef.current = requestAnimationFrame(() => {
       resizeAnimationFrameRef.current = null;
       fitTerminalToHost();
+      if (shouldPreserveBottom) {
+        scrollTerminalToBottomAfterLayout();
+      }
     });
-  }, [fitTerminalToHost]);
+  }, [fitTerminalToHost, scrollTerminalToBottomAfterLayout]);
 
   useEffect(() => {
     onLogBufferChange(logBuffer);
@@ -213,10 +208,30 @@ export function TerminalPane({
     fitAddonRef.current = fitAddon;
     fitTerminalToHost();
 
-    window.addEventListener("resize", scheduleFitTerminalToHost);
+    const terminalViewport = terminalViewportRef.current;
+    const resizeObserver =
+      terminalViewport && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            scheduleFitTerminalToHost({ preserveBottom: true });
+          })
+        : null;
+    resizeObserver?.observe(terminalViewport);
+
+    const viewport = getTerminalViewportElement();
+    const updateBottomStickiness = () => {
+      shouldStickToTerminalBottomRef.current = isTerminalViewportNearBottom();
+    };
+    viewport?.addEventListener("scroll", updateBottomStickiness);
+
+    const handleWindowResize = () => {
+      scheduleFitTerminalToHost({ preserveBottom: true });
+    };
+    window.addEventListener("resize", handleWindowResize);
 
     return () => {
-      window.removeEventListener("resize", scheduleFitTerminalToHost);
+      window.removeEventListener("resize", handleWindowResize);
+      resizeObserver?.disconnect();
+      viewport?.removeEventListener("scroll", updateBottomStickiness);
       if (resizeAnimationFrameRef.current !== null) {
         cancelAnimationFrame(resizeAnimationFrameRef.current);
         resizeAnimationFrameRef.current = null;
@@ -229,7 +244,7 @@ export function TerminalPane({
       terminalRef.current = null;
       fitAddonRef.current = null;
     };
-  }, [fitTerminalToHost, scheduleFitTerminalToHost]);
+  }, [fitTerminalToHost, getTerminalViewportElement, isTerminalViewportNearBottom, scheduleFitTerminalToHost]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -239,8 +254,12 @@ export function TerminalPane({
 
     terminal.options.fontSize = terminalFontSize;
     window.localStorage.setItem(terminalFontSizeStorageKey, String(terminalFontSize));
+    const shouldPreserveBottom = shouldStickToTerminalBottomRef.current;
     fitTerminalToHost();
-  }, [fitTerminalToHost, terminalFontSize]);
+    if (shouldPreserveBottom) {
+      scrollTerminalToBottomAfterLayout();
+    }
+  }, [fitTerminalToHost, scrollTerminalToBottomAfterLayout, terminalFontSize]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -262,6 +281,7 @@ export function TerminalPane({
       return undefined;
     }
 
+    shouldStickToTerminalBottomRef.current = true;
     terminal.reset();
     updateTerminalMessage("");
     setLogBuffer("");
@@ -331,7 +351,8 @@ export function TerminalPane({
     if (!lastOutput || lastOutput.taskId !== task?.id) {
       return;
     }
-    const shouldStickToBottom = isTerminalViewportNearBottom();
+    const shouldStickToBottom = shouldStickToTerminalBottomRef.current || isTerminalViewportNearBottom();
+    shouldStickToTerminalBottomRef.current = shouldStickToBottom;
     setLogBuffer((current) => `${current}${lastOutput.data}`.slice(-logTailLength));
     terminalRef.current?.write(lastOutput.data, () => {
       if (shouldStickToBottom) {
