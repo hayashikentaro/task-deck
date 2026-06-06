@@ -1332,6 +1332,8 @@ dd {
   position: absolute;
   inset-inline: 0;
   bottom: 0;
+  width: 100%;
+  max-width: 100%;
   height: auto;
   min-height: 100%;
 }
