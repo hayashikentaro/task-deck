@@ -91,6 +91,16 @@ export function TerminalPane({
     lastSentTerminalSizeRef.current = null;
   }, [taskId]);
 
+  const updateTerminalSurfaceHeight = useCallback(() => {
+    const host = hostRef.current;
+    if (!host) {
+      return;
+    }
+
+    const surfaceHeight = Math.max(window.innerHeight, host.clientHeight);
+    host.style.setProperty("--terminal-surface-height", `${surfaceHeight}px`);
+  }, []);
+
   const fitTerminalToHost = useCallback(() => {
     const terminal = terminalRef.current;
     const fitAddon = fitAddonRef.current;
@@ -98,6 +108,7 @@ export function TerminalPane({
       return;
     }
 
+    updateTerminalSurfaceHeight();
     fitAddon.fit();
 
     const taskId = selectedTaskIdRef.current;
@@ -107,7 +118,7 @@ export function TerminalPane({
       send({ type: "resize", taskId, cols: nextSize.cols, rows: nextSize.rows });
       lastSentTerminalSizeRef.current = nextSize;
     }
-  }, [send]);
+  }, [send, updateTerminalSurfaceHeight]);
 
   const scheduleFitTerminalToHost = useCallback(() => {
     if (resizeAnimationFrameRef.current !== null) {
