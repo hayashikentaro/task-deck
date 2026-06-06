@@ -59,6 +59,7 @@ export function TerminalPane({
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const resizeAnimationFrameRef = useRef<number | null>(null);
+  const resizeDebounceTimeoutRef = useRef<number | null>(null);
   const lastSentTerminalSizeRef = useRef<{ cols: number; rows: number } | null>(null);
   const selectedTaskIdRef = useRef<string | null>(null);
   const selectedTaskTerminalInputLockedRef = useRef(false);
@@ -120,6 +121,17 @@ export function TerminalPane({
     });
   }, [fitTerminalToHost]);
 
+  const scheduleObservedHostFit = useCallback(() => {
+    if (resizeDebounceTimeoutRef.current !== null) {
+      window.clearTimeout(resizeDebounceTimeoutRef.current);
+    }
+
+    resizeDebounceTimeoutRef.current = window.setTimeout(() => {
+      resizeDebounceTimeoutRef.current = null;
+      scheduleFitTerminalToHost();
+    }, 150);
+  }, [scheduleFitTerminalToHost]);
+
   useEffect(() => {
     onLogBufferChange(logBuffer);
   }, [logBuffer, onLogBufferChange]);
@@ -168,6 +180,10 @@ export function TerminalPane({
         cancelAnimationFrame(resizeAnimationFrameRef.current);
         resizeAnimationFrameRef.current = null;
       }
+      if (resizeDebounceTimeoutRef.current !== null) {
+        window.clearTimeout(resizeDebounceTimeoutRef.current);
+        resizeDebounceTimeoutRef.current = null;
+      }
       terminal.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;
@@ -181,14 +197,18 @@ export function TerminalPane({
     }
 
     const resizeObserver = new ResizeObserver(() => {
-      scheduleFitTerminalToHost();
+      scheduleObservedHostFit();
     });
     resizeObserver.observe(host);
 
     return () => {
       resizeObserver.disconnect();
+      if (resizeDebounceTimeoutRef.current !== null) {
+        window.clearTimeout(resizeDebounceTimeoutRef.current);
+        resizeDebounceTimeoutRef.current = null;
+      }
     };
-  }, [scheduleFitTerminalToHost]);
+  }, [scheduleObservedHostFit]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
