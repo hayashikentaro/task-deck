@@ -149,9 +149,7 @@ export function TerminalPane({
     });
   }, [scrollTerminalToBottom]);
 
-  const scheduleFitTerminalToHost = useCallback((options?: { preserveBottom?: boolean }) => {
-    const shouldPreserveBottom = options?.preserveBottom ? isTerminalViewportNearBottom() : false;
-
+  const scheduleFitTerminalToHost = useCallback(() => {
     if (resizeAnimationFrameRef.current !== null) {
       cancelAnimationFrame(resizeAnimationFrameRef.current);
     }
@@ -159,11 +157,8 @@ export function TerminalPane({
     resizeAnimationFrameRef.current = requestAnimationFrame(() => {
       resizeAnimationFrameRef.current = null;
       fitTerminalToHost();
-      if (shouldPreserveBottom) {
-        scrollTerminalToBottomAfterLayout();
-      }
     });
-  }, [fitTerminalToHost, isTerminalViewportNearBottom, scrollTerminalToBottomAfterLayout]);
+  }, [fitTerminalToHost]);
 
   useEffect(() => {
     onLogBufferChange(logBuffer);
@@ -209,7 +204,7 @@ export function TerminalPane({
     const resizeObserver =
       terminalViewport && typeof ResizeObserver !== "undefined"
         ? new ResizeObserver(() => {
-            scheduleFitTerminalToHost({ preserveBottom: true });
+            scheduleFitTerminalToHost();
           })
         : null;
     resizeObserver?.observe(terminalViewport);
