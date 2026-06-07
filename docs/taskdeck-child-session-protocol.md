@@ -59,7 +59,7 @@ Each `sessions[]` item:
 
 ## Forbidden Fields
 
-Child session requests must not contain these fields at any depth:
+Child session launch and message requests must not contain these fields at any depth:
 
 - `command`
 - `rawCommand`
@@ -94,6 +94,40 @@ When TaskDeck launches a child session from a valid request, the resulting task 
 - `filesLikelyToChange`: copied from the child session request when provided.
 
 These fields are task metadata. Parent agents request `workPackageId` and `filesLikelyToChange`, but they do not supply `parentSessionId` or `spawnedFromParentRequest` directly.
+
+## Parent-To-Child Message Request
+
+After a child session exists, a parent session may send a follow-up instruction by emitting a second structured block:
+
+```text
+TASKDECK_CHILD_SESSION_MESSAGE_REQUEST
+{
+  "version": 1,
+  "target": {
+    "childSessionId": "task_xxx",
+    "workPackageId": "issue-30-runtime"
+  },
+  "message": "Please report your current status and whether you need more input.",
+  "reason": "Manual status check."
+}
+END_TASKDECK_CHILD_SESSION_MESSAGE_REQUEST
+```
+
+The `target` object must include at least one of:
+
+- `childSessionId`: exact child task id.
+- `workPackageId`: work package id for a child task spawned by the same parent.
+
+For the MVP, TaskDeck resolves exactly one existing child task. `childSessionId` matching is exact and must still identify a child of the emitting parent. `workPackageId` matching is limited to tasks whose `parentSessionId` is the emitting parent task id and whose `spawnedFromParentRequest` is true. Missing, ambiguous, non-child, non-running, or locked targets are rejected with a concise status message.
+
+TaskDeck sends the message through the existing task input path and wraps it so the child can see the source:
+
+```text
+Parent instruction from <parent title or id>:
+<message>
+```
+
+Child session output is not treated as a source for message routing requests.
 
 ## Required Isolation Preflight
 

@@ -1,5 +1,7 @@
 export const CHILD_SESSION_BATCH_REQUEST_START_MARKER = "TASKDECK_CHILD_SESSION_BATCH_REQUEST";
 export const CHILD_SESSION_BATCH_REQUEST_END_MARKER = "END_TASKDECK_CHILD_SESSION_BATCH_REQUEST";
+export const CHILD_SESSION_MESSAGE_REQUEST_START_MARKER = "TASKDECK_CHILD_SESSION_MESSAGE_REQUEST";
+export const CHILD_SESSION_MESSAGE_REQUEST_END_MARKER = "END_TASKDECK_CHILD_SESSION_MESSAGE_REQUEST";
 
 const FORBIDDEN_FIELDS = new Set(["command", "rawCommand", "shell", "env", "secrets", "autoApprove"]);
 const AGENT_PERMISSION_LEVELS = ["full_access", "workspace_write", "read_only"] as const;
@@ -22,6 +24,18 @@ export type ChildSessionBatchRequest = {
   sessions: ChildSessionRequest[];
 };
 
+export type ChildSessionMessageRequestTarget = {
+  childSessionId?: string;
+  workPackageId?: string;
+};
+
+export type ChildSessionMessageRequest = {
+  version: 1;
+  target: ChildSessionMessageRequestTarget;
+  message: string;
+  reason?: string;
+};
+
 export type ChildSessionRequestParseErrorCode =
   | "unexpected_end_marker"
   | "unterminated_block"
@@ -41,6 +55,13 @@ export type ChildSessionRequestParseErrorCode =
   | "invalid_agent_permission_level"
   | "invalid_work_package_id"
   | "invalid_files_likely_to_change"
+  | "missing_target"
+  | "invalid_target"
+  | "missing_target_field"
+  | "invalid_child_session_id"
+  | "invalid_target_work_package_id"
+  | "missing_message"
+  | "invalid_message"
   | "forbidden_field";
 
 export type ChildSessionRequestParseError = {
@@ -58,9 +79,24 @@ export type ParseChildSessionRequestsResult = {
   errors: ChildSessionRequestParseError[];
 };
 
+export type ParseChildSessionMessageRequestsResult = {
+  requests: ChildSessionMessageRequest[];
+  errors: ChildSessionRequestParseError[];
+};
+
 type ValidationResult =
   | {
       request: ChildSessionBatchRequest;
+      errors: [];
+    }
+  | {
+      request: null;
+      errors: ChildSessionRequestParseError[];
+    };
+
+type MessageValidationResult =
+  | {
+      request: ChildSessionMessageRequest;
       errors: [];
     }
   | {
@@ -143,6 +179,81 @@ export function parseChildSessionRequestsFromText(text: string): ParseChildSessi
   return { requests, errors };
 }
 
+export function parseChildSessionMessageRequestsFromText(text: string): ParseChildSessionMessageRequestsResult {
+  const requests: ChildSessionMessageRequest[] = [];
+  const errors: ChildSessionRequestParseError[] = [];
+  let cursor = 0;
+  let blockIndex = 0;
+
+  while (cursor < text.length) {
+    const nextStartIndex = text.indexOf(CHILD_SESSION_MESSAGE_REQUEST_START_MARKER, cursor);
+    const nextEndIndex = text.indexOf(CHILD_SESSION_MESSAGE_REQUEST_END_MARKER, cursor);
+
+    if (nextStartIndex === -1) {
+      if (nextEndIndex !== -1) {
+        errors.push({
+          code: "unexpected_end_marker",
+          message: "Found an end marker without a preceding child session message request start marker.",
+          startIndex: nextEndIndex,
+          endIndex: nextEndIndex + CHILD_SESSION_MESSAGE_REQUEST_END_MARKER.length,
+        });
+        cursor = nextEndIndex + CHILD_SESSION_MESSAGE_REQUEST_END_MARKER.length;
+        continue;
+      }
+      break;
+    }
+
+    if (nextEndIndex !== -1 && nextEndIndex < nextStartIndex) {
+      errors.push({
+        code: "unexpected_end_marker",
+        message: "Found an end marker before the next child session message request start marker.",
+        startIndex: nextEndIndex,
+        endIndex: nextEndIndex + CHILD_SESSION_MESSAGE_REQUEST_END_MARKER.length,
+      });
+      cursor = nextEndIndex + CHILD_SESSION_MESSAGE_REQUEST_END_MARKER.length;
+      continue;
+    }
+
+    const contentStartIndex = nextStartIndex + CHILD_SESSION_MESSAGE_REQUEST_START_MARKER.length;
+    const blockEndIndex = text.indexOf(CHILD_SESSION_MESSAGE_REQUEST_END_MARKER, contentStartIndex);
+    const currentBlockIndex = blockIndex;
+    blockIndex += 1;
+
+    if (blockEndIndex === -1) {
+      errors.push({
+        code: "unterminated_block",
+        message: "Child session message request block is missing its end marker.",
+        blockIndex: currentBlockIndex,
+        startIndex: nextStartIndex,
+      });
+      break;
+    }
+
+    const nestedStartIndex = text.indexOf(CHILD_SESSION_MESSAGE_REQUEST_START_MARKER, contentStartIndex);
+    if (nestedStartIndex !== -1 && nestedStartIndex < blockEndIndex) {
+      errors.push({
+        code: "nested_start_marker",
+        message: "Child session message request blocks cannot be nested.",
+        blockIndex: currentBlockIndex,
+        startIndex: nestedStartIndex,
+        endIndex: nestedStartIndex + CHILD_SESSION_MESSAGE_REQUEST_START_MARKER.length,
+      });
+      cursor = blockEndIndex + CHILD_SESSION_MESSAGE_REQUEST_END_MARKER.length;
+      continue;
+    }
+
+    const blockContent = text.slice(contentStartIndex, blockEndIndex).trim();
+    const parsed = parseChildSessionMessageRequestBlock(blockContent, currentBlockIndex, nextStartIndex, blockEndIndex);
+    if (parsed.request) {
+      requests.push(parsed.request);
+    }
+    errors.push(...parsed.errors);
+    cursor = blockEndIndex + CHILD_SESSION_MESSAGE_REQUEST_END_MARKER.length;
+  }
+
+  return { requests, errors };
+}
+
 export function parseChildSessionRequestBlock(
   blockContent: string,
   blockIndex = 0,
@@ -169,6 +280,34 @@ export function parseChildSessionRequestBlock(
   }
 
   return validateChildSessionBatchRequest(parsed, blockIndex);
+}
+
+export function parseChildSessionMessageRequestBlock(
+  blockContent: string,
+  blockIndex = 0,
+  startIndex?: number,
+  endIndex?: number,
+): MessageValidationResult {
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(blockContent);
+  } catch {
+    return {
+      request: null,
+      errors: [
+        {
+          code: "invalid_json",
+          message: "Child session message request block content must be valid JSON.",
+          blockIndex,
+          startIndex,
+          endIndex,
+        },
+      ],
+    };
+  }
+
+  return validateChildSessionMessageRequest(parsed, blockIndex);
 }
 
 export function validateChildSessionBatchRequest(value: unknown, blockIndex = 0): ValidationResult {
@@ -252,6 +391,103 @@ export function validateChildSessionBatchRequest(value: unknown, blockIndex = 0)
       sessions: parsedSessions.flatMap((parsedSession) =>
         parsedSession.request === null ? [] : [parsedSession.request],
       ),
+    },
+    errors: [],
+  };
+}
+
+export function validateChildSessionMessageRequest(value: unknown, blockIndex = 0): MessageValidationResult {
+  const errors: ChildSessionRequestParseError[] = [];
+
+  if (!isRecord(value)) {
+    return {
+      request: null,
+      errors: [
+        {
+          code: "invalid_batch",
+          message: "Child session message request block must contain a JSON object.",
+          blockIndex,
+        },
+      ],
+    };
+  }
+
+  errors.push(...findForbiddenFieldErrors(value, blockIndex));
+
+  if (value.version !== 1) {
+    errors.push({
+      code: "unsupported_version",
+      message: "Child session message request version must be 1.",
+      blockIndex,
+      path: "version",
+    });
+  }
+
+  if ("reason" in value && typeof value.reason !== "string") {
+    errors.push({
+      code: "invalid_reason",
+      message: "Child session message request reason must be a string when provided.",
+      blockIndex,
+      path: "reason",
+    });
+  }
+
+  const targetValue = value.target;
+  let target: ChildSessionMessageRequestTarget = {};
+  if (targetValue === undefined) {
+    errors.push({
+      code: "missing_target",
+      message: "Child session message request must include a target object.",
+      blockIndex,
+      path: "target",
+    });
+  } else if (!isRecord(targetValue)) {
+    errors.push({
+      code: "invalid_target",
+      message: "Child session message request target must be a JSON object.",
+      blockIndex,
+      path: "target",
+    });
+  } else {
+    target = validateChildSessionMessageTarget(targetValue, blockIndex, errors);
+  }
+
+  const messageValue = value.message;
+  if (typeof messageValue === "string") {
+    if (messageValue.trim() === "") {
+      errors.push({
+        code: "missing_message",
+        message: "Child session message request message must not be empty.",
+        blockIndex,
+        path: "message",
+      });
+    }
+  } else if (messageValue === undefined) {
+    errors.push({
+      code: "missing_message",
+      message: "Child session message request must include a non-empty message string.",
+      blockIndex,
+      path: "message",
+    });
+  } else {
+    errors.push({
+      code: "invalid_message",
+      message: "Child session message request message must be a string.",
+      blockIndex,
+      path: "message",
+    });
+  }
+
+  if (errors.length > 0) {
+    return { request: null, errors };
+  }
+
+  return {
+    request: {
+      version: 1,
+      target,
+      message: messageValue as string,
+      reason: typeof value.reason === "string" ? value.reason : undefined,
     },
     errors: [],
   };
@@ -364,6 +600,53 @@ function validateChildSessionRequest(
     },
     errors: [],
   };
+}
+
+function validateChildSessionMessageTarget(
+  targetValue: Record<string, unknown>,
+  blockIndex: number,
+  errors: ChildSessionRequestParseError[],
+): ChildSessionMessageRequestTarget {
+  const target: ChildSessionMessageRequestTarget = {};
+  const childSessionId = targetValue.childSessionId;
+  const workPackageId = targetValue.workPackageId;
+
+  if (childSessionId !== undefined) {
+    if (typeof childSessionId === "string" && childSessionId.trim() !== "") {
+      target.childSessionId = childSessionId;
+    } else {
+      errors.push({
+        code: "invalid_child_session_id",
+        message: "Child session message request target.childSessionId must be a non-empty string when provided.",
+        blockIndex,
+        path: "target.childSessionId",
+      });
+    }
+  }
+
+  if (workPackageId !== undefined) {
+    if (typeof workPackageId === "string" && workPackageId.trim() !== "") {
+      target.workPackageId = workPackageId;
+    } else {
+      errors.push({
+        code: "invalid_target_work_package_id",
+        message: "Child session message request target.workPackageId must be a non-empty string when provided.",
+        blockIndex,
+        path: "target.workPackageId",
+      });
+    }
+  }
+
+  if (childSessionId === undefined && workPackageId === undefined) {
+    errors.push({
+      code: "missing_target_field",
+      message: "Child session message request target must include childSessionId or workPackageId.",
+      blockIndex,
+      path: "target",
+    });
+  }
+
+  return target;
 }
 
 function readRequiredString(
