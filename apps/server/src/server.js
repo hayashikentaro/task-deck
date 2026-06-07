@@ -103,6 +103,7 @@ const ptyActivityWindowMs = 3000;
 const maxPtyActivityFrames = 40;
 const quietAttentionMs = 5000;
 const defaultContainerWorkspaceRoot = "/workspace";
+const protectedContainerCleanupPids = new Set(["1", "7", "8", "130"]);
 const imageAttachmentMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
 const imageAttachmentExtensions = new Map([
   ["image/png", ".png"],
@@ -353,7 +354,7 @@ app.delete("/api/tasks", async (_request, response) => {
   const taskIdsToClear = Array.from(tasks.keys());
 
   for (const taskId of taskIdsToClear) {
-    stopActivePty(taskId);
+    await stopTaskProcesses(taskId);
     await clearTask(taskId);
   }
 
@@ -378,7 +379,7 @@ app.delete("/api/tasks/:taskId", async (request, response) => {
     return;
   }
 
-  stopActivePty(taskId);
+  await stopTaskProcesses(taskId);
 
   await clearTask(taskId);
   await persistTasks();
@@ -768,7 +769,9 @@ async function startTask({
   writeTaskLog(task.id, "");
 
   try {
-    const terminalProcess = pty.spawn(shell, ["-lc", effectiveCommand], {
+    const taskDeckEnv = taskDeckEnvironmentForTask(task);
+    const commandForProcess = commandWithTaskDeckEnv(effectiveCommand, taskDeckEnv);
+    const terminalProcess = pty.spawn(shell, ["-lc", commandForProcess], {
       name: "xterm-256color",
       cols: 100,
       rows: 28,
@@ -776,6 +779,7 @@ async function startTask({
       env: {
         ...process.env,
         TERM: "xterm-256color",
+        ...taskDeckEnv,
       },
     });
 
@@ -1000,6 +1004,132 @@ function replaceDockerExecWorkdir(command, containerCwd) {
     /(\bdocker\s+exec\b[\s\S]*?\s-w\s+)("[^"]+"|'[^']+'|[^\s]+)/,
     `$1${quoteShellToken(containerCwd)}`,
   );
+}
+
+function taskDeckEnvironmentForTask(task) {
+  return {
+    TASKDECK_TASK_ID: task.id,
+  };
+}
+
+function commandWithTaskDeckEnv(command, taskDeckEnv) {
+  const envEntries = Object.entries(taskDeckEnv || {}).filter(([, value]) => String(value || "").trim());
+  if (envEntries.length === 0) {
+    return command;
+  }
+
+  const dockerExec = findDockerExecContainerToken(command);
+  if (!dockerExec) {
+    return command;
+  }
+
+  const envArgs = envEntries
+    .map(([key, value]) => `-e ${quoteShellToken(`${key}=${value}`)}`)
+    .join(" ");
+  return `${String(command).slice(0, dockerExec.start)}${envArgs} ${String(command).slice(dockerExec.start)}`;
+}
+
+function extractDockerExecContainerName(command) {
+  return findDockerExecContainerToken(command)?.value || "";
+}
+
+function findDockerExecContainerToken(command) {
+  const tokens = splitShellWordsWithSpans(command);
+  for (let index = 0; index < tokens.length - 1; index += 1) {
+    if (tokens[index].value !== "docker" || tokens[index + 1].value !== "exec") {
+      continue;
+    }
+
+    let optionIndex = index + 2;
+    while (optionIndex < tokens.length) {
+      const token = tokens[optionIndex].value;
+      if (token === "--") {
+        optionIndex += 1;
+        break;
+      }
+      if (!token.startsWith("-") || token === "-") {
+        break;
+      }
+
+      if (dockerExecOptionRequiresValue(token)) {
+        optionIndex += 2;
+        continue;
+      }
+
+      optionIndex += 1;
+    }
+
+    const containerToken = tokens[optionIndex];
+    if (containerToken) {
+      return containerToken;
+    }
+  }
+
+  return null;
+}
+
+function dockerExecOptionRequiresValue(option) {
+  if (/^(?:--env|--env-file|--workdir|--user|--hostname|--detach-keys)(?:=|$)/.test(option)) {
+    return !option.includes("=");
+  }
+  return option === "-e" || option === "--env" || option === "--env-file" || option === "-w" || option === "--workdir" || option === "-u" || option === "--user";
+}
+
+function splitShellWordsWithSpans(input) {
+  const text = String(input || "");
+  const tokens = [];
+  let index = 0;
+
+  while (index < text.length) {
+    while (index < text.length && /\s/.test(text[index])) {
+      index += 1;
+    }
+    if (index >= text.length) {
+      break;
+    }
+
+    const start = index;
+    let value = "";
+    let quote = "";
+    while (index < text.length) {
+      const character = text[index];
+      if (quote) {
+        if (character === quote) {
+          quote = "";
+          index += 1;
+          continue;
+        }
+        if (quote === "\"" && character === "\\" && index + 1 < text.length) {
+          value += text[index + 1];
+          index += 2;
+          continue;
+        }
+        value += character;
+        index += 1;
+        continue;
+      }
+
+      if (/\s/.test(character)) {
+        break;
+      }
+      if (character === "'" || character === "\"") {
+        quote = character;
+        index += 1;
+        continue;
+      }
+      if (character === "\\" && index + 1 < text.length) {
+        value += text[index + 1];
+        index += 2;
+        continue;
+      }
+      value += character;
+      index += 1;
+    }
+
+    tokens.push({ value, start, end: index });
+  }
+
+  return tokens;
 }
 
 async function containerCwdForHostCwd(hostCwd, containerWorkspaceRoot) {
@@ -2796,6 +2926,17 @@ async function clearTask(taskId) {
   await deleteTaskAttachments(taskId);
 }
 
+async function stopTaskProcesses(taskId) {
+  const task = tasks.get(taskId);
+  stopActivePty(taskId);
+
+  if (!task) {
+    return;
+  }
+
+  await cleanupDockerTaskProcesses(task);
+}
+
 function stopActivePty(taskId) {
   const activePty = activePtys.get(taskId);
   if (!activePty) {
@@ -2807,6 +2948,102 @@ function stopActivePty(taskId) {
   } catch (error) {
     console.error("TaskDeck could not stop PTY for " + taskId + ": " + error.message);
   }
+}
+
+async function cleanupDockerTaskProcesses(task) {
+  const taskId = String(task?.id || "").trim();
+  const containerName = extractDockerExecContainerName(task?.command);
+  if (!taskId || !containerName) {
+    return;
+  }
+
+  try {
+    const { stdout, stderr } = await execFileAsync(
+      "docker",
+      [
+        "exec",
+        "-e",
+        `TASKDECK_CLEANUP_TASK_ID=${taskId}`,
+        containerName,
+        "sh",
+        "-lc",
+        containerTaskCleanupScript(),
+      ],
+      {
+        timeout: 5000,
+        maxBuffer: 64 * 1024,
+      },
+    );
+    const cleanupOutput = `${stdout || ""}${stderr || ""}`.trim();
+    if (cleanupOutput) {
+      console.log(`[TaskDeck cleanup] task=${taskId} container=${containerName} ${cleanupOutput}`);
+    }
+  } catch (error) {
+    const output = `${error.stdout || ""}${error.stderr || ""}`.trim();
+    const detail = output ? `${error.message}: ${output}` : error.message;
+    console.warn(`TaskDeck could not clean Docker task processes for ${taskId} in ${containerName}: ${detail}`);
+  }
+}
+
+function containerTaskCleanupScript() {
+  const protectedPids = Array.from(protectedContainerCleanupPids).join(" ");
+  return `
+task_id="$TASKDECK_CLEANUP_TASK_ID"
+protected_pids="${protectedPids}"
+
+owned_pids() {
+  for env_file in /proc/[0-9]*/environ; do
+    [ -r "$env_file" ] || continue
+    pid="\${env_file#/proc/}"
+    pid="\${pid%/environ}"
+    case " $protected_pids " in
+      *" $pid "*) continue ;;
+    esac
+    if tr '\\000' '\\n' < "$env_file" 2>/dev/null | grep -Fx "TASKDECK_TASK_ID=$task_id" >/dev/null 2>&1; then
+      echo "$pid"
+    fi
+  done
+}
+
+if [ -z "$task_id" ]; then
+  echo "missing cleanup task id" >&2
+  exit 1
+fi
+
+initial_pids="$(owned_pids | sort -n)"
+if [ -z "$initial_pids" ]; then
+  echo "no task-owned container processes found"
+  exit 0
+fi
+
+echo "terminating task-owned pids: $(echo "$initial_pids" | tr '\\n' ' ')"
+for pid in $(echo "$initial_pids" | sort -nr); do
+  kill -TERM "$pid" 2>/dev/null || true
+done
+
+sleep 0.8
+
+remaining_pids="$(owned_pids | sort -n)"
+if [ -z "$remaining_pids" ]; then
+  echo "task-owned processes exited after TERM"
+  exit 0
+fi
+
+echo "force killing remaining task-owned pids: $(echo "$remaining_pids" | tr '\\n' ' ')"
+for pid in $(echo "$remaining_pids" | sort -nr); do
+  kill -KILL "$pid" 2>/dev/null || true
+done
+
+sleep 0.1
+
+final_pids="$(owned_pids | sort -n)"
+if [ -n "$final_pids" ]; then
+  echo "task-owned pids remain after KILL: $(echo "$final_pids" | tr '\\n' ' ')" >&2
+  exit 2
+fi
+
+echo "task-owned processes exited after KILL"
+`;
 }
 
 function send(socket, payload) {
