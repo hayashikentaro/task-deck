@@ -795,6 +795,14 @@ async function startTask({
       setTask(markTaskExited(currentTask, { exitCode, signal }));
       broadcastTasks();
     });
+
+    const initialInstructionInput = String(initialInstruction || "").trim();
+    if (initialInstructionInput) {
+      const marker = "\r\n[TaskDeck] Sending initial instruction.\r\n";
+      appendLog(task.id, marker);
+      broadcast({ type: "output", taskId: task.id, data: marker });
+      writeOrQueuePtyInput(activePty, `${initialInstructionInput}${terminalEnter}`, "initial-instruction");
+    }
   } catch (error) {
     appendLog(task.id, `\r\n[TaskDeck] Failed to start PTY: ${error.message}\r\n`);
     setTask(markTaskExited(tasks.get(task.id), { exitCode: 1, signal: null }));
