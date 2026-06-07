@@ -130,7 +130,7 @@ export function App() {
         continue;
       }
 
-      const buildResult = buildChildTaskInputs(parentTaskId, request, taskDeckContextRef.current);
+      const buildResult = buildChildTaskInputs(parentTaskId, request, taskDeckContextRef.current, requestKey);
       if (buildResult.status === "deferred") {
         continue;
       }
@@ -579,6 +579,7 @@ function buildChildTaskInputs(
   parentTaskId: string,
   request: ChildSessionBatchRequest,
   context: TaskDeckContext | null,
+  requestKey: string,
 ): ChildTaskBuildResult {
   if (!context) {
     return { status: "deferred" };
@@ -586,7 +587,7 @@ function buildChildTaskInputs(
 
   const inputs: CreateTaskInput[] = [];
 
-  for (const session of request.sessions) {
+  for (const [sessionIndex, session] of request.sessions.entries()) {
     const profile = context.agentProfiles.find((agentProfile) => agentProfile.id === session.agentProfileId);
     if (!profile) {
       return { status: "rejected", error: `unknown agentProfileId "${session.agentProfileId}"` };
@@ -613,6 +614,7 @@ function buildChildTaskInputs(
       initialInstruction: session.initialInstruction,
       parentSessionId: parentTaskId,
       spawnedFromParentRequest: true,
+      childSessionRequestKey: `${requestKey}:${sessionIndex}`,
       workPackageId: session.workPackageId,
       filesLikelyToChange: session.filesLikelyToChange,
     });

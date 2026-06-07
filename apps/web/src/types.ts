@@ -135,6 +135,7 @@ export type CreateTaskInput = {
   agentSessionResumeCommand?: string;
   parentSessionId?: string;
   spawnedFromParentRequest?: boolean;
+  childSessionRequestKey?: string;
   workPackageId?: string;
   filesLikelyToChange?: string[];
   initialInstruction?: string;

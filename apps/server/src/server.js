@@ -110,6 +110,7 @@ const imageAttachmentExtensions = new Map([
   ["image/webp", ".webp"],
 ]);
 const activePtys = new Map();
+const startedChildSessionRequestKeys = new Set();
 let persistTasksQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
 let persistSessionLabelsQueue = Promise.resolve();
@@ -559,6 +560,7 @@ wss.on("connection", (socket) => {
           agentSessionResumeCommand: String(message.agentSessionResumeCommand || "").trim(),
           parentSessionId: String(message.parentSessionId || "").trim(),
           spawnedFromParentRequest: normalizeBoolean(message.spawnedFromParentRequest),
+          childSessionRequestKey: String(message.childSessionRequestKey || "").trim(),
           workPackageId: String(message.workPackageId || "").trim(),
           filesLikelyToChange: normalizeStringArray(message.filesLikelyToChange),
           initialInstruction: String(message.initialInstruction || "").trim(),
@@ -689,6 +691,7 @@ async function startTask({
   agentSessionResumeCommand,
   parentSessionId,
   spawnedFromParentRequest,
+  childSessionRequestKey,
   workPackageId,
   filesLikelyToChange = [],
   initialInstruction,
@@ -697,6 +700,19 @@ async function startTask({
   if (!command) {
     send(socket, { type: "error", message: "Enter a command before starting a task." });
     return;
+  }
+
+  if (spawnedFromParentRequest && !childSessionRequestKey) {
+    send(socket, { type: "error", message: "Child session request key is required." });
+    return;
+  }
+
+  if (spawnedFromParentRequest) {
+    if (startedChildSessionRequestKeys.has(childSessionRequestKey)) {
+      send(socket, { type: "error", message: "Duplicate child session request ignored." });
+      return;
+    }
+    startedChildSessionRequestKeys.add(childSessionRequestKey);
   }
 
   const resolvedCwd = await resolveCwd(cwd, socket);
