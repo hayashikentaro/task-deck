@@ -4,9 +4,19 @@ import { TaskCreateForm } from "./components/TaskCreateForm";
 import { TaskList } from "./components/TaskList";
 import { TerminalPane } from "./components/TerminalPane";
 import { ToolsPane } from "./components/ToolsPane";
+import { buildLaunchCommand, isCodexProfile } from "./agentLaunch";
+import {
+  CHILD_SESSION_BATCH_REQUEST_START_MARKER,
+  parseChildSessionRequestsFromText,
+  type ChildSessionBatchRequest,
+  type ChildSessionRequestParseError,
+} from "./childSessionRequests";
+import type { CodexPermissionLevel } from "./codexPermissions";
 import type { CodexStatusSnapshot, CreateTaskInput, OutputEvent, SavedCodexSession, Task, TaskDeckContext } from "./types";
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
+
+const childRequestScanWindowLength = 80_000;
 
 type ServerMessage =
   | {
@@ -37,8 +47,27 @@ export function App() {
   const outputSeqRef = useRef(0);
   const selectedTaskIdRef = useRef<string | null>(null);
   const runningTaskIdsRef = useRef<string[]>([]);
+  const tasksRef = useRef<Task[]>([]);
+  const taskDeckContextRef = useRef<TaskDeckContext | null>(null);
+  const childRequestOutputBuffersRef = useRef(new Map<string, string>());
+  const launchedChildRequestKeysRef = useRef(new Set<string>());
+  const rejectedChildRequestKeysRef = useRef(new Set<string>());
   const hasAutoRefreshedCodexUsageRef = useRef(false);
   const isCodexStatusRefreshingRef = useRef(false);
+
+  const send = useCallback((payload: unknown) => {
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+    socket.send(JSON.stringify(payload));
+    return true;
+  }, []);
+
+  const createTask = useCallback((input: CreateTaskInput) => {
+    const didSend = send({ type: "start", ...input });
+    return didSend;
+  }, [send]);
 
   useEffect(() => {
     selectedTaskIdRef.current = selectedTaskId;
@@ -47,6 +76,14 @@ export function App() {
   useEffect(() => {
     runningTaskIdsRef.current = runningTaskIds;
   }, [runningTaskIds]);
+
+  useEffect(() => {
+    tasksRef.current = tasks;
+  }, [tasks]);
+
+  useEffect(() => {
+    taskDeckContextRef.current = taskDeckContext;
+  }, [taskDeckContext]);
 
   const loadSavedCodexSessions = useCallback(() => {
     fetch("/api/agent-sessions")
@@ -59,6 +96,88 @@ export function App() {
       .then((payload: { sessions?: SavedCodexSession[] }) => setSavedCodexSessions(payload.sessions ?? []))
       .catch(() => setSavedCodexSessions([]));
   }, []);
+
+  const processChildSessionRequestBuffer = useCallback((parentTaskId: string, buffer: string) => {
+    if (!buffer.includes(CHILD_SESSION_BATCH_REQUEST_START_MARKER)) {
+      return;
+    }
+
+    const parentTask = tasksRef.current.find((task) => task.id === parentTaskId) ?? null;
+    if (!parentTask || parentTask.spawnedFromParentRequest) {
+      return;
+    }
+    const parentLabel = parentTask?.title || "parent task";
+    const result = parseChildSessionRequestsFromText(buffer);
+
+    for (const error of result.errors) {
+      if (error.code === "unterminated_block") {
+        continue;
+      }
+      const errorKey = childRequestParserErrorKey(parentTaskId, error);
+      if (rejectedChildRequestKeysRef.current.has(errorKey)) {
+        continue;
+      }
+      rejectedChildRequestKeysRef.current.add(errorKey);
+      setTerminalMessage(`Rejected child session request from ${parentLabel}: ${childRequestParserErrorLabel(error)}.`);
+    }
+
+    for (const request of result.requests) {
+      const requestKey = childRequestBatchKey(parentTaskId, request);
+      if (
+        launchedChildRequestKeysRef.current.has(requestKey) ||
+        rejectedChildRequestKeysRef.current.has(requestKey)
+      ) {
+        continue;
+      }
+
+      const buildResult = buildChildTaskInputs(parentTaskId, request, taskDeckContextRef.current, requestKey);
+      if (buildResult.status === "deferred") {
+        continue;
+      }
+      if (buildResult.status === "rejected") {
+        rejectedChildRequestKeysRef.current.add(requestKey);
+        setTerminalMessage(`Rejected child session request from ${parentLabel}: ${buildResult.error}.`);
+        continue;
+      }
+
+      let createdCount = 0;
+      for (const input of buildResult.inputs) {
+        if (createTask(input)) {
+          createdCount += 1;
+        }
+      }
+
+      if (createdCount === buildResult.inputs.length) {
+        launchedChildRequestKeysRef.current.add(requestKey);
+        setTerminalMessage(`Created ${createdCount} child ${createdCount === 1 ? "session" : "sessions"} from ${parentLabel}.`);
+      } else {
+        rejectedChildRequestKeysRef.current.add(requestKey);
+        setTerminalMessage(`Failed to create all child sessions from ${parentLabel}: TaskDeck is not connected.`);
+      }
+    }
+  }, [createTask]);
+
+  const processChildSessionRequestsFromOutput = useCallback((parentTaskId: string, data: string) => {
+    const currentBuffer = childRequestOutputBuffersRef.current.get(parentTaskId) ?? "";
+    const nextBuffer = `${currentBuffer}${data}`.slice(-childRequestScanWindowLength);
+    childRequestOutputBuffersRef.current.set(parentTaskId, nextBuffer);
+    processChildSessionRequestBuffer(parentTaskId, nextBuffer);
+  }, [processChildSessionRequestBuffer]);
+
+  useEffect(() => {
+    if (!taskDeckContext) {
+      return;
+    }
+    for (const [parentTaskId, buffer] of childRequestOutputBuffersRef.current) {
+      processChildSessionRequestBuffer(parentTaskId, buffer);
+    }
+  }, [processChildSessionRequestBuffer, taskDeckContext]);
+
+  useEffect(() => {
+    for (const [parentTaskId, buffer] of childRequestOutputBuffersRef.current) {
+      processChildSessionRequestBuffer(parentTaskId, buffer);
+    }
+  }, [processChildSessionRequestBuffer, tasks]);
 
   useEffect(() => {
     let reconnectTimer: number | undefined;
@@ -100,6 +219,7 @@ export function App() {
         if (message.type === "output") {
           outputSeqRef.current += 1;
           setLastOutput({ seq: outputSeqRef.current, taskId: message.taskId, data: message.data });
+          processChildSessionRequestsFromOutput(message.taskId, message.data);
           return;
         }
 
@@ -129,7 +249,7 @@ export function App() {
       window.clearTimeout(reconnectTimer);
       socketRef.current?.close();
     };
-  }, []);
+  }, [loadSavedCodexSessions, processChildSessionRequestsFromOutput]);
 
   useEffect(() => {
     fetch("/api/context")
@@ -152,20 +272,6 @@ export function App() {
     [selectedTaskId, tasks],
   );
   const canRefreshCodexStatus = connectionState === "connected";
-
-  const send = useCallback((payload: unknown) => {
-    const socket = socketRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      return false;
-    }
-    socket.send(JSON.stringify(payload));
-    return true;
-  }, []);
-
-  const createTask = (input: CreateTaskInput) => {
-    const didSend = send({ type: "start", ...input });
-    return didSend;
-  };
 
   const refreshCodexStatus = useCallback(async () => {
     if (!canRefreshCodexStatus || isCodexStatusRefreshingRef.current) {
@@ -462,4 +568,99 @@ function clampPercent(value: number) {
     return 0;
   }
   return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+type ChildTaskBuildResult =
+  | { status: "deferred" }
+  | { status: "rejected"; error: string }
+  | { status: "ready"; inputs: CreateTaskInput[] };
+
+function buildChildTaskInputs(
+  parentTaskId: string,
+  request: ChildSessionBatchRequest,
+  context: TaskDeckContext | null,
+  requestKey: string,
+): ChildTaskBuildResult {
+  if (!context) {
+    return { status: "deferred" };
+  }
+
+  const inputs: CreateTaskInput[] = [];
+
+  for (const [sessionIndex, session] of request.sessions.entries()) {
+    const profile = context.agentProfiles.find((agentProfile) => agentProfile.id === session.agentProfileId);
+    if (!profile) {
+      return { status: "rejected", error: `unknown agentProfileId "${session.agentProfileId}"` };
+    }
+
+    const isCodex = isCodexProfile(profile);
+    const codexPermissionLevel = (session.agentPermissionLevel ?? "full_access") as CodexPermissionLevel;
+    const launchCommand = buildLaunchCommand(profile, "new", null, codexPermissionLevel);
+    if (!launchCommand.command) {
+      return { status: "rejected", error: `empty launch command for agentProfileId "${session.agentProfileId}"` };
+    }
+    if (!session.cwd) {
+      return { status: "rejected", error: `empty cwd for "${session.title}"` };
+    }
+
+    inputs.push({
+      title: session.title,
+      command: launchCommand.command,
+      cwd: session.cwd,
+      agentProfileId: profile.id,
+      agentLabel: profile.label,
+      agentPermissionLevel: isCodex ? codexPermissionLevel : session.agentPermissionLevel,
+      sessionMode: "new",
+      initialInstruction: session.initialInstruction,
+      parentSessionId: parentTaskId,
+      spawnedFromParentRequest: true,
+      childSessionRequestKey: `${requestKey}:${sessionIndex}`,
+      workPackageId: session.workPackageId,
+      filesLikelyToChange: session.filesLikelyToChange,
+    });
+  }
+
+  return { status: "ready", inputs };
+}
+
+function childRequestBatchKey(parentTaskId: string, request: ChildSessionBatchRequest) {
+  return `${parentTaskId}:${stableHash(stableStringify(request))}`;
+}
+
+function childRequestParserErrorKey(parentTaskId: string, error: ChildSessionRequestParseError) {
+  return [
+    parentTaskId,
+    error.code,
+    error.path ?? "",
+    error.blockIndex ?? "",
+    error.sessionIndex ?? "",
+    error.startIndex ?? "",
+    error.endIndex ?? "",
+    error.message,
+  ].join(":");
+}
+
+function childRequestParserErrorLabel(error: ChildSessionRequestParseError) {
+  return error.path ? `${error.message} (${error.path})` : error.message;
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value)
+      .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
+      .map(([key, nestedValue]) => `${JSON.stringify(key)}:${stableStringify(nestedValue)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function stableHash(value: string) {
+  let hash = 5381;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 33) ^ value.charCodeAt(index);
+  }
+  return (hash >>> 0).toString(36);
 }

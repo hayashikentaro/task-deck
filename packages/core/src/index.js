@@ -66,6 +66,10 @@ export function createTask({
   agentSessionProvider = "",
   agentSessionDetectedAt = "",
   agentSessionResumeCommand = "",
+  parentSessionId = "",
+  spawnedFromParentRequest = false,
+  workPackageId = "",
+  filesLikelyToChange = [],
   identityColorSlot,
   attachments = [],
 }) {
@@ -89,6 +93,10 @@ export function createTask({
     agentSessionProvider,
     agentSessionDetectedAt,
     agentSessionResumeCommand,
+    parentSessionId: String(parentSessionId || "").trim(),
+    spawnedFromParentRequest: normalizeBoolean(spawnedFromParentRequest),
+    workPackageId: String(workPackageId || "").trim(),
+    filesLikelyToChange: normalizeFilesLikelyToChange(filesLikelyToChange),
     identityColorSlot: normalizeIdentityColorSlot(identityColorSlot),
     status: TaskStatus.IDLE,
     agentState: AgentState.STARTING,
@@ -229,6 +237,10 @@ export function serializeTask(task) {
     agentSessionProvider: task.agentSessionProvider || "",
     agentSessionDetectedAt: task.agentSessionDetectedAt || "",
     agentSessionResumeCommand: task.agentSessionResumeCommand || "",
+    parentSessionId: task.parentSessionId || "",
+    spawnedFromParentRequest: normalizeBoolean(task.spawnedFromParentRequest),
+    workPackageId: task.workPackageId || "",
+    filesLikelyToChange: normalizeFilesLikelyToChange(task.filesLikelyToChange),
     identityColorSlot: normalizeIdentityColorSlot(task.identityColorSlot),
     status: task.status,
     agentState: task.agentState ?? inferAgentStateFromStatus(task),
@@ -259,6 +271,20 @@ export function normalizeIdentityColorSlot(identityColorSlot) {
     return undefined;
   }
   return Math.floor(slot);
+}
+
+function normalizeFilesLikelyToChange(filesLikelyToChange) {
+  if (!Array.isArray(filesLikelyToChange)) {
+    return [];
+  }
+
+  return filesLikelyToChange
+    .map((filePath) => String(filePath || "").trim())
+    .filter(Boolean);
+}
+
+function normalizeBoolean(value) {
+  return value === true || String(value || "").toLowerCase() === "true";
 }
 
 function normalizeTaskAttachments(attachments) {

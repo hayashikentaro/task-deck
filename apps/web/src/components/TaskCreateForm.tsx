@@ -1,9 +1,13 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
-  applyCodexPermissionToCommand,
-  buildCodexResumeCommandForCommand,
-  type CodexPermissionLevel,
-} from "../codexPermissions";
+  buildLaunchCommand,
+  buildTaskTitle,
+  executionCwdForSessionMode,
+  isCodexProfile,
+  savedSessionMatchesAgent,
+  type AgentLaunchSessionMode,
+} from "../agentLaunch";
+import type { CodexPermissionLevel } from "../codexPermissions";
 import type { AgentProfile, CreateTaskInput, ProjectSuggestion, SavedCodexSession, TaskDeckContext } from "../types";
 import { Button } from "./ui/Button";
 import { SelectField } from "./ui/SelectField";
@@ -16,12 +20,11 @@ type TaskCreateFormProps = {
 };
 
 const defaultAgentProfileId = "codex";
-type SessionMode = "new" | "resume_last" | "saved_codex";
 
 export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreateTask }: TaskCreateFormProps) {
   const [selectedAgentId, setSelectedAgentId] = useState(defaultAgentProfileId);
   const [selectedSavedSessionKey, setSelectedSavedSessionKey] = useState("");
-  const [sessionMode, setSessionMode] = useState<SessionMode>("new");
+  const [sessionMode, setSessionMode] = useState<AgentLaunchSessionMode>("new");
   const [codexPermissionLevel, setCodexPermissionLevel] = useState<CodexPermissionLevel>("full_access");
   const [selectedProjectPath, setSelectedProjectPath] = useState("");
 
@@ -99,7 +102,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
       }
       return;
     }
-    setSessionMode(value as SessionMode);
+    setSessionMode(value as AgentLaunchSessionMode);
   };
 
   const handleSubmit = (event: FormEvent) => {
@@ -211,52 +214,6 @@ function findDefaultAgentProfile(agentProfiles: AgentProfile[]) {
   );
 }
 
-function isCodexProfile(profile: AgentProfile) {
-  return (
-    profile.id.includes("codex") ||
-    profile.label.toLowerCase().includes("codex") ||
-    /\bcodex\b/.test(profile.command)
-  );
-}
-
-function buildLaunchCommand(
-  profile: AgentProfile,
-  sessionMode: SessionMode,
-  savedSession: SavedCodexSession | null,
-  codexPermissionLevel: CodexPermissionLevel,
-) {
-  if (sessionMode === "saved_codex") {
-    const resumeCommand = savedSession?.resumeCommand.trim() || "";
-    return { command: resumeCommand, resumeCommand };
-  }
-
-  if (sessionMode === "resume_last" && isCodexProfile(profile)) {
-    const resumeCommand = buildCodexResumeLastCommand(profile, codexPermissionLevel);
-    return { command: resumeCommand, resumeCommand };
-  }
-
-  const command = isCodexProfile(profile)
-    ? applyCodexPermissionToCommand(profile.command.trim(), codexPermissionLevel)
-    : profile.command.trim();
-  return { command, resumeCommand: "" };
-}
-
-function executionCwdForSessionMode(
-  sessionMode: SessionMode,
-  selectedProjectPath: string,
-  savedSession: SavedCodexSession | null,
-  defaultCwd?: string,
-) {
-  if (sessionMode === "saved_codex" && savedSession) {
-    return savedSession.cwd;
-  }
-  return selectedProjectPath || defaultCwd || "";
-}
-
-function buildCodexResumeLastCommand(profile: AgentProfile, codexPermissionLevel: CodexPermissionLevel) {
-  return buildCodexResumeCommandForCommand(profile.command, codexPermissionLevel, "--last");
-}
-
 function buildProjectSuggestions(context: TaskDeckContext | null): ProjectSuggestion[] {
   const suggestions = context?.projectSuggestions?.length
     ? context.projectSuggestions
@@ -282,51 +239,10 @@ function selectDefaultProjectPath(projectSuggestions: ProjectSuggestion[], defau
   );
 }
 
-function buildTaskTitle(
-  agentLabel: string,
-  sessionMode: SessionMode,
-  cwd: string,
-  savedSession?: SavedCodexSession | null,
-) {
-  if (sessionMode === "saved_codex" && savedSession) {
-    return savedSession.title;
-  }
-  if (sessionMode === "resume_last") {
-    return `Resume last: ${agentLabel}`;
-  }
-  return basename(cwd) || `${agentLabel} session`;
-}
-
 function savedSessionLabel(session: SavedCodexSession) {
   const projectName = basename(session.cwd) || "workspace";
   const taskTitle = session.title || "Codex session";
   return `${projectName} · ${taskTitle}`;
-}
-
-function savedSessionMatchesAgent(session: SavedCodexSession, agent: AgentProfile) {
-  if (session.agentProfileId) {
-    return session.agentProfileId === agent.id;
-  }
-  return sessionEnvironment(session) === agentCommandEnvironment(agent);
-}
-
-function sessionEnvironment(session: SavedCodexSession) {
-  return session.commandEnvironment || commandEnvironmentFromCommand(session.resumeCommand);
-}
-
-function agentCommandEnvironment(agent: AgentProfile) {
-  return commandEnvironmentFromCommand(agent.command);
-}
-
-function commandEnvironmentFromCommand(command: string) {
-  const normalizedCommand = command.toLowerCase();
-  if (/\bdocker\b[\s\S]*\bai-agent-sandbox-agent-1\b/.test(normalizedCommand)) {
-    return "ai-agent-sandbox-agent-1";
-  }
-  if (/\bdocker\b[\s\S]*\bai-agent-sandbox-codex-1\b/.test(normalizedCommand)) {
-    return "ai-agent-sandbox-codex-1";
-  }
-  return "local";
 }
 
 function savedSessionOptionValue(sessionKey: string) {

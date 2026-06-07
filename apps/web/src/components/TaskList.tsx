@@ -227,6 +227,11 @@ export function TaskList({
                     <span className="task-badge" data-kind={`supervision-${bucket}`} title={supervisionTitle(task)}>
                       {supervisionBucketLabel(bucket)}
                     </span>
+                    {isChildSession(task) ? (
+                      <span className="task-badge" data-kind="child-session" title={childSessionTitle(task)}>
+                        Child
+                      </span>
+                    ) : null}
                   </span>
                   <span className="task-card-meta">
                     <span className="task-cwd" title={task.cwd}>
@@ -236,6 +241,14 @@ export function TaskList({
                     <span className="task-command" title={task.command}>
                       {task.agentLabel || agentOrCommandLabel(task.command)}
                     </span>
+                    {task.workPackageId ? (
+                      <>
+                        <span className="task-meta-separator">·</span>
+                        <span className="task-work-package" title={`Work package ${task.workPackageId}`}>
+                          {workPackageLabel(task.workPackageId)}
+                        </span>
+                      </>
+                    ) : null}
                     <span className="task-meta-spacer" />
                     <span className="task-updated">{formatTime(task.updatedAt)}</span>
                   </span>
@@ -372,6 +385,21 @@ function supervisionTitle(task: Task) {
     return task.attentionStateReason || "This running task may need human attention.";
   }
   return task.status === "running" ? "Recent PTY activity observed." : "Task is not running.";
+}
+
+function isChildSession(task: Task) {
+  return Boolean(task.spawnedFromParentRequest || task.parentSessionId);
+}
+
+function childSessionTitle(task: Task) {
+  if (task.parentSessionId) {
+    return `Child session from parent ${task.parentSessionId}`;
+  }
+  return "Child session spawned from a parent request";
+}
+
+function workPackageLabel(workPackageId: string) {
+  return workPackageId.length > 18 ? `WP ${workPackageId.slice(0, 15)}...` : `WP ${workPackageId}`;
 }
 
 function taskDisplayName(task: Task) {

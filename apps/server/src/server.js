@@ -110,6 +110,7 @@ const imageAttachmentExtensions = new Map([
   ["image/webp", ".webp"],
 ]);
 const activePtys = new Map();
+const startedChildSessionRequestKeys = new Set();
 let persistTasksQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
 let persistSessionLabelsQueue = Promise.resolve();
@@ -464,6 +465,18 @@ function normalizeTailLength(rawTail) {
   return Math.min(Math.floor(tailLength), maxLogLength);
 }
 
+function normalizeBoolean(value) {
+  return value === true || String(value || "").toLowerCase() === "true";
+}
+
+function normalizeStringArray(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((item) => String(item || "").trim()).filter(Boolean);
+}
+
 app.get("/api/tasks/:taskId/diff", async (request, response) => {
   const task = tasks.get(request.params.taskId);
 
@@ -545,6 +558,11 @@ wss.on("connection", (socket) => {
           agentSessionSource: String(message.agentSessionSource || "").trim(),
           agentSessionDetectedAt: String(message.agentSessionDetectedAt || "").trim(),
           agentSessionResumeCommand: String(message.agentSessionResumeCommand || "").trim(),
+          parentSessionId: String(message.parentSessionId || "").trim(),
+          spawnedFromParentRequest: normalizeBoolean(message.spawnedFromParentRequest),
+          childSessionRequestKey: String(message.childSessionRequestKey || "").trim(),
+          workPackageId: String(message.workPackageId || "").trim(),
+          filesLikelyToChange: normalizeStringArray(message.filesLikelyToChange),
           initialInstruction: String(message.initialInstruction || "").trim(),
           attachments: normalizePendingAttachmentRefs(message.attachments),
         },
@@ -671,12 +689,30 @@ async function startTask({
   agentSessionSource,
   agentSessionDetectedAt,
   agentSessionResumeCommand,
+  parentSessionId,
+  spawnedFromParentRequest,
+  childSessionRequestKey,
+  workPackageId,
+  filesLikelyToChange = [],
   initialInstruction,
   attachments = [],
 }, socket) {
   if (!command) {
     send(socket, { type: "error", message: "Enter a command before starting a task." });
     return;
+  }
+
+  if (spawnedFromParentRequest && !childSessionRequestKey) {
+    send(socket, { type: "error", message: "Child session request key is required." });
+    return;
+  }
+
+  if (spawnedFromParentRequest) {
+    if (startedChildSessionRequestKeys.has(childSessionRequestKey)) {
+      send(socket, { type: "error", message: "Duplicate child session request ignored." });
+      return;
+    }
+    startedChildSessionRequestKeys.add(childSessionRequestKey);
   }
 
   const resolvedCwd = await resolveCwd(cwd, socket);
@@ -708,6 +744,10 @@ async function startTask({
     resumeCommand,
     identityColorSlot,
     initialInstruction,
+    parentSessionId,
+    spawnedFromParentRequest,
+    workPackageId,
+    filesLikelyToChange,
     ...detectedAgentSession,
     ...explicitAgentSession,
   });
@@ -771,6 +811,14 @@ async function startTask({
       setTask(markTaskExited(currentTask, { exitCode, signal }));
       broadcastTasks();
     });
+
+    const initialInstructionInput = String(initialInstruction || "").trim();
+    if (initialInstructionInput) {
+      const marker = "\r\n[TaskDeck] Sending initial instruction.\r\n";
+      appendLog(task.id, marker);
+      broadcast({ type: "output", taskId: task.id, data: marker });
+      writeOrQueuePtyInput(activePty, `${initialInstructionInput}${terminalEnter}`, "initial-instruction");
+    }
   } catch (error) {
     appendLog(task.id, `\r\n[TaskDeck] Failed to start PTY: ${error.message}\r\n`);
     setTask(markTaskExited(tasks.get(task.id), { exitCode: 1, signal: null }));

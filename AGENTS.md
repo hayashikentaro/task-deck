@@ -95,6 +95,14 @@ If `docs/issues/` is referenced, treat it as historical or decision-record-like 
 
 Keep state, risk, diffs, review, and agent supervision central. Terminal/PTY interaction is a means to supervise work, not a chat surface or decorative terminal skin. Keep supervision semantics central while allowing session identity to dominate the card's first visual read.
 
+## AI-First Layering
+
+When decomposing work for child or role sessions, prefer the AI-first layering model in `docs/ai-first-layering.md`.
+
+Treat layers as responsibility boundaries, decision-authority boundaries, and context-cache units for long-lived agent sessions. Useful layers include Core, Protocol, Runtime, UI, App Flow, and Integration.
+
+Use role-specific guidance when available, such as `docs/agents/roles/integration.md` for parent/integration merge work.
+
 ## Working Guidelines
 
 - Keep changes scoped to the user's request.
@@ -113,6 +121,33 @@ Keep state, risk, diffs, review, and agent supervision central. Terminal/PTY int
 - Use repo-local docs for durable context and decisions. Treat `docs/issues/` as historical or decision-record-like context, not as the current backlog.
 - Keep responsibility-specific implementation guidance in dedicated files under `docs/guides/`, not directly in this top-level router. When introducing or changing a recurring area-specific rule, create or update the relevant guide and link it from this file.
 - When changing `apps/web` UI styling, read `docs/guides/ui-style.md`. When changing reusable UI components, shared controls, or icon-only controls, read `docs/guides/ui-components.md`.
+- When asked to create TaskDeck child sessions, emit the structured request block defined in `docs/taskdeck-child-session-protocol.md`; do not invent raw launch commands.
+
+## Child Session Branches And Integration
+
+When working as a child session in an isolated branch/worktree, producing local changes is not enough to complete the task.
+
+A child session is complete only after it has:
+
+- committed the relevant changes on its child branch;
+- pushed that child branch to `origin`;
+- reported the branch name;
+- reported the latest commit SHA;
+- reported verification commands and results;
+- reported changed files and merge notes.
+
+Child sessions must not merge themselves into the parent or integration branch unless the prompt explicitly assigns that session to perform integration.
+
+The parent or integration session owns convergence:
+
+- collect completed child branch reports;
+- inspect dependency order and file overlap;
+- merge child branches into the parent/integration branch in a deliberate order;
+- run verification after each merge or after a clearly safe batch;
+- resolve conflicts or send work back to the relevant child session;
+- perform the final integration pass.
+
+Use this boundary for TaskDeck child-session work and for manual parallel worktree sessions. A worktree task being locally done is not the same as being integrated into the parent branch.
 
 ## Change Authorization Boundary
 
@@ -192,44 +227,16 @@ If a task-specific user instruction conflicts with this file, stop and report th
 
 ## Runtime And Generated Files
 
-- `.taskdeck/` is local runtime state and should remain uncommitted.
-- Vite/dev-server temp files may appear during local development.
-- Do not commit generated runtime state unless explicitly requested.
-- Do not delete untracked files unless the task explicitly asks for cleanup and the file is clearly generated.
-- If unexpected untracked files exist, report them rather than modifying them.
-- Always use the current `git status --short --branch` output to identify unexpected untracked files. Do not modify or delete them unless explicitly requested.
+Do not commit generated/runtime state, logs, dependency directories, or local environment files.
 
-## Commit and Push Rule
+Common examples:
 
-Whenever repository files are modified, commit the relevant changes and push them to the current branch.
-変更したら、関連する変更を commit して push すること。
-
-- Do not force push.
-- If push fails, report the reason and leave the local commit intact.
-
-## Development Workflow
-
-Inspect `package.json` before introducing new scripts. Prefer existing npm scripts and repository tooling; do not invent replacement tooling if repo scripts exist.
-
-Relevant verification commands:
-
-```bash
-node --check apps/server/src/server.js
-npm run build
-git diff --check
+```text
+.taskdeck/
+node_modules/
+dist/
+.env
+.DS_Store
 ```
 
-For documentation-only changes, `git diff --check` is required, `npm run build` is useful when quick, and `node --check apps/server/src/server.js` is optional unless server code changed.
-
-If a check cannot be run because of sandbox, permissions, or missing local services, report that clearly.
-
-## Handoff Reporting
-
-When handing work back, report:
-
-- What changed.
-- Verification commands run.
-- Commit hash.
-- Push status.
-- Known limitations or skipped checks.
-- Unexpected files not touched.
+If new generated files appear during local runs, add or update `.gitignore` only when appropriate for the repository, and mention it in the final report.
