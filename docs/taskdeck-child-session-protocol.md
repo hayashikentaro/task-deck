@@ -23,7 +23,7 @@ TASKDECK_CHILD_SESSION_BATCH_REQUEST
     {
       "title": "Document child session protocol",
       "agentProfileId": "codex",
-      "agentPermissionLevel": "full-access",
+      "agentPermissionLevel": "full_access",
       "cwd": "/workspace/task-deck",
       "workPackageId": "issue-29-protocol-docs",
       "filesLikelyToChange": [
@@ -51,7 +51,7 @@ Each `sessions[]` item:
 
 - `title`: user-facing task title for the child session.
 - `agentProfileId`: configured TaskDeck agent profile id to use.
-- `agentPermissionLevel`: permission level for the selected agent profile, when applicable.
+- `agentPermissionLevel`: permission level for the selected agent profile, when applicable. Accepted values are `full_access`, `workspace_write`, and `read_only`.
 - `cwd`: intended working directory for the child session.
 - `workPackageId`: stable id for this work package. Use it in branch/worktree names when useful.
 - `filesLikelyToChange`: array of repo-relative paths or globs the child session is expected to touch.
