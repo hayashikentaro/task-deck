@@ -171,6 +171,45 @@ A child session should:
 
 A child session should not merge itself into the parent/integration branch unless it is explicitly acting as the integration session.
 
+## Review-driven parent session model
+
+A parent session can also act like a long-lived product/technical decision maker rather than only a task splitter. In that model, implementation sessions and reviewer sessions are deliberately separated.
+
+The parent session should preserve the durable product context:
+
+- product intent and user preference;
+- issue ordering and trade-offs;
+- accepted, rejected, and deferred review findings;
+- which follow-up issues were created;
+- final merge or defer decisions.
+
+Reviewer child sessions should usually be treated as refreshable inspection tools rather than long-lived owners. Reviewers are valuable because they can keep a viewpoint independent from the implementation session. They should be refreshed or recreated when stale context would weaken the review.
+
+Useful reviewer roles include:
+
+- Boundary reviewer: checks AI-first layering, authority boundaries, and cross-layer leakage.
+- Regression reviewer: checks whether existing behavior still works.
+- Security/capability reviewer: checks raw command use, ambiguous targets, permission boundaries, and risky side effects.
+- UX friction reviewer: checks whether supervision UI adds unnecessary human confirmation or hides important attention signals.
+- Integration reviewer: checks branch state, merge order, conflicts, and verification results.
+
+Reviewer sessions should be given an explicit failure-detection objective. They are not implementation helpers by default. A useful reviewer prompt should ask for blocking issues, non-blocking concerns, questions, and follow-up candidates instead of asking the reviewer to make the implementation look good.
+
+A typical review loop is:
+
+1. Parent sends implementation work to an implementation child.
+2. Implementation child commits, pushes, and reports a structured result.
+3. Parent starts or refreshes one or more reviewer children with specific review roles.
+4. Reviewer children return structured findings.
+5. Parent decides which findings are blocking, which are follow-ups, and which are intentionally accepted risks.
+6. Parent sends only the selected blocking fixes back to the implementation child.
+7. Only the relevant reviewers are refreshed for the next round.
+8. Integration reviewer or integration session performs merge readiness checks.
+
+Keep review loops finite. Prefer a small number of rounds, such as one implementation review plus one focused re-review. Non-blocking findings should usually become follow-up issues instead of keeping the implementation loop open indefinitely.
+
+This model is not primarily about token savings. Its value is independent perspectives, conflict of interest separation, regression protection, and explicit parent-level judgment.
+
 ## Refresh preflight for long-lived role sessions
 
 Long-lived child sessions are useful because they keep layer-specific context. They can also become stale. Before acting on a new instruction, a role session should:
