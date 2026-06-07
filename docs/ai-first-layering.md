@@ -29,6 +29,106 @@ AI agents tend to implement in whatever location is most convenient unless the w
 
 For TaskDeck, this supports the direction where a parent session coordinates role-bearing child sessions rather than only spawning disposable one-off workers.
 
+## Where AI teams should differ from human teams
+
+Human specialist-team metaphors are useful for the first mental model: a parent session can behave like a tech lead, and child sessions can resemble frontend, runtime, protocol, UI, or integration specialists.
+
+TaskDeck should not copy human team structure too literally. AI sessions are different from human contributors in several important ways.
+
+### Prefer context ownership over job titles
+
+Human teams often organize around job titles such as frontend, backend, or infra. AI sessions should also consider context ownership:
+
+- which files and concepts the session has already read;
+- which design decision the session understands;
+- which layer-specific assumptions the session can safely reuse;
+- which current repository state the session has refreshed.
+
+A role is useful only when it tells the session what context it owns, what it may decide, and what it must return to the parent.
+
+### Combine long-lived role sessions with short-lived review sessions
+
+Long-lived role sessions are useful for preserving layer-specific context. They can also become stale.
+
+AI teams should mix:
+
+- long-lived role sessions for durable context, such as Protocol, Runtime, UI, and Integration;
+- short-lived implementation sessions for isolated work packages;
+- short-lived review, regression, or boundary-check sessions for fresh inspection.
+
+This differs from human teams, where repeatedly creating new reviewers or specialists is expensive. For AI work, disposable review sessions can be valuable because they bring a fresh context window and fewer stale assumptions.
+
+### Organize by authority and side-effect scope
+
+AI sessions should be defined not only by skill, but by what they are allowed to change.
+
+Useful authority boundaries include:
+
+- read-only review;
+- docs-only changes;
+- parser/protocol-only changes;
+- UI-only changes;
+- runtime/server changes;
+- integration/merge authority.
+
+This is often more important than saying a session is simply good at frontend or backend work. The question is: what side effects may this session perform, and what must it not touch?
+
+### Add explicit reviewer roles
+
+AI teams can cheaply use roles that would create friction or staffing cost in a human team.
+
+Useful non-human-like roles include:
+
+- regression reviewer: checks that existing behavior was not broken;
+- boundary reviewer: looks for responsibility leaks, overbroad edits, raw-command use, or protocol drift;
+- skeptic reviewer: assumes the implementation is subtly wrong and searches for hidden failure modes;
+- integration reviewer: checks mergeability and cross-branch consistency.
+
+These roles should usually be short-lived and focused. They do not need to own implementation.
+
+### Prefer structured protocols over conversational meetings
+
+Human teams coordinate through meetings and conversation. AI sessions should coordinate through structured blocks whenever possible.
+
+Examples:
+
+- `TASKDECK_CHILD_SESSION_BATCH_REQUEST`;
+- `TASKDECK_CHILD_SESSION_RESULT`;
+- future parent-to-child instruction requests;
+- merge plans;
+- blocked reports;
+- verification reports.
+
+Natural language is still useful for context and reasoning, but durable coordination should be machine-readable when TaskDeck needs to detect, route, or summarize it.
+
+### Keep durable knowledge in the repository
+
+A human team can retain tacit knowledge across weeks. AI sessions may end, drift, or become stale.
+
+For AI-first development, the repository should remain the source of truth:
+
+- `AGENTS.md` for top-level working rules;
+- `docs/ai-first-layering.md` for the coordination model;
+- `docs/agents/roles/*` for role-specific guidance;
+- protocol docs for structured agent-to-TaskDeck messages;
+- GitHub Issues for actionable work.
+
+Session memory can accelerate work, but it should not be the durable authority.
+
+### Practical implication
+
+Use human team language as a UI metaphor, not as a hard implementation model.
+
+Internally, prefer organizing sessions by:
+
+- context ownership;
+- decision authority;
+- permitted side effects;
+- verification responsibility;
+- protocol/reporting obligations.
+
+This lets TaskDeck feel like supervising a team while still exploiting AI-specific strengths such as cheap parallel review, disposable specialist sessions, and structured machine-readable handoffs.
+
 ## Suggested layers
 
 These layers are intentionally practical rather than rigid.
