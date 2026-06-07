@@ -232,6 +232,20 @@ export function TaskList({
                         Child
                       </span>
                     ) : null}
+                    {task.childReportedState ? (
+                      <span
+                        className="task-badge"
+                        data-kind={`child-status-${task.childReportedState}`}
+                        title={childReportedStatusTitle(task)}
+                      >
+                        {childReportedStatusLabel(task.childReportedState)}
+                      </span>
+                    ) : null}
+                    {task.childStatusError ? (
+                      <span className="task-badge" data-kind="child-status-error" title={task.childStatusError}>
+                        Status error
+                      </span>
+                    ) : null}
                   </span>
                   <span className="task-card-meta">
                     <span className="task-cwd" title={task.cwd}>
@@ -396,6 +410,16 @@ function childSessionTitle(task: Task) {
     return `Child session from parent ${task.parentSessionId}`;
   }
   return "Child session spawned from a parent request";
+}
+
+function childReportedStatusLabel(state: NonNullable<Task["childReportedState"]>) {
+  return `Reported ${String(state).replace(/_/g, " ")}`;
+}
+
+function childReportedStatusTitle(task: Task) {
+  const state = task.childReportedState ? String(task.childReportedState).replace(/_/g, " ") : "unknown";
+  const summary = task.childStatusSummary ? `: ${task.childStatusSummary}` : "";
+  return `Child reported ${state}${summary}`;
 }
 
 function workPackageLabel(workPackageId: string) {

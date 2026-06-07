@@ -10,7 +10,7 @@ export type AgentState =
   | "failed"
   | "stopped";
 
-export type AgentStateSource = "taskdeck_event" | "tui_fallback" | "process" | "manual" | "";
+export type AgentStateSource = "taskdeck_event" | "tui_fallback" | "process" | "manual" | "child_status" | "";
 export type AgentStateConfidence = "high" | "medium" | "low" | "";
 export type AttentionStateSource = AgentStateSource;
 export type AttentionStateConfidence = AgentStateConfidence;
@@ -21,6 +21,7 @@ export type AttentionState =
   | "needs_approval"
   | "review_ready"
   | "failed";
+export type ChildReportedState = "working" | "blocked" | "ready_for_review" | "done" | "failed";
 
 export type TaskRisk = {
   level: "unknown" | "low" | "medium" | "high";
@@ -62,6 +63,13 @@ export type Task = {
   spawnedFromParentRequest?: boolean;
   workPackageId?: string;
   filesLikelyToChange?: string[];
+  childStatusFile?: string;
+  childReportedState?: ChildReportedState | "";
+  childStatusSummary?: string;
+  childStatusArtifacts?: string[];
+  childStatusDetailsFile?: string;
+  childStatusUpdatedAt?: string;
+  childStatusError?: string;
   identityColorSlot?: number;
   status: TaskStatus;
   agentState: AgentState;
