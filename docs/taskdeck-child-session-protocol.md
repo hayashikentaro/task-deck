@@ -2,11 +2,11 @@
 
 This document defines the MVP protocol for asking TaskDeck to launch child agent sessions from a parent session's terminal output.
 
-The protocol is documentation-only in this phase. Parser, UI, server behavior, and worktree automation are follow-up implementation work.
+The current foundation includes this protocol document, a pure parser/validator, and task metadata plumbing. Output-stream integration, auto-launch behavior, initial instruction sending, UI display, and worktree automation are follow-up implementation work.
 
 ## Purpose
 
-A parent agent may request one or more child sessions by emitting a structured request block in its terminal output. TaskDeck will detect the block, validate it, and auto-launch valid child session requests without a confirmation modal.
+A parent agent may request one or more child sessions by emitting a structured request block in its terminal output. Once the protocol is wired into TaskDeck output handling, TaskDeck should detect the block, validate it, and auto-launch valid child session requests without a confirmation modal.
 
 This protocol intentionally allows only structured launch metadata. Parent agents must not provide raw commands, shells, environment variables, secrets, or approval bypass flags.
 
@@ -72,12 +72,12 @@ TaskDeck must reject any request containing forbidden fields. Parent agents are 
 
 ## TaskDeck Behavior
 
-For the MVP, TaskDeck should eventually:
+For the MVP, TaskDeck should:
 
 - detect request blocks in parent session output;
 - parse the JSON between the markers;
-- validate protocol version, required fields, field types, and forbidden fields;
-- validate requested profiles, permission levels, cwd, and file scope against local policy;
+- validate protocol version, required fields, field types, permission values, and forbidden fields;
+- validate requested profiles, cwd, file scope, and code-editing policy against local policy when that policy layer is implemented;
 - auto-launch valid requests without a confirmation modal;
 - reject invalid requests and surface a concise error to the parent session/user;
 - never execute raw launch commands supplied by a parent agent.
@@ -111,19 +111,36 @@ The child session must:
 
 Documentation-only child sessions should still isolate their work unless the parent instruction explicitly says the shared tree is safe for that specific task.
 
-## Validation Notes
+## MVP Parser Validation
 
-TaskDeck should reject a request when:
+The initial pure parser/validator rejects a request block when:
 
-- markers are missing or nested incorrectly;
+- markers are malformed, nested, unterminated, or appear in an unexpected order;
 - JSON is invalid;
 - `version` is unsupported;
-- `sessions` is empty or missing;
-- required session fields are missing;
+- `reason` is present but not a string;
+- `sessions` is missing, not an array, or empty;
+- a session item is not an object;
+- required session fields are missing or empty;
+- `agentPermissionLevel` is present but not one of `full_access`, `workspace_write`, or `read_only`;
+- `workPackageId` is present but not a string;
+- `filesLikelyToChange` is present but not an array of strings;
 - any forbidden field appears;
-- `filesLikelyToChange` is absent for code-editing work;
-- `initialInstruction` omits the required isolation preflight for code-editing work;
-- `cwd`, profile, or permission values fail local validation.
+
+The parser is intentionally pure. It does not auto-launch sessions, inspect repository state, manage worktrees, infer whether work is code-editing, or search `initialInstruction` text for isolation-preflight wording.
+
+## Protocol And Local-Policy Validation
+
+Beyond parser-level structural validation, TaskDeck and parent agents should treat these as protocol or local-policy requirements:
+
+- `filesLikelyToChange` should be present for code-editing work.
+- `initialInstruction` should include the required isolation preflight for code-editing work.
+- `cwd`, profile, permission, and file scope should pass local policy before launch.
+- Child sessions must stop and report when branch/worktree isolation is unsafe.
+- Child sessions must stop and report when unrelated uncommitted changes exist.
+- Child sessions must stop and report when assigned file scope conflicts with another active child session.
+
+These policy checks may be enforced by future TaskDeck validation, local configuration, or child-session instructions. Do not describe them as implemented parser behavior until that enforcement exists.
 
 ## Security Boundary
 
