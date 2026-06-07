@@ -103,6 +103,9 @@ export function App() {
     }
 
     const parentTask = tasksRef.current.find((task) => task.id === parentTaskId) ?? null;
+    if (parentTask?.spawnedFromParentRequest) {
+      return;
+    }
     const parentLabel = parentTask?.title || "parent task";
     const result = parseChildSessionRequestsFromText(buffer);
 
@@ -148,6 +151,7 @@ export function App() {
         launchedChildRequestKeysRef.current.add(requestKey);
         setTerminalMessage(`Created ${createdCount} child ${createdCount === 1 ? "session" : "sessions"} from ${parentLabel}.`);
       } else {
+        rejectedChildRequestKeysRef.current.add(requestKey);
         setTerminalMessage(`Failed to create all child sessions from ${parentLabel}: TaskDeck is not connected.`);
       }
     }
