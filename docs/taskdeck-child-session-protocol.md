@@ -84,6 +84,17 @@ For the MVP, TaskDeck should eventually:
 
 Worktree creation is not performed by TaskDeck in this MVP. Branch/worktree isolation is handled by the child session's `initialInstruction` and by the child agent following repository rules.
 
+## Child Task Metadata
+
+When TaskDeck launches a child session from a valid request, the resulting task should carry metadata that links it back to the parent request:
+
+- `parentSessionId`: the parent task/session id that emitted the request.
+- `spawnedFromParentRequest`: `true` for tasks created from this protocol.
+- `workPackageId`: copied from the child session request when provided.
+- `filesLikelyToChange`: copied from the child session request when provided.
+
+These fields are task metadata. Parent agents request `workPackageId` and `filesLikelyToChange`, but they do not supply `parentSessionId` or `spawnedFromParentRequest` directly.
+
 ## Required Isolation Preflight
 
 Every code-editing child session must include an isolation preflight in `initialInstruction`.
