@@ -2,7 +2,22 @@
 
 This document defines the MVP protocol for asking TaskDeck to launch child agent sessions from a parent session's terminal output.
 
-The current MVP includes this protocol document, a pure parser/validator, task metadata plumbing, parent-output detection, modal-free auto-launch for valid requests, initial instruction sending, and minimal child metadata UI. Worktree automation and broader parent/child coordination flows remain out of scope.
+The current MVP includes this protocol document, a pure parser/validator, task metadata plumbing, parent-output detection, modal-free auto-launch for valid requests, initial instruction sending, parent-to-child message routing, and minimal child metadata UI. Worktree automation and broader parent/child coordination flows remain out of scope.
+
+## Current Transport Status
+
+This stdout marker transport is currently a **manual/debug transport**. It is known to work from clean shell-like sessions such as `zsh`, where the terminal output contains the exact marker lines and valid JSON content.
+
+It is **not reliable as the primary transport for Codex parent sessions**. Codex-style terminal UIs can render user input, assistant output, command summaries, bullets, indentation, transcript folding, and line wrapping into the visible task output. That can corrupt what TaskDeck sees as the block content, causing nested-block or invalid-JSON rejections even when the logical request is valid.
+
+For now:
+
+- use this stdout protocol for zsh/manual smoke tests and controlled debug output;
+- do not treat it as the final parent-agent control channel;
+- keep parent-to-child request semantics, parser validation, target resolution, and dedupe behavior as useful protocol work;
+- plan to move reliable parent-agent control to a file-based/status-oriented mechanism.
+
+The intended follow-up direction is issue #44: child sessions report constrained promise-like states such as `working`, `blocked`, `ready_for_review`, `done`, and `failed` through status files. Parent-to-child control may also move to a reliable file/CLI/API request transport instead of relying on human-oriented stdout rendering.
 
 ## Purpose
 
@@ -128,6 +143,14 @@ Parent instruction from <parent title or id>:
 ```
 
 Child session output is not treated as a source for message routing requests.
+
+## Current Operational Limitations
+
+This stdout-based request transport assumes clean terminal output. It should be considered verified for shell-like parent sessions that can emit exact marker blocks, such as `zsh` smoke tests.
+
+It is currently not considered verified for natural Codex-parent operation. In observed manual testing, asking a Codex parent to "create a child session" caused Codex to print a human-formatted protocol block. The rendered output included bullets, indentation, line wrapping, and surrounding command/transcript text, which can break JSON parsing or trigger nested-block rejection.
+
+Do not rely on a Codex parent session printing stdout blocks as the long-term control mechanism. Prefer the upcoming status/file-based approach for child reports and a future reliable request transport for parent-generated control.
 
 ## Required Isolation Preflight
 
