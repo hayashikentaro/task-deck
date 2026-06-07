@@ -2,7 +2,7 @@
 
 This document defines the MVP protocol for asking TaskDeck to launch child agent sessions from a parent session's terminal output.
 
-The current foundation includes this protocol document, a pure parser/validator, and task metadata plumbing. Output-stream integration, auto-launch behavior, initial instruction sending, UI display, and worktree automation are follow-up implementation work.
+The current MVP includes this protocol document, a pure parser/validator, task metadata plumbing, parent-output detection, modal-free auto-launch for valid requests, initial instruction sending, and minimal child metadata UI. Worktree automation and broader parent/child coordination flows remain out of scope.
 
 ## Purpose
 
