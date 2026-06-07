@@ -16,6 +16,8 @@ import {
   AttentionState,
   TASK_IDENTITY_COLOR_SLOT_COUNT,
   createTask,
+  markTaskChildStatusError,
+  markTaskChildStatusReported,
   markTaskAttentionAcknowledged,
   markTaskAttentionState,
   markTaskAgentState,
@@ -24,6 +26,7 @@ import {
   markTaskTerminalInputLocked,
   markTaskTerminalInputUnlocked,
   normalizeIdentityColorSlot,
+  parseChildStatusReportJson,
   serializeTask,
   TaskStatus,
   inferAgentStateFromStatus,
@@ -102,6 +105,7 @@ const inputPromptStabilizationMs = 750;
 const ptyActivityWindowMs = 3000;
 const maxPtyActivityFrames = 40;
 const quietAttentionMs = 5000;
+const childStatusPollIntervalMs = 2000;
 const defaultContainerWorkspaceRoot = "/workspace";
 const protectedContainerCleanupPids = new Set(["1", "7", "8", "130"]);
 const imageAttachmentMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
@@ -112,9 +116,11 @@ const imageAttachmentExtensions = new Map([
 ]);
 const activePtys = new Map();
 const startedChildSessionRequestKeys = new Set();
+const childStatusFileSnapshots = new Map();
 let persistTasksQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
 let persistSessionLabelsQueue = Promise.resolve();
+let childStatusPollInFlight = false;
 
 app.use(express.json());
 
@@ -640,6 +646,7 @@ wss.on("connection", (socket) => {
 });
 
 await initializePersistence();
+await scanChildStatusFiles();
 await configureWebApp();
 
 server.on("error", (error) => {
@@ -654,6 +661,9 @@ server.listen(port, host, () => {
 
 const attentionTimer = setInterval(updateQuietAttentionStates, 1000);
 attentionTimer.unref?.();
+
+const childStatusTimer = setInterval(scanChildStatusFiles, childStatusPollIntervalMs);
+childStatusTimer.unref?.();
 
 function buildUniqueNewSessionTitle(title, sessionMode) {
   const normalizedTitle = String(title || "").trim();
@@ -752,12 +762,16 @@ async function startTask({
     ...detectedAgentSession,
     ...explicitAgentSession,
   });
+  const childStatusFile = await ensureChildStatusFilePath(baseTask);
   const finalizedAttachments = await finalizePendingAttachments(attachments, baseTask.id);
 
   const task = markTaskRunning({
     ...baseTask,
+    childStatusFile,
     attachments: finalizedAttachments,
   });
+  const taskDeckEnv = taskDeckEnvironmentForTask(task, effectiveCommand, childStatusFile);
+  const commandForProcess = commandWithTaskDeckEnv(effectiveCommand, taskDeckEnv);
   tasks.set(task.id, task);
   logs.set(task.id, "");
   persistTasks();
@@ -769,8 +783,6 @@ async function startTask({
   writeTaskLog(task.id, "");
 
   try {
-    const taskDeckEnv = taskDeckEnvironmentForTask(task);
-    const commandForProcess = commandWithTaskDeckEnv(effectiveCommand, taskDeckEnv);
     const terminalProcess = pty.spawn(shell, ["-lc", commandForProcess], {
       name: "xterm-256color",
       cols: 100,
@@ -976,6 +988,169 @@ async function validateCwd(cwd) {
   }
 }
 
+async function ensureChildStatusFilePath(task) {
+  const primaryStatusFile = defaultChildStatusFilePath(task);
+  try {
+    await fs.mkdir(path.dirname(primaryStatusFile), { recursive: true });
+    return primaryStatusFile;
+  } catch (error) {
+    const fallbackStatusFile = path.join(dataRoot, "statuses", `${task.id}.json`);
+    console.warn(`TaskDeck could not create task-local status directory: ${error.message}`);
+    try {
+      await fs.mkdir(path.dirname(fallbackStatusFile), { recursive: true });
+      return fallbackStatusFile;
+    } catch (fallbackError) {
+      console.warn(`TaskDeck could not create fallback status directory: ${fallbackError.message}`);
+      return primaryStatusFile;
+    }
+  }
+}
+
+function childStatusFilePathForTask(task) {
+  const statusFile = String(task.childStatusFile || "").trim();
+  if (statusFile) {
+    return path.resolve(statusFile);
+  }
+  return defaultChildStatusFilePath(task);
+}
+
+function defaultChildStatusFilePath(task) {
+  const taskCwd = path.resolve(repoRoot, String(task.cwd || ""));
+  return path.join(taskCwd, ".taskdeck", "statuses", `${task.id}.json`);
+}
+
+function taskDeckEnvironmentForTask(task, command, hostStatusFile) {
+  const childStatusFile = childVisibleStatusFilePathForTask(task, command, hostStatusFile);
+  return {
+    TASKDECK_TASK_ID: task.id,
+    ...(task.parentSessionId ? { TASKDECK_PARENT_TASK_ID: task.parentSessionId } : {}),
+    ...(task.workPackageId ? { TASKDECK_WORK_PACKAGE_ID: task.workPackageId } : {}),
+    TASKDECK_STATUS_FILE: childStatusFile,
+  };
+}
+
+function childVisibleStatusFilePathForTask(task, command, hostStatusFile) {
+  const dockerWorkdir = extractDockerExecWorkdir(command);
+  if (!dockerWorkdir) {
+    return hostStatusFile;
+  }
+
+  return path.posix.join(
+    dockerWorkdir.split(path.sep).join(path.posix.sep),
+    ".taskdeck",
+    "statuses",
+    `${task.id}.json`,
+  );
+}
+
+function commandWithTaskDeckEnv(command, taskDeckEnv) {
+  const envEntries = Object.entries(taskDeckEnv || {}).filter(([, value]) => String(value || "").trim());
+  if (envEntries.length === 0) {
+    return command;
+  }
+
+  const dockerExec = findDockerExecContainerToken(command);
+  if (!dockerExec) {
+    return command;
+  }
+
+  const dockerEnvArgs = envEntries
+    .map(([name, value]) => `-e ${quoteShellToken(`${name}=${value}`)}`)
+    .join(" ");
+  return `${String(command).slice(0, dockerExec.start)}${dockerEnvArgs} ${String(command).slice(dockerExec.start)}`;
+}
+
+async function scanChildStatusFiles() {
+  if (childStatusPollInFlight) {
+    return;
+  }
+
+  childStatusPollInFlight = true;
+  let changed = false;
+  try {
+    for (const task of tasks.values()) {
+      changed = (await scanChildStatusFileForTask(task)) || changed;
+    }
+    if (changed) {
+      await persistTasks();
+      broadcastTasks();
+    }
+  } catch (error) {
+    console.warn(`TaskDeck child status scan failed: ${error.message}`);
+  } finally {
+    childStatusPollInFlight = false;
+  }
+}
+
+async function scanChildStatusFileForTask(task) {
+  const statusFilePath = childStatusFilePathForTask(task);
+  let fileContents;
+
+  try {
+    fileContents = await fs.readFile(statusFilePath, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return false;
+    }
+    const errorFingerprint = `read-error:${statusFilePath}:${error.message}`;
+    if (childStatusFileSnapshots.get(task.id) === errorFingerprint) {
+      return false;
+    }
+    childStatusFileSnapshots.set(task.id, errorFingerprint);
+    return updateTaskFromChildStatusResult(task.id, {
+      ok: false,
+      error: `Could not read child status file: ${error.message}`,
+    });
+  }
+
+  const fingerprint = `contents:${statusFilePath}:${fileContents}`;
+  if (childStatusFileSnapshots.get(task.id) === fingerprint) {
+    return false;
+  }
+  childStatusFileSnapshots.set(task.id, fingerprint);
+  return updateTaskFromChildStatusResult(task.id, parseChildStatusReportJson(fileContents));
+}
+
+function updateTaskFromChildStatusResult(taskId, result) {
+  const task = tasks.get(taskId);
+  if (!task) {
+    return false;
+  }
+
+  const now = new Date().toISOString();
+  const nextTask = result.ok
+    ? markTaskChildStatusReported(task, result.report, now)
+    : markTaskChildStatusError(task, result.error, now);
+
+  if (haveSameChildStatusFields(task, nextTask)) {
+    return false;
+  }
+
+  tasks.set(task.id, nextTask);
+  return true;
+}
+
+function haveSameChildStatusFields(left, right) {
+  return (
+    left.childReportedState === right.childReportedState &&
+    left.childStatusSummary === right.childStatusSummary &&
+    stringArraysEqual(left.childStatusArtifacts, right.childStatusArtifacts) &&
+    left.childStatusDetailsFile === right.childStatusDetailsFile &&
+    left.childStatusUpdatedAt === right.childStatusUpdatedAt &&
+    left.childStatusError === right.childStatusError &&
+    left.attentionState === right.attentionState &&
+    left.attentionStateReason === right.attentionStateReason &&
+    left.attentionStateSource === right.attentionStateSource &&
+    left.attentionStateConfidence === right.attentionStateConfidence
+  );
+}
+
+function stringArraysEqual(left, right) {
+  const normalizedLeft = normalizeStringArray(left);
+  const normalizedRight = normalizeStringArray(right);
+  return normalizedLeft.length === normalizedRight.length && normalizedLeft.every((value, index) => value === normalizedRight[index]);
+}
+
 async function commandForTaskCwd(command, resolvedCwd, sessionMode) {
   if (!resolvedCwd) {
     return command;
@@ -1004,29 +1179,6 @@ function replaceDockerExecWorkdir(command, containerCwd) {
     /(\bdocker\s+exec\b[\s\S]*?\s-w\s+)("[^"]+"|'[^']+'|[^\s]+)/,
     `$1${quoteShellToken(containerCwd)}`,
   );
-}
-
-function taskDeckEnvironmentForTask(task) {
-  return {
-    TASKDECK_TASK_ID: task.id,
-  };
-}
-
-function commandWithTaskDeckEnv(command, taskDeckEnv) {
-  const envEntries = Object.entries(taskDeckEnv || {}).filter(([, value]) => String(value || "").trim());
-  if (envEntries.length === 0) {
-    return command;
-  }
-
-  const dockerExec = findDockerExecContainerToken(command);
-  if (!dockerExec) {
-    return command;
-  }
-
-  const envArgs = envEntries
-    .map(([key, value]) => `-e ${quoteShellToken(`${key}=${value}`)}`)
-    .join(" ");
-  return `${String(command).slice(0, dockerExec.start)}${envArgs} ${String(command).slice(dockerExec.start)}`;
 }
 
 function extractDockerExecContainerName(command) {
@@ -1923,13 +2075,33 @@ function updateAgentStateFromTaskDeckEvent(taskId, agentState, metadata = {}) {
     return false;
   }
 
-  if (task.agentState === agentState && hasSameAgentStateMetadata(task, metadata)) {
+  const nextMetadata = preserveChildStatusAttention(task, metadata);
+  if (task.agentState === agentState && hasSameAgentStateMetadata(task, nextMetadata)) {
     return false;
   }
 
-  setTask(markTaskAgentState(task, agentState, metadata));
+  setTask(markTaskAgentState(task, agentState, nextMetadata));
   broadcastTasks();
   return true;
+}
+
+function preserveChildStatusAttention(task, metadata) {
+  if (
+    isChildStatusAttentionActive(task) &&
+    metadata.attentionState === AttentionState.NONE &&
+    metadata.attentionSource !== AgentStateSource.CHILD_STATUS
+  ) {
+    const {
+      attentionState: _attentionState,
+      attentionReason: _attentionReason,
+      attentionSource: _attentionSource,
+      attentionConfidence: _attentionConfidence,
+      ...metadataWithoutAttention
+    } = metadata;
+    return metadataWithoutAttention;
+  }
+
+  return metadata;
 }
 
 function hasSameAgentStateMetadata(task, metadata) {
@@ -1979,7 +2151,12 @@ function updateQuietAttentionStates() {
 
   for (const activePty of activePtys.values()) {
     const task = tasks.get(activePty.taskId);
-    if (!task || task.status !== TaskStatus.RUNNING || isStrongAttentionState(task.attentionState)) {
+    if (
+      !task ||
+      task.status !== TaskStatus.RUNNING ||
+      isStrongAttentionState(task.attentionState) ||
+      isChildStatusAttentionActive(task)
+    ) {
       continue;
     }
 
@@ -2060,6 +2237,14 @@ function isStrongAttentionState(attentionState) {
     attentionState === AttentionState.NEEDS_INPUT ||
     attentionState === AttentionState.REVIEW_READY ||
     attentionState === AttentionState.FAILED
+  );
+}
+
+function isChildStatusAttentionActive(task) {
+  return (
+    task.attentionStateSource === AgentStateSource.CHILD_STATUS &&
+    task.attentionState &&
+    task.attentionState !== AttentionState.NONE
   );
 }
 

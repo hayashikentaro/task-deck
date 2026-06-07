@@ -17,7 +17,7 @@ For now:
 - keep parent-to-child request semantics, parser validation, target resolution, and dedupe behavior as useful protocol work;
 - plan to move reliable parent-agent control to a file-based/status-oriented mechanism.
 
-The intended follow-up direction is issue #44: child sessions report constrained promise-like states such as `working`, `blocked`, `ready_for_review`, `done`, and `failed` through status files. Parent-to-child control may also move to a reliable file/CLI/API request transport instead of relying on human-oriented stdout rendering.
+Issue #44 adds the first file-based child-to-TaskDeck transport: child sessions report constrained promise-like states such as `working`, `blocked`, `ready_for_review`, `done`, and `failed` through a latest-status JSON file. Parent-to-child control may also move to a reliable file/CLI/API request transport instead of relying on human-oriented stdout rendering.
 
 ## Purpose
 
@@ -151,6 +151,69 @@ This stdout-based request transport assumes clean terminal output. It should be 
 It is currently not considered verified for natural Codex-parent operation. In observed manual testing, asking a Codex parent to "create a child session" caused Codex to print a human-formatted protocol block. The rendered output included bullets, indentation, line wrapping, and surrounding command/transcript text, which can break JSON parsing or trigger nested-block rejection.
 
 Do not rely on a Codex parent session printing stdout blocks as the long-term control mechanism. Prefer the upcoming status/file-based approach for child reports and a future reliable request transport for parent-generated control.
+
+## Child Status File Report
+
+Child-to-TaskDeck reporting is intentionally constrained to latest-status reporting. It is not a general child-to-parent chat channel, message bus, or artifact transport.
+
+TaskDeck provides these environment variables to launched PTYs:
+
+- `TASKDECK_TASK_ID`: current task id.
+- `TASKDECK_PARENT_TASK_ID`: parent task id when the task was spawned from a parent request.
+- `TASKDECK_WORK_PACKAGE_ID`: work package id when available.
+- `TASKDECK_STATUS_FILE`: absolute path where the child should write its latest status report.
+
+Child sessions should not infer the status path. They should write the exact file indicated by `TASKDECK_STATUS_FILE`.
+
+Status report JSON schema:
+
+```json
+{
+  "kind": "childStatus",
+  "version": 1,
+  "state": "working",
+  "summary": "Short optional human-readable summary.",
+  "artifacts": ["optional string references"],
+  "detailsFile": ".taskdeck/statuses/example.details.md",
+  "updatedAt": "2026-06-07T13:00:00.000Z"
+}
+```
+
+Fields:
+
+- `kind`: must be `childStatus`.
+- `version`: must be `1`.
+- `state`: one of `working`, `blocked`, `ready_for_review`, `done`, or `failed`.
+- `summary`: optional short string.
+- `artifacts`: optional array of string references.
+- `detailsFile`: optional path to a Markdown details file. TaskDeck treats this as a path/reference and does not render large Markdown content in this MVP.
+- `updatedAt`: optional string timestamp.
+
+Write status files atomically so TaskDeck does not read partial JSON:
+
+```sh
+tmp="${TASKDECK_STATUS_FILE}.tmp"
+cat > "$tmp" <<'JSON'
+{
+  "kind": "childStatus",
+  "version": 1,
+  "state": "ready_for_review",
+  "summary": "Implementation is ready for review.",
+  "artifacts": ["apps/web/src/App.tsx"],
+  "detailsFile": ".taskdeck/statuses/issue.details.md"
+}
+JSON
+mv "$tmp" "$TASKDECK_STATUS_FILE"
+```
+
+TaskDeck polls status files, ignores `.tmp` files, validates JSON shape, and stores only the latest reported state on the task. A child reporting `done` does not automatically stop or delete the task. A child reporting `failed` does not automatically kill the PTY.
+
+Supervision behavior:
+
+- `blocked`, `ready_for_review`, and `failed` are attention-worthy.
+- `working` and `done` do not demand attention by themselves.
+
+Free-form child-to-parent protocol blocks are not supported in this MVP. Use `summary`, `artifacts`, and `detailsFile` for bounded reporting.
 
 ## Required Isolation Preflight
 

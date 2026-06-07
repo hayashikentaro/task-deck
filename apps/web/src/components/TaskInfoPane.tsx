@@ -58,6 +58,19 @@ export function TaskInfoPane({ actionError, task, onInterrupt, onRerun }: TaskIn
               ) : null}
             </>
           ) : null}
+          {hasChildStatusMetadata(task) ? (
+            <>
+              <InfoSection label="Child reported status" />
+              {task.childReportedState ? <Info label="Reported state" value={statusLabel(task.childReportedState)} /> : null}
+              {task.childStatusSummary ? <Info label="Summary" value={task.childStatusSummary} /> : null}
+              {task.childStatusArtifacts?.length ? (
+                <Info label="Artifacts" value={task.childStatusArtifacts.join(", ")} />
+              ) : null}
+              {task.childStatusDetailsFile ? <Info label="Details file" value={task.childStatusDetailsFile} /> : null}
+              {task.childStatusUpdatedAt ? <Info label="Reported at" value={formatDate(task.childStatusUpdatedAt)} /> : null}
+              {task.childStatusError ? <Info label="Status file error" value={task.childStatusError} /> : null}
+            </>
+          ) : null}
           <Info label="Started" value={formatDate(task.startedAt)} />
           <Info label="Updated" value={formatDate(task.updatedAt)} />
         </dl>
@@ -81,6 +94,17 @@ function hasChildSessionMetadata(task: Task) {
       task.spawnedFromParentRequest ||
       task.workPackageId ||
       task.filesLikelyToChange?.length
+  );
+}
+
+function hasChildStatusMetadata(task: Task) {
+  return Boolean(
+    task.childReportedState ||
+      task.childStatusSummary ||
+      task.childStatusArtifacts?.length ||
+      task.childStatusDetailsFile ||
+      task.childStatusUpdatedAt ||
+      task.childStatusError
   );
 }
 
@@ -109,6 +133,10 @@ function attentionState(task: Task): AttentionState {
 
 function attentionStateLabel(nextAttentionState: AttentionState) {
   return nextAttentionState.replace(/_/g, " ");
+}
+
+function statusLabel(value: string) {
+  return value.replace(/_/g, " ");
 }
 
 function stateSourceLabel(source?: string) {

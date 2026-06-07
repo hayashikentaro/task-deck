@@ -23,6 +23,7 @@ export const AgentStateSource = Object.freeze({
   TUI_FALLBACK: "tui_fallback",
   PROCESS: "process",
   MANUAL: "manual",
+  CHILD_STATUS: "child_status",
 });
 
 export const AgentStateConfidence = Object.freeze({
@@ -41,6 +42,16 @@ export const AttentionState = Object.freeze({
 });
 
 export const TASK_IDENTITY_COLOR_SLOT_COUNT = 24;
+
+export const ChildReportedState = Object.freeze({
+  WORKING: "working",
+  BLOCKED: "blocked",
+  READY_FOR_REVIEW: "ready_for_review",
+  DONE: "done",
+  FAILED: "failed",
+});
+
+const childReportedStates = new Set(Object.values(ChildReportedState));
 
 const dangerousPatterns = [
   /\brm\s+-rf\b/,
@@ -70,6 +81,7 @@ export function createTask({
   spawnedFromParentRequest = false,
   workPackageId = "",
   filesLikelyToChange = [],
+  childStatusFile = "",
   identityColorSlot,
   attachments = [],
 }) {
@@ -97,6 +109,13 @@ export function createTask({
     spawnedFromParentRequest: normalizeBoolean(spawnedFromParentRequest),
     workPackageId: String(workPackageId || "").trim(),
     filesLikelyToChange: normalizeFilesLikelyToChange(filesLikelyToChange),
+    childStatusFile: String(childStatusFile || "").trim(),
+    childReportedState: "",
+    childStatusSummary: "",
+    childStatusArtifacts: [],
+    childStatusDetailsFile: "",
+    childStatusUpdatedAt: "",
+    childStatusError: "",
     identityColorSlot: normalizeIdentityColorSlot(identityColorSlot),
     status: TaskStatus.IDLE,
     agentState: AgentState.STARTING,
@@ -241,6 +260,13 @@ export function serializeTask(task) {
     spawnedFromParentRequest: normalizeBoolean(task.spawnedFromParentRequest),
     workPackageId: task.workPackageId || "",
     filesLikelyToChange: normalizeFilesLikelyToChange(task.filesLikelyToChange),
+    childStatusFile: task.childStatusFile || "",
+    childReportedState: childReportedStates.has(task.childReportedState) ? task.childReportedState : "",
+    childStatusSummary: task.childStatusSummary || "",
+    childStatusArtifacts: normalizeStringArray(task.childStatusArtifacts),
+    childStatusDetailsFile: task.childStatusDetailsFile || "",
+    childStatusUpdatedAt: task.childStatusUpdatedAt || "",
+    childStatusError: task.childStatusError || "",
     identityColorSlot: normalizeIdentityColorSlot(task.identityColorSlot),
     status: task.status,
     agentState: task.agentState ?? inferAgentStateFromStatus(task),
@@ -265,6 +291,146 @@ export function serializeTask(task) {
   };
 }
 
+export function parseChildStatusReportJson(rawContents) {
+  let parsed;
+
+  try {
+    parsed = JSON.parse(rawContents);
+  } catch {
+    return {
+      ok: false,
+      error: "Child status file must contain valid JSON.",
+    };
+  }
+
+  return validateChildStatusReport(parsed);
+}
+
+export function validateChildStatusReport(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {
+      ok: false,
+      error: "Child status report must be a JSON object.",
+    };
+  }
+
+  if (value.kind !== "childStatus") {
+    return {
+      ok: false,
+      error: "Child status report kind must be childStatus.",
+    };
+  }
+
+  if (value.version !== 1) {
+    return {
+      ok: false,
+      error: "Child status report version must be 1.",
+    };
+  }
+
+  if (!childReportedStates.has(value.state)) {
+    return {
+      ok: false,
+      error: "Child status report state must be one of working, blocked, ready_for_review, done, or failed.",
+    };
+  }
+
+  if ("summary" in value && typeof value.summary !== "string") {
+    return {
+      ok: false,
+      error: "Child status report summary must be a string when provided.",
+    };
+  }
+
+  if ("artifacts" in value && !isStringArray(value.artifacts)) {
+    return {
+      ok: false,
+      error: "Child status report artifacts must be an array of strings when provided.",
+    };
+  }
+
+  if ("detailsFile" in value && typeof value.detailsFile !== "string") {
+    return {
+      ok: false,
+      error: "Child status report detailsFile must be a string when provided.",
+    };
+  }
+
+  if ("updatedAt" in value && typeof value.updatedAt !== "string") {
+    return {
+      ok: false,
+      error: "Child status report updatedAt must be a string when provided.",
+    };
+  }
+
+  return {
+    ok: true,
+    report: {
+      state: value.state,
+      summary: typeof value.summary === "string" ? value.summary : "",
+      artifacts: isStringArray(value.artifacts) ? value.artifacts : [],
+      detailsFile: typeof value.detailsFile === "string" ? value.detailsFile : "",
+      updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : "",
+    },
+  };
+}
+
+export function markTaskChildStatusReported(task, report, observedAt = new Date().toISOString()) {
+  const nextAttentionState = attentionStateForChildReportedState(report.state);
+  const hasAttentionFromChildStatus =
+    task.attentionStateSource === AgentStateSource.CHILD_STATUS &&
+    task.attentionState &&
+    task.attentionState !== AttentionState.NONE;
+  const nextTask = {
+    ...task,
+    childReportedState: report.state,
+    childStatusSummary: report.summary || "",
+    childStatusArtifacts: normalizeStringArray(report.artifacts),
+    childStatusDetailsFile: report.detailsFile || "",
+    childStatusUpdatedAt: report.updatedAt || observedAt,
+    childStatusError: "",
+    updatedAt: observedAt,
+  };
+
+  if (nextAttentionState !== AttentionState.NONE) {
+    return {
+      ...nextTask,
+      attentionState: nextAttentionState,
+      attentionStateReason: childStatusAttentionReason(report),
+      attentionStateSource: AgentStateSource.CHILD_STATUS,
+      attentionStateConfidence: AgentStateConfidence.HIGH,
+      attentionAcknowledgedAt: null,
+    };
+  }
+
+  if (hasAttentionFromChildStatus) {
+    return {
+      ...nextTask,
+      attentionState: AttentionState.NONE,
+      attentionStateReason: `Child reported ${report.state}.`,
+      attentionStateSource: AgentStateSource.CHILD_STATUS,
+      attentionStateConfidence: AgentStateConfidence.HIGH,
+    };
+  }
+
+  return nextTask;
+}
+
+export function markTaskChildStatusError(task, error, observedAt = new Date().toISOString()) {
+  return {
+    ...task,
+    childStatusError: String(error || "Invalid child status report."),
+    updatedAt: observedAt,
+  };
+}
+
+export function attentionStateForChildReportedState(state) {
+  if (state === ChildReportedState.BLOCKED) return AttentionState.MAY_NEED_USER;
+  if (state === ChildReportedState.READY_FOR_REVIEW) return AttentionState.REVIEW_READY;
+  if (state === ChildReportedState.FAILED) return AttentionState.FAILED;
+  return AttentionState.NONE;
+}
+
 export function normalizeIdentityColorSlot(identityColorSlot) {
   const slot = Number(identityColorSlot);
   if (!Number.isFinite(slot) || slot < 0) {
@@ -274,13 +440,28 @@ export function normalizeIdentityColorSlot(identityColorSlot) {
 }
 
 function normalizeFilesLikelyToChange(filesLikelyToChange) {
-  if (!Array.isArray(filesLikelyToChange)) {
+  return normalizeStringArray(filesLikelyToChange);
+}
+
+function normalizeStringArray(value) {
+  if (!Array.isArray(value)) {
     return [];
   }
 
-  return filesLikelyToChange
-    .map((filePath) => String(filePath || "").trim())
+  return value
+    .map((item) => String(item || "").trim())
     .filter(Boolean);
+}
+
+function isStringArray(value) {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function childStatusAttentionReason(report) {
+  if (report.summary) {
+    return `Child reported ${report.state}: ${report.summary}`;
+  }
+  return `Child reported ${report.state}.`;
 }
 
 function normalizeBoolean(value) {
