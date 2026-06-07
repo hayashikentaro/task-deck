@@ -27,6 +27,37 @@ In the current session-identity-first card design, the primary card-level visual
 7. Focused REST calls handle actions such as Codex usage refresh, task/session renaming, log reload, attachments, and diagnostics queries when a UI path calls them.
 8. UI state updates from REST responses and WebSocket messages keep the task list, selected task, terminal output, composer availability, Codex usage panel, and tools in sync.
 
+## #29 Child Session Auto-Launch Ownership
+
+Issue #29 adds a narrow parent-output-to-child-task flow:
+
+```text
+parent output
+  -> detect TASKDECK_CHILD_SESSION_BATCH_REQUEST
+  -> parse and validate
+  -> resolve trusted local agent profile
+  -> build trusted launch command
+  -> create child task
+  -> auto-send initialInstruction
+  -> display child metadata
+  -> dedupe created/rejected requests
+  -> report created/rejected status
+  -> later parent/integration workflow handles merging
+```
+
+This flow follows the AI-first layer model in `docs/ai-first-layering.md` and the request contract in `docs/taskdeck-child-session-protocol.md`.
+
+- Protocol owns the request block shape, required and optional fields, forbidden fields, validation semantics, parser/validator behavior, and protocol docs. Typical files are `docs/taskdeck-child-session-protocol.md` and `apps/web/src/childSessionRequests.ts`. Protocol work must not introduce raw launch commands or UI workflow decisions.
+- App Flow owns scanning parent task output/logs, calling the parser, deduping processed request blocks, resolving trusted local agent profiles, mapping valid requests to `CreateTaskInput`, invoking the existing task creation flow, and surfacing concise created/rejected status. Typical files are `apps/web/src/App.tsx` and `apps/web/src/agentLaunch.ts`.
+- Runtime owns PTY-backed task launch, task metadata preservation, queued input behavior, `initialInstruction` auto-send through the existing input path, and process/output lifecycle. Typical files are `apps/server/src/server.js` and, for stable metadata semantics, `packages/core/src/index.js`.
+- UI owns child metadata display, Child and work-package badges, TaskInfoPane child details, concise status presentation, and the #29 decision to avoid a confirmation modal for valid parent-generated requests. Typical files are `apps/web/src/components/TaskList.tsx`, `apps/web/src/components/TaskInfoPane.tsx`, and related local styles when needed.
+- Core owns parent/child task metadata semantics and persisted compatibility for fields such as `parentSessionId`, `spawnedFromParentRequest`, `workPackageId`, and `filesLikelyToChange` when those semantics change.
+- Integration owns collecting pushed child branches after child sessions finish, choosing merge order, merging into the parent or integration branch, and running checks. Integration is not part of the auto-launch runtime itself; use `docs/agents/roles/integration.md` for that workflow.
+
+#29 must not execute raw commands from parent output. Parent requests may name an agent profile, cwd, permission, title, work package, file hints, and an initial instruction, but TaskDeck builds the actual launch command from trusted local profile configuration.
+
+#29 is also not worktree management, branch management, dependency graph execution, automatic merge, parent-to-child follow-up instruction routing, or child completion result tracking. Follow-up instruction routing belongs to #30. Child completion/result tracking and integration handoff should be handled by later workflows/issues such as #40 and the integration role guide.
+
 ## Runtime State
 
 The server persists local runtime state under `.taskdeck/`, which is intentionally ignored by Git:
