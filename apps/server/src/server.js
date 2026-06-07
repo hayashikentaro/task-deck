@@ -464,6 +464,18 @@ function normalizeTailLength(rawTail) {
   return Math.min(Math.floor(tailLength), maxLogLength);
 }
 
+function normalizeBoolean(value) {
+  return value === true || String(value || "").toLowerCase() === "true";
+}
+
+function normalizeStringArray(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((item) => String(item || "").trim()).filter(Boolean);
+}
+
 app.get("/api/tasks/:taskId/diff", async (request, response) => {
   const task = tasks.get(request.params.taskId);
 
@@ -545,6 +557,10 @@ wss.on("connection", (socket) => {
           agentSessionSource: String(message.agentSessionSource || "").trim(),
           agentSessionDetectedAt: String(message.agentSessionDetectedAt || "").trim(),
           agentSessionResumeCommand: String(message.agentSessionResumeCommand || "").trim(),
+          parentSessionId: String(message.parentSessionId || "").trim(),
+          spawnedFromParentRequest: normalizeBoolean(message.spawnedFromParentRequest),
+          workPackageId: String(message.workPackageId || "").trim(),
+          filesLikelyToChange: normalizeStringArray(message.filesLikelyToChange),
           initialInstruction: String(message.initialInstruction || "").trim(),
           attachments: normalizePendingAttachmentRefs(message.attachments),
         },
@@ -671,6 +687,10 @@ async function startTask({
   agentSessionSource,
   agentSessionDetectedAt,
   agentSessionResumeCommand,
+  parentSessionId,
+  spawnedFromParentRequest,
+  workPackageId,
+  filesLikelyToChange = [],
   initialInstruction,
   attachments = [],
 }, socket) {
@@ -708,6 +728,10 @@ async function startTask({
     resumeCommand,
     identityColorSlot,
     initialInstruction,
+    parentSessionId,
+    spawnedFromParentRequest,
+    workPackageId,
+    filesLikelyToChange,
     ...detectedAgentSession,
     ...explicitAgentSession,
   });
