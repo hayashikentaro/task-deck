@@ -123,6 +123,20 @@ Use role-specific guidance when available, such as `docs/agents/roles/integratio
 - When changing `apps/web` UI styling, read `docs/guides/ui-style.md`. When changing reusable UI components, shared controls, or icon-only controls, read `docs/guides/ui-components.md`.
 - When asked to create TaskDeck child sessions, emit the structured request block defined in `docs/taskdeck-child-session-protocol.md`; do not invent raw launch commands.
 
+## Branch And Worktree Policy
+
+For single-threaded work, prefer working directly on `main` unless the task may leave `main` temporarily broken or hard to use.
+
+Use a separate branch and, when useful, a separate worktree for:
+
+- parallel work by multiple sessions;
+- long-running work that should not block `main`;
+- risky Runtime/App Flow changes;
+- changes that may require intermediate broken states;
+- experiments that may be discarded.
+
+Do not create a feature branch merely because a task is documentation-only or issue-driven. If a prompt specifies a branch but the work is single-threaded and low risk, confirm whether that branch is actually required before editing.
+
 ## Child Session Branches And Integration
 
 When working as a child session in an isolated branch/worktree, producing local changes is not enough to complete the task.
