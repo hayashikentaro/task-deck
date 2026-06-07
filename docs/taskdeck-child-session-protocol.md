@@ -30,7 +30,7 @@ TASKDECK_CHILD_SESSION_BATCH_REQUEST
         "docs/taskdeck-child-session-protocol.md",
         "AGENTS.md"
       ],
-      "initialInstruction": "You are working on hayashikentaro/task-deck. First read AGENTS.md. Before editing files, create or switch to an isolated branch/worktree for this work package. Stop and report if worktree/branch isolation is unsafe, unrelated changes exist, or the assigned file scope overlaps with another active child session. Then implement the protocol documentation foundation for issue #29."
+      "initialInstruction": "You are working on hayashikentaro/task-deck. First read AGENTS.md. Before editing files, create or switch to an isolated branch/worktree for this work package. Stop and report if worktree/branch isolation is unsafe, unrelated changes exist, or the assigned file scope overlaps with another active child session. When finished, commit and push your child branch, then report the branch name, commit SHA, push status, verification results, and merge notes. Do not merge into the parent branch unless explicitly assigned as the integration session. Then implement the protocol documentation foundation for issue #29."
     }
   ]
 }
@@ -111,6 +111,32 @@ The child session must:
 
 Documentation-only child sessions should still isolate their work unless the parent instruction explicitly says the shared tree is safe for that specific task.
 
+## Child Completion And Parent Merge Responsibility
+
+Child sessions produce isolated work products. They do not own integration into the parent branch unless they are explicitly assigned as an integration session.
+
+A child session is complete only after it has:
+
+- committed the relevant changes on its child branch;
+- pushed that child branch to `origin`;
+- reported the branch name;
+- reported the latest commit SHA;
+- reported verification commands and results;
+- reported changed files and any merge notes.
+
+A child session must not merge itself into the parent or integration branch unless the prompt explicitly assigns that session to perform integration.
+
+The parent or integration session is responsible for convergence:
+
+- collect completed child branch reports;
+- inspect dependency order and file overlap;
+- merge child branches into the parent/integration branch in a deliberate order;
+- run verification after each merge or after a clearly safe batch;
+- resolve conflicts or send work back to the relevant child session;
+- perform the final integration pass.
+
+This means that a child task being finished in its worktree is not the same as the parent task being integrated. Until the child branch is pushed and merged by the parent/integration session, the parent branch has not received the work.
+
 ## MVP Parser Validation
 
 The initial pure parser/validator rejects a request block when:
@@ -139,6 +165,8 @@ Beyond parser-level structural validation, TaskDeck and parent agents should tre
 - Child sessions must stop and report when branch/worktree isolation is unsafe.
 - Child sessions must stop and report when unrelated uncommitted changes exist.
 - Child sessions must stop and report when assigned file scope conflicts with another active child session.
+- Child sessions must push their child branches before reporting completion.
+- Parent or integration sessions must merge child branches in dependency-aware order.
 
 These policy checks may be enforced by future TaskDeck validation, local configuration, or child-session instructions. Do not describe them as implemented parser behavior until that enforcement exists.
 
