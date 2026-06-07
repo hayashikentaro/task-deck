@@ -58,6 +58,10 @@ export type Task = {
   agentSessionProvider?: string;
   agentSessionDetectedAt?: string;
   agentSessionResumeCommand?: string;
+  parentSessionId?: string;
+  spawnedFromParentRequest?: boolean;
+  workPackageId?: string;
+  filesLikelyToChange?: string[];
   identityColorSlot?: number;
   status: TaskStatus;
   agentState: AgentState;
@@ -129,6 +133,10 @@ export type CreateTaskInput = {
   agentSessionSource?: string;
   agentSessionDetectedAt?: string;
   agentSessionResumeCommand?: string;
+  parentSessionId?: string;
+  spawnedFromParentRequest?: boolean;
+  workPackageId?: string;
+  filesLikelyToChange?: string[];
   initialInstruction?: string;
   attachments?: PendingTaskAttachment[];
 };
