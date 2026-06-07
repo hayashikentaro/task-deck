@@ -1,0 +1,121 @@
+# TaskDeck Child Session Request Protocol
+
+This document defines the MVP protocol for asking TaskDeck to launch child agent sessions from a parent session's terminal output.
+
+The protocol is documentation-only in this phase. Parser, UI, server behavior, and worktree automation are follow-up implementation work.
+
+## Purpose
+
+A parent agent may request one or more child sessions by emitting a structured request block in its terminal output. TaskDeck will detect the block, validate it, and auto-launch valid child session requests without a confirmation modal.
+
+This protocol intentionally allows only structured launch metadata. Parent agents must not provide raw commands, shells, environment variables, secrets, or approval bypass flags.
+
+## Request Block
+
+Wrap a single JSON object between these exact markers:
+
+```text
+TASKDECK_CHILD_SESSION_BATCH_REQUEST
+{
+  "version": 1,
+  "reason": "Split independent documentation and UI work into isolated child sessions.",
+  "sessions": [
+    {
+      "title": "Document child session protocol",
+      "agentProfileId": "codex",
+      "agentPermissionLevel": "full-access",
+      "cwd": "/workspace/task-deck",
+      "workPackageId": "issue-29-protocol-docs",
+      "filesLikelyToChange": [
+        "docs/taskdeck-child-session-protocol.md",
+        "AGENTS.md"
+      ],
+      "initialInstruction": "You are working on hayashikentaro/task-deck. First read AGENTS.md. Before editing files, create or switch to an isolated branch/worktree for this work package. Stop and report if worktree/branch isolation is unsafe, unrelated changes exist, or the assigned file scope overlaps with another active child session. Then implement the protocol documentation foundation for issue #29."
+    }
+  ]
+}
+END_TASKDECK_CHILD_SESSION_BATCH_REQUEST
+```
+
+The content between the markers must be valid JSON. Markdown fences around the block are allowed in human-readable output, but the markers themselves are the protocol boundary.
+
+## JSON Shape
+
+Top-level object:
+
+- `version`: protocol version. Use `1`.
+- `reason`: short explanation of why child sessions are being requested.
+- `sessions`: non-empty array of child session requests.
+
+Each `sessions[]` item:
+
+- `title`: user-facing task title for the child session.
+- `agentProfileId`: configured TaskDeck agent profile id to use.
+- `agentPermissionLevel`: permission level for the selected agent profile, when applicable.
+- `cwd`: intended working directory for the child session.
+- `workPackageId`: stable id for this work package. Use it in branch/worktree names when useful.
+- `filesLikelyToChange`: array of repo-relative paths or globs the child session is expected to touch.
+- `initialInstruction`: complete instruction prompt for the child session.
+
+## Forbidden Fields
+
+Child session requests must not contain these fields at any depth:
+
+- `command`
+- `rawCommand`
+- `shell`
+- `env`
+- `secrets`
+- `autoApprove`
+
+TaskDeck must reject any request containing forbidden fields. Parent agents are not allowed to provide raw launch commands. TaskDeck chooses the launch command from trusted local agent profile configuration.
+
+## TaskDeck Behavior
+
+For the MVP, TaskDeck should eventually:
+
+- detect request blocks in parent session output;
+- parse the JSON between the markers;
+- validate protocol version, required fields, field types, and forbidden fields;
+- validate requested profiles, permission levels, cwd, and file scope against local policy;
+- auto-launch valid requests without a confirmation modal;
+- reject invalid requests and surface a concise error to the parent session/user;
+- never execute raw launch commands supplied by a parent agent.
+
+Worktree creation is not performed by TaskDeck in this MVP. Branch/worktree isolation is handled by the child session's `initialInstruction` and by the child agent following repository rules.
+
+## Required Isolation Preflight
+
+Every code-editing child session must include an isolation preflight in `initialInstruction`.
+
+The child session must:
+
+- read `AGENTS.md` before editing;
+- avoid editing files in the shared working tree;
+- create or switch to a dedicated branch/worktree before code changes;
+- stop and report if the branch/worktree cannot be created safely;
+- stop and report if unrelated uncommitted changes exist;
+- stop and report if the assigned file scope overlaps with another active child session;
+- keep changes inside the assigned work package scope.
+
+Documentation-only child sessions should still isolate their work unless the parent instruction explicitly says the shared tree is safe for that specific task.
+
+## Validation Notes
+
+TaskDeck should reject a request when:
+
+- markers are missing or nested incorrectly;
+- JSON is invalid;
+- `version` is unsupported;
+- `sessions` is empty or missing;
+- required session fields are missing;
+- any forbidden field appears;
+- `filesLikelyToChange` is absent for code-editing work;
+- `initialInstruction` omits the required isolation preflight for code-editing work;
+- `cwd`, profile, or permission values fail local validation.
+
+## Security Boundary
+
+This protocol is a request format, not an authority boundary by itself. Trust decisions come from TaskDeck configuration, validation, local policy, and the selected agent profile.
+
+Parent agents may propose child work, but they may not smuggle execution details through raw commands, environment variables, secrets, or auto-approval flags.

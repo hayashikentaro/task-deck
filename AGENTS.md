@@ -113,6 +113,7 @@ Keep state, risk, diffs, review, and agent supervision central. Terminal/PTY int
 - Use repo-local docs for durable context and decisions. Treat `docs/issues/` as historical or decision-record-like context, not as the current backlog.
 - Keep responsibility-specific implementation guidance in dedicated files under `docs/guides/`, not directly in this top-level router. When introducing or changing a recurring area-specific rule, create or update the relevant guide and link it from this file.
 - When changing `apps/web` UI styling, read `docs/guides/ui-style.md`. When changing reusable UI components, shared controls, or icon-only controls, read `docs/guides/ui-components.md`.
+- When asked to create TaskDeck child sessions, emit the structured request block defined in `docs/taskdeck-child-session-protocol.md`; do not invent raw launch commands.
 
 ## Change Authorization Boundary
 
