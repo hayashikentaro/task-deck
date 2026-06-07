@@ -103,7 +103,7 @@ export function App() {
     }
 
     const parentTask = tasksRef.current.find((task) => task.id === parentTaskId) ?? null;
-    if (parentTask?.spawnedFromParentRequest) {
+    if (!parentTask || parentTask.spawnedFromParentRequest) {
       return;
     }
     const parentLabel = parentTask?.title || "parent task";
@@ -172,6 +172,12 @@ export function App() {
       processChildSessionRequestBuffer(parentTaskId, buffer);
     }
   }, [processChildSessionRequestBuffer, taskDeckContext]);
+
+  useEffect(() => {
+    for (const [parentTaskId, buffer] of childRequestOutputBuffersRef.current) {
+      processChildSessionRequestBuffer(parentTaskId, buffer);
+    }
+  }, [processChildSessionRequestBuffer, tasks]);
 
   useEffect(() => {
     let reconnectTimer: number | undefined;
