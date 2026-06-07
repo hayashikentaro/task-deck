@@ -47,6 +47,17 @@ export function TaskInfoPane({ actionError, task, onInterrupt, onRerun }: TaskIn
           <Info label="Risk" value={task.risk.level} />
           <Info label="CWD" value={task.cwd} />
           <Info label="Command" value={task.command} />
+          {hasChildSessionMetadata(task) ? (
+            <>
+              <InfoSection label="Child session" />
+              {task.parentSessionId ? <Info label="Parent session id" value={task.parentSessionId} /> : null}
+              {task.workPackageId ? <Info label="Work package id" value={task.workPackageId} /> : null}
+              <Info label="Spawned from parent request" value={task.spawnedFromParentRequest ? "Yes" : "No"} />
+              {task.filesLikelyToChange?.length ? (
+                <Info label="Files likely to change" value={task.filesLikelyToChange.join(", ")} />
+              ) : null}
+            </>
+          ) : null}
           <Info label="Started" value={formatDate(task.startedAt)} />
           <Info label="Updated" value={formatDate(task.updatedAt)} />
         </dl>
@@ -61,6 +72,15 @@ function Info({ label, value }: { label: string; value: string }) {
       <dt>{label}</dt>
       <dd>{value}</dd>
     </div>
+  );
+}
+
+function hasChildSessionMetadata(task: Task) {
+  return Boolean(
+    task.parentSessionId ||
+      task.spawnedFromParentRequest ||
+      task.workPackageId ||
+      task.filesLikelyToChange?.length
   );
 }
 

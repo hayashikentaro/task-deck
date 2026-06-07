@@ -1038,7 +1038,8 @@ dd {
 
 .task-updated,
 .task-command,
-.task-cwd {
+.task-cwd,
+.task-work-package {
   min-width: 0;
   overflow: hidden;
   color: var(--status-muted);
