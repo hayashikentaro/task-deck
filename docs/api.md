@@ -59,6 +59,8 @@ Sessions require a Codex provider, session id, and precise resume command. The s
 
 ## Tasks
 
+`GET /api/tasks` and `GET /api/tasks/:taskId` return persisted task metadata including the launch command, cwd, agent profile fields, session fields, parent/child metadata, child reported status, and Codex-specific launch metadata when present. `agentReasoningEffort` is present for Codex tasks started with a non-default reasoning effort and is omitted or empty for default reasoning and non-Codex tasks.
+
 `PATCH /api/tasks/:taskId/title` updates the TaskDeck display name used to identify a task/session. When a task has an external session id, the display name is stored against that session key so matching task cards and the saved-session dropdown show the same human-readable label. Tasks without a detected session id still update their own task title.
 
 `PATCH /api/tasks/:taskId/attention/acknowledge` clears the current attention event for a running task without stopping or modifying its PTY. The task stores `attentionAcknowledgedAt`, returns to Not now by setting `attentionState` to `none`, and can surface again when future prompt or quiet detection sets a new attention state.

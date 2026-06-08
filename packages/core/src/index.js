@@ -52,6 +52,7 @@ export const ChildReportedState = Object.freeze({
 });
 
 const childReportedStates = new Set(Object.values(ChildReportedState));
+const agentReasoningEfforts = new Set(["low", "medium", "high", "xhigh"]);
 
 const dangerousPatterns = [
   /\brm\s+-rf\b/,
@@ -68,6 +69,7 @@ export function createTask({
   agentProfileId = "",
   agentLabel = "",
   agentPermissionLevel = "",
+  agentReasoningEffort = "",
   agentModel = "",
   sessionMode = "",
   resumeCommand = "",
@@ -97,6 +99,7 @@ export function createTask({
     agentProfileId,
     agentLabel,
     agentPermissionLevel,
+    agentReasoningEffort: normalizeAgentReasoningEffort(agentReasoningEffort),
     agentModel,
     sessionMode,
     resumeCommand,
@@ -248,6 +251,7 @@ export function serializeTask(task) {
     agentProfileId: task.agentProfileId || "",
     agentLabel: task.agentLabel || "",
     agentPermissionLevel: task.agentPermissionLevel || "",
+    agentReasoningEffort: normalizeAgentReasoningEffort(task.agentReasoningEffort),
     agentModel: task.agentModel || "",
     sessionMode: task.sessionMode || "",
     resumeCommand: task.resumeCommand || "",
@@ -441,6 +445,11 @@ export function normalizeIdentityColorSlot(identityColorSlot) {
 
 function normalizeFilesLikelyToChange(filesLikelyToChange) {
   return normalizeStringArray(filesLikelyToChange);
+}
+
+function normalizeAgentReasoningEffort(value) {
+  const normalizedValue = String(value || "").trim();
+  return agentReasoningEfforts.has(normalizedValue) ? normalizedValue : "";
 }
 
 function normalizeStringArray(value) {

@@ -51,6 +51,7 @@ export type Task = {
   agentProfileId?: string;
   agentLabel?: string;
   agentPermissionLevel?: string;
+  agentReasoningEffort?: string;
   agentModel?: string;
   sessionMode?: string;
   resumeCommand?: string;
@@ -133,6 +134,7 @@ export type CreateTaskInput = {
   agentProfileId?: string;
   agentLabel?: string;
   agentPermissionLevel?: string;
+  agentReasoningEffort?: string;
   agentModel?: string;
   sessionMode?: string;
   resumeCommand?: string;
