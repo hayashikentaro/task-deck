@@ -67,6 +67,16 @@ describe("buildChildTaskInputs", () => {
     expect(result.inputs[0].command).toContain('model_reasoning_effort="high"');
   });
 
+  it("builds exactly one low-effort Codex child create task input", () => {
+    const result = buildChildTaskInputs("parent-task", request({ agentReasoningEffort: "low" }), context, "request-key");
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") return;
+    expect(result.inputs).toHaveLength(1);
+    expect(result.inputs[0].agentReasoningEffort).toBe("low");
+    expect(result.inputs[0].command).toContain('model_reasoning_effort="low"');
+  });
+
   it("leaves missing Codex reasoning effort unset", () => {
     const result = buildChildTaskInputs("parent-task", request(), context, "request-key");
 

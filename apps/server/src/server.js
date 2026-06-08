@@ -106,6 +106,7 @@ const ptyActivityWindowMs = 3000;
 const maxPtyActivityFrames = 40;
 const quietAttentionMs = 5000;
 const childStatusPollIntervalMs = 2000;
+const childSessionStartCoalesceMs = 200;
 const defaultContainerWorkspaceRoot = "/workspace";
 const protectedContainerCleanupPids = new Set(["1", "7", "8", "130"]);
 const imageAttachmentMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
@@ -116,6 +117,7 @@ const imageAttachmentExtensions = new Map([
 ]);
 const activePtys = new Map();
 const startedChildSessionRequestKeys = new Set();
+const pendingChildSessionStarts = new Map();
 const childStatusFileSnapshots = new Map();
 let persistTasksQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
@@ -703,6 +705,29 @@ function childSessionStartDedupeKeys({ childSessionRequestKey, parentSessionId, 
   return keys;
 }
 
+function childSessionStartGroupKey({ childSessionRequestKey, parentSessionId, workPackageId }) {
+  const parentId = String(parentSessionId || "").trim();
+  const packageId = String(workPackageId || "").trim();
+  const requestKey = String(childSessionRequestKey || "").trim();
+
+  if (parentId && packageId) {
+    return `parent-work-package:${parentId}:${packageId}`;
+  }
+
+  return requestKey ? `request:${requestKey}` : "";
+}
+
+function childSessionStartPreferenceScore({ agentReasoningEffort, command }) {
+  let score = 0;
+  if (String(agentReasoningEffort || "").trim()) {
+    score += 2;
+  }
+  if (String(command || "").includes("model_reasoning_effort")) {
+    score += 1;
+  }
+  return score;
+}
+
 function hasExistingChildForParentWorkPackage(parentSessionId, workPackageId) {
   const parentId = String(parentSessionId || "").trim();
   const packageId = String(workPackageId || "").trim();
@@ -720,7 +745,109 @@ function hasExistingChildForParentWorkPackage(parentSessionId, workPackageId) {
   });
 }
 
-async function startTask({
+function hasStartedChildSessionDedupeKey(dedupeKeys) {
+  return dedupeKeys.some((dedupeKey) => startedChildSessionRequestKeys.has(dedupeKey));
+}
+
+function rejectDuplicateChildSessionStart(socket) {
+  send(socket, { type: "error", message: "Duplicate child session request ignored." });
+}
+
+function reserveChildSessionDedupeKeys(dedupeKeys) {
+  for (const dedupeKey of dedupeKeys) {
+    startedChildSessionRequestKeys.add(dedupeKey);
+  }
+}
+
+function childSessionStartIsDuplicate(startInput) {
+  const dedupeKeys = childSessionStartDedupeKeys(startInput);
+  return (
+    hasStartedChildSessionDedupeKey(dedupeKeys) ||
+    hasExistingChildForParentWorkPackage(startInput.parentSessionId, startInput.workPackageId)
+  );
+}
+
+function scheduleChildSessionStart(startInput, socket) {
+  const dedupeKeys = childSessionStartDedupeKeys(startInput);
+  if (childSessionStartIsDuplicate(startInput)) {
+    rejectDuplicateChildSessionStart(socket);
+    return;
+  }
+
+  const groupKey = childSessionStartGroupKey(startInput);
+  if (!groupKey) {
+    rejectDuplicateChildSessionStart(socket);
+    return;
+  }
+
+  const existing = pendingChildSessionStarts.get(groupKey);
+  const preferenceScore = childSessionStartPreferenceScore(startInput);
+
+  if (existing) {
+    for (const dedupeKey of dedupeKeys) {
+      existing.dedupeKeys.add(dedupeKey);
+    }
+
+    if (preferenceScore > existing.preferenceScore) {
+      existing.startInput = startInput;
+      existing.socket = socket;
+      existing.preferenceScore = preferenceScore;
+    } else {
+      rejectDuplicateChildSessionStart(socket);
+    }
+    return;
+  }
+
+  const pending = {
+    startInput,
+    socket,
+    preferenceScore,
+    dedupeKeys: new Set(dedupeKeys),
+    timeout: null,
+  };
+  pending.timeout = setTimeout(() => {
+    pendingChildSessionStarts.delete(groupKey);
+
+    if (
+      hasStartedChildSessionDedupeKey(Array.from(pending.dedupeKeys)) ||
+      hasExistingChildForParentWorkPackage(pending.startInput.parentSessionId, pending.startInput.workPackageId)
+    ) {
+      rejectDuplicateChildSessionStart(pending.socket);
+      return;
+    }
+
+    reserveChildSessionDedupeKeys(Array.from(pending.dedupeKeys));
+    startTaskNow(pending.startInput, pending.socket);
+  }, childSessionStartCoalesceMs);
+  pendingChildSessionStarts.set(groupKey, pending);
+}
+
+async function startTask(startInput, socket) {
+  const {
+    command,
+    spawnedFromParentRequest,
+    childSessionRequestKey,
+  } = startInput;
+
+  if (!command) {
+    send(socket, { type: "error", message: "Enter a command before starting a task." });
+    return;
+  }
+
+  if (spawnedFromParentRequest && !childSessionRequestKey) {
+    send(socket, { type: "error", message: "Child session request key is required." });
+    return;
+  }
+
+  if (spawnedFromParentRequest) {
+    scheduleChildSessionStart(startInput, socket);
+    return;
+  }
+
+  await startTaskNow(startInput, socket);
+}
+
+async function startTaskNow({
   title,
   command,
   cwd,
@@ -744,30 +871,6 @@ async function startTask({
   initialInstruction,
   attachments = [],
 }, socket) {
-  if (!command) {
-    send(socket, { type: "error", message: "Enter a command before starting a task." });
-    return;
-  }
-
-  if (spawnedFromParentRequest && !childSessionRequestKey) {
-    send(socket, { type: "error", message: "Child session request key is required." });
-    return;
-  }
-
-  if (spawnedFromParentRequest) {
-    const dedupeKeys = childSessionStartDedupeKeys({ childSessionRequestKey, parentSessionId, workPackageId });
-    if (
-      dedupeKeys.some((dedupeKey) => startedChildSessionRequestKeys.has(dedupeKey)) ||
-      hasExistingChildForParentWorkPackage(parentSessionId, workPackageId)
-    ) {
-      send(socket, { type: "error", message: "Duplicate child session request ignored." });
-      return;
-    }
-    for (const dedupeKey of dedupeKeys) {
-      startedChildSessionRequestKeys.add(dedupeKey);
-    }
-  }
-
   const resolvedCwd = await resolveCwd(cwd, socket);
   if (!resolvedCwd) {
     return;
