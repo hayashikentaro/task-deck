@@ -55,21 +55,7 @@ END_TASKDECK_CHILD_SESSION_BATCH_REQUEST
 
 The content between the markers must be valid JSON. Markdown fences around the block are allowed in human-readable output, but the markers themselves are the protocol boundary.
 
-Parent agents should not hand-write this JSON. The preferred path is for the agent to fill typed fields and let TaskDeck-owned code serialize the final block with `JSON.stringify`. Fixed serialization prevents common malformed-output failures such as missing braces, raw newlines inside string values, missing top-level closing braces, and omitted required work package metadata.
-
-For operator-facing use from a parent terminal session, run the executable generator script and let its stdout become the protocol output:
-
-```sh
-node scripts/create-child-session-request.mjs \
-  --title "Codex low child session" \
-  --cwd /Users/hayashikentarou/Documents/task-deck \
-  --work-package codex-low-standby \
-  --instruction "You are working on hayashikentaro/task-deck. First read AGENTS.md. Do not edit files yet. Report that you are ready and wait for a scoped parent instruction."
-```
-
-The script defaults to `--profile codex`, `--permission read_only`, and `--reasoning low`. It also accepts repeatable `--file <path>` entries, plus `--profile`, `--permission`, `--reasoning`, and `--reason` overrides. The script output is the complete `TASKDECK_CHILD_SESSION_BATCH_REQUEST` block that should appear in the parent terminal output.
-
-For library use inside TaskDeck code, use `createChildSessionBatchRequestBlock` in `apps/web/src/childSessionRequestGenerator.ts`.
+Parent agents should not hand-write this JSON. The preferred path is for the agent to fill typed fields and let TaskDeck-owned code serialize the final block with `JSON.stringify`, such as `createChildSessionBatchRequestBlock` in `apps/web/src/childSessionRequestGenerator.ts`. Fixed serialization prevents common malformed-output failures such as missing braces, raw newlines inside string values, missing top-level closing braces, and omitted required work package metadata.
 
 The stdout marker transport remains strict JSON. Do not make the parser more permissive to compensate for LLM-authored JSON. Generate the block from structured fields when available, then print the generated block exactly.
 
