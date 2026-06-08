@@ -69,6 +69,7 @@ describe("parseChildSessionRequestsFromText", () => {
     const result = parseChildSessionRequestsFromText(requestBlock(validRequest()));
 
     expect(result.errors).toEqual([]);
+    expect(result.requests).toHaveLength(1);
     expect(result.requests).toEqual([
       {
         version: 1,

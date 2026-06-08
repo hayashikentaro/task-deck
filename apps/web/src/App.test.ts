@@ -54,6 +54,7 @@ describe("buildChildTaskInputs", () => {
 
     expect(result.status).toBe("ready");
     if (result.status !== "ready") return;
+    expect(result.inputs).toHaveLength(1);
     expect(result.inputs[0]).toMatchObject({
       parentSessionId: "parent-task",
       spawnedFromParentRequest: true,

@@ -686,6 +686,40 @@ function buildUniqueNewSessionTitle(title, sessionMode) {
   return candidate;
 }
 
+function childSessionStartDedupeKeys({ childSessionRequestKey, parentSessionId, workPackageId }) {
+  const keys = [];
+  const requestKey = String(childSessionRequestKey || "").trim();
+  const parentId = String(parentSessionId || "").trim();
+  const packageId = String(workPackageId || "").trim();
+
+  if (requestKey) {
+    keys.push(`request:${requestKey}`);
+  }
+
+  if (parentId && packageId) {
+    keys.push(`parent-work-package:${parentId}:${packageId}`);
+  }
+
+  return keys;
+}
+
+function hasExistingChildForParentWorkPackage(parentSessionId, workPackageId) {
+  const parentId = String(parentSessionId || "").trim();
+  const packageId = String(workPackageId || "").trim();
+
+  if (!parentId || !packageId) {
+    return false;
+  }
+
+  return Array.from(tasks.values()).some((task) => {
+    return Boolean(
+      task.spawnedFromParentRequest &&
+        task.parentSessionId === parentId &&
+        task.workPackageId === packageId,
+    );
+  });
+}
+
 async function startTask({
   title,
   command,
@@ -721,11 +755,17 @@ async function startTask({
   }
 
   if (spawnedFromParentRequest) {
-    if (startedChildSessionRequestKeys.has(childSessionRequestKey)) {
+    const dedupeKeys = childSessionStartDedupeKeys({ childSessionRequestKey, parentSessionId, workPackageId });
+    if (
+      dedupeKeys.some((dedupeKey) => startedChildSessionRequestKeys.has(dedupeKey)) ||
+      hasExistingChildForParentWorkPackage(parentSessionId, workPackageId)
+    ) {
       send(socket, { type: "error", message: "Duplicate child session request ignored." });
       return;
     }
-    startedChildSessionRequestKeys.add(childSessionRequestKey);
+    for (const dedupeKey of dedupeKeys) {
+      startedChildSessionRequestKeys.add(dedupeKey);
+    }
   }
 
   const resolvedCwd = await resolveCwd(cwd, socket);
