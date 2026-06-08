@@ -31,6 +31,11 @@ import {
   TaskStatus,
   inferAgentStateFromStatus,
 } from "@taskdeck/core";
+import {
+  childSessionFileRequestResultFilenames,
+  createChildSessionRequestResult,
+  validateChildSessionFileRequest,
+} from "@taskdeck/core/child-session-file-requests";
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
@@ -45,6 +50,7 @@ const sessionLabelStorePath = path.join(dataRoot, "session-labels.json");
 const logRoot = path.join(dataRoot, "logs");
 const attachmentRoot = path.join(dataRoot, "attachments");
 const pendingAttachmentRoot = path.join(attachmentRoot, "pending");
+const childSessionRequestRoot = path.join(dataRoot, "requests", "child-session");
 const defaultConfigPath = path.join(repoRoot, "taskdeck.config.json");
 const localConfigPath = path.join(repoRoot, "taskdeck.local.json");
 const envConfigPath = process.env.TASKDECK_CONFIG ? path.resolve(process.env.TASKDECK_CONFIG) : "";
@@ -106,6 +112,7 @@ const ptyActivityWindowMs = 3000;
 const maxPtyActivityFrames = 40;
 const quietAttentionMs = 5000;
 const childStatusPollIntervalMs = 2000;
+const childSessionRequestPollIntervalMs = 1000;
 const childSessionStartCoalesceMs = 200;
 const defaultContainerWorkspaceRoot = "/workspace";
 const protectedContainerCleanupPids = new Set(["1", "7", "8", "130"]);
@@ -123,6 +130,7 @@ let persistTasksQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
 let persistSessionLabelsQueue = Promise.resolve();
 let childStatusPollInFlight = false;
+let childSessionRequestPollInFlight = false;
 
 app.use(express.json());
 
@@ -650,6 +658,7 @@ wss.on("connection", (socket) => {
 
 await initializePersistence();
 await scanChildStatusFiles();
+await scanChildSessionRequestFiles();
 await configureWebApp();
 
 server.on("error", (error) => {
@@ -667,6 +676,9 @@ attentionTimer.unref?.();
 
 const childStatusTimer = setInterval(scanChildStatusFiles, childStatusPollIntervalMs);
 childStatusTimer.unref?.();
+
+const childSessionRequestTimer = setInterval(scanChildSessionRequestFiles, childSessionRequestPollIntervalMs);
+childSessionRequestTimer.unref?.();
 
 function buildUniqueNewSessionTitle(title, sessionMode) {
   const normalizedTitle = String(title || "").trim();
@@ -871,11 +883,13 @@ async function startTaskNow({
   initialInstruction,
   attachments = [],
 }, socket) {
-  const resolvedCwd = await resolveCwd(cwd, socket);
-  if (!resolvedCwd) {
-    return;
+  const cwdValidation = await validateCwd(cwd);
+  if (!cwdValidation.ok) {
+    send(socket, { type: "error", message: cwdValidation.message });
+    return { ok: false, error: cwdValidation.message };
   }
 
+  const resolvedCwd = cwdValidation.resolvedCwd;
   const processCwd = await serverAccessiblePathForHostCwd(resolvedCwd);
   const effectiveCommand = await commandForTaskCwd(command, resolvedCwd, sessionMode);
   const detectedAgentSession = detectInitialAgentSession(effectiveCommand, agentProfileId, agentLabel);
@@ -981,12 +995,259 @@ async function startTaskNow({
       broadcast({ type: "output", taskId: task.id, data: marker });
       writeOrQueuePtyInput(activePty, `${initialInstructionInput}${terminalEnter}`, "initial-instruction");
     }
+    return { ok: true, taskId: task.id };
   } catch (error) {
     appendLog(task.id, `\r\n[TaskDeck] Failed to start PTY: ${error.message}\r\n`);
     setTask(markTaskExited(tasks.get(task.id), { exitCode: 1, signal: null }));
     broadcast({ type: "output", taskId: task.id, data: logs.get(task.id) });
     broadcastTasks();
+    return { ok: true, taskId: task.id };
   }
+}
+
+async function scanChildSessionRequestFiles() {
+  if (childSessionRequestPollInFlight) {
+    return;
+  }
+
+  childSessionRequestPollInFlight = true;
+  try {
+    await fs.mkdir(childSessionRequestRoot, { recursive: true });
+    const filenames = await fs.readdir(childSessionRequestRoot);
+    for (const filename of filenames) {
+      if (!filename.endsWith(".request.json") || filename.endsWith(".tmp")) {
+        continue;
+      }
+      await processChildSessionRequestFile(path.join(childSessionRequestRoot, filename));
+    }
+  } catch (error) {
+    console.warn(`TaskDeck child session request scan failed: ${error.message}`);
+  } finally {
+    childSessionRequestPollInFlight = false;
+  }
+}
+
+async function processChildSessionRequestFile(filePath) {
+  const fallbackRequestId = path.basename(filePath, ".request.json");
+  if (await childSessionRequestResultExists(fallbackRequestId)) {
+    return;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(await fs.readFile(filePath, "utf8"));
+  } catch (error) {
+    await writeChildSessionRequestResult(fallbackRequestId, {
+      state: "rejected",
+      error: `Could not parse request JSON: ${error.message}`,
+    });
+    return;
+  }
+
+  const validation = validateChildSessionFileRequest(parsed);
+  const requestId = validation.ok ? validation.request.requestId : String(parsed?.requestId || fallbackRequestId || "").trim();
+  if (await childSessionRequestResultExists(requestId)) {
+    return;
+  }
+  if (!validation.ok) {
+    await writeChildSessionRequestResult(requestId, {
+      state: "rejected",
+      error: validation.error,
+    });
+    return;
+  }
+
+  const request = validation.request;
+  const parentTask = tasks.get(request.parentTaskId);
+  if (!parentTask) {
+    await writeChildSessionRequestResult(request.requestId, {
+      state: "rejected",
+      error: `parentTaskId "${request.parentTaskId}" does not match an existing task.`,
+    });
+    return;
+  }
+  if (parentTask.spawnedFromParentRequest) {
+    await writeChildSessionRequestResult(request.requestId, {
+      state: "rejected",
+      error: "parentTaskId must identify a parent task, not a child task.",
+    });
+    return;
+  }
+
+  const buildResult = await buildChildSessionFileStartInputs(request, parentTask);
+  if (!buildResult.ok) {
+    await writeChildSessionRequestResult(request.requestId, {
+      state: "rejected",
+      error: buildResult.error,
+    });
+    return;
+  }
+
+  const createdTaskIds = [];
+  for (const input of buildResult.inputs) {
+    const startResult = await startChildTaskFromFileRequest(input);
+    if (!startResult.ok) {
+      await writeChildSessionRequestResult(request.requestId, {
+        state: "rejected",
+        error: startResult.error,
+      });
+      return;
+    }
+    createdTaskIds.push(startResult.taskId);
+  }
+
+  await writeChildSessionRequestResult(request.requestId, {
+    state: "accepted",
+    createdTaskIds,
+  });
+}
+
+async function buildChildSessionFileStartInputs(request, parentTask) {
+  const profiles = await loadAgentProfiles();
+  const inputs = [];
+
+  for (const [sessionIndex, session] of request.sessions.entries()) {
+    const profile = profiles.find((agentProfile) => agentProfile.id === session.agentProfileId);
+    if (!profile) {
+      return { ok: false, error: `unknown agentProfileId "${session.agentProfileId}"` };
+    }
+
+    const isCodex = isCodexProfile(profile);
+    const agentPermissionLevel = isCodex ? (session.agentPermissionLevel || "full_access") : (session.agentPermissionLevel || "");
+    const agentReasoningEffort = isCodex ? normalizeCodexReasoningEffort(session.agentReasoningEffort) : "";
+    const command = buildServerLaunchCommand(profile, agentPermissionLevel, agentReasoningEffort);
+
+    if (!command) {
+      return { ok: false, error: `empty launch command for agentProfileId "${session.agentProfileId}"` };
+    }
+
+    inputs.push({
+      title: session.title,
+      command,
+      cwd: session.cwd,
+      agentProfileId: profile.id,
+      agentLabel: profile.label,
+      agentPermissionLevel,
+      agentReasoningEffort,
+      sessionMode: "new",
+      initialInstruction: session.initialInstruction,
+      parentSessionId: parentTask.id,
+      spawnedFromParentRequest: true,
+      childSessionRequestKey: `file:${request.requestId}:${sessionIndex}`,
+      workPackageId: session.workPackageId,
+      filesLikelyToChange: session.filesLikelyToChange,
+    });
+  }
+
+  return { ok: true, inputs };
+}
+
+async function startChildTaskFromFileRequest(input) {
+  if (childSessionStartIsDuplicate(input)) {
+    return { ok: false, error: "Duplicate child session request ignored." };
+  }
+
+  reserveChildSessionDedupeKeys(childSessionStartDedupeKeys(input));
+  return startTaskNow(input, null);
+}
+
+async function childSessionRequestResultExists(requestId) {
+  const filenames = childSessionFileRequestResultFilenames(requestId);
+  return (await fileExists(path.join(childSessionRequestRoot, filenames.accepted))) ||
+    (await fileExists(path.join(childSessionRequestRoot, filenames.rejected)));
+}
+
+async function writeChildSessionRequestResult(requestId, { state, createdTaskIds = [], error = "" }) {
+  const filenames = childSessionFileRequestResultFilenames(requestId);
+  const filename = state === "accepted" ? filenames.accepted : filenames.rejected;
+  const filePath = path.join(childSessionRequestRoot, filename);
+  const tempPath = `${filePath}.tmp`;
+  const result = createChildSessionRequestResult({
+    requestId,
+    state,
+    createdTaskIds,
+    error,
+  });
+
+  await fs.mkdir(childSessionRequestRoot, { recursive: true });
+  await fs.writeFile(tempPath, `${JSON.stringify(result, null, 2)}\n`);
+  await fs.rename(tempPath, filePath);
+}
+
+async function fileExists(filePath) {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isCodexProfile(profile) {
+  return (
+    String(profile.id || "").includes("codex") ||
+    String(profile.label || "").toLowerCase().includes("codex") ||
+    /\bcodex\b/.test(String(profile.command || ""))
+  );
+}
+
+function buildServerLaunchCommand(profile, codexPermissionLevel, codexReasoningEffort) {
+  const command = String(profile.command || "").trim();
+  if (!isCodexProfile(profile)) {
+    return command;
+  }
+
+  return applyCodexReasoningEffortToCommand(
+    applyCodexPermissionToCommand(command, codexPermissionLevel),
+    codexReasoningEffort,
+  );
+}
+
+const codexCommandTokenPattern = /(^|[^-\w])codex(?![-\w])/i;
+const codexCommandWithPermissionPattern =
+  /(^|[^-\w])codex(?![-\w])(?:(?:\s+--dangerously-bypass-approvals-and-sandbox)|(?:\s+--sandbox\s+(?:read-only|workspace-write|danger-full-access)))*/i;
+const codexReasoningEffortArgPattern = /\s+-c\s+model_reasoning_effort=(?:"[^"]*"|'[^']*'|[^\s]+)/gi;
+const codexReasoningEfforts = new Set(["low", "medium", "high", "xhigh"]);
+
+function normalizeCodexReasoningEffort(value) {
+  return codexReasoningEfforts.has(value) ? value : "";
+}
+
+function codexPermissionArgs(permissionLevel) {
+  if (permissionLevel === "workspace_write") return "--sandbox workspace-write";
+  if (permissionLevel === "read_only") return "--sandbox read-only";
+  return "--dangerously-bypass-approvals-and-sandbox";
+}
+
+function codexReasoningEffortArgs(reasoningEffort) {
+  const normalizedReasoningEffort = normalizeCodexReasoningEffort(reasoningEffort);
+  return normalizedReasoningEffort ? `-c model_reasoning_effort="${normalizedReasoningEffort}"` : "";
+}
+
+function applyCodexPermissionToCommand(command, permissionLevel) {
+  if (!command) {
+    return command;
+  }
+
+  const args = codexPermissionArgs(permissionLevel);
+  return command.replace(codexCommandWithPermissionPattern, (match, prefix) => {
+    return `${prefix}codex ${args}`;
+  });
+}
+
+function applyCodexReasoningEffortToCommand(command, reasoningEffort) {
+  if (!command) {
+    return command;
+  }
+
+  const args = codexReasoningEffortArgs(reasoningEffort);
+  if (!args) {
+    return command;
+  }
+
+  return command
+    .replace(codexReasoningEffortArgPattern, "")
+    .replace(codexCommandTokenPattern, (_match, prefix) => `${prefix}codex ${args}`);
 }
 
 function assignTaskIdentityColorSlot() {
@@ -3378,7 +3639,7 @@ echo "task-owned processes exited after KILL"
 }
 
 function send(socket, payload) {
-  if (socket.readyState === socket.OPEN) {
+  if (socket && socket.readyState === socket.OPEN) {
     socket.send(JSON.stringify(payload));
   }
 }

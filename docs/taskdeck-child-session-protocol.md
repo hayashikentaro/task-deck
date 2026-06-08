@@ -13,15 +13,15 @@ It is **not reliable as the primary transport for Codex parent sessions**. Codex
 For now:
 
 - use this stdout protocol for zsh/manual smoke tests and controlled debug output;
-- do not treat it as the final parent-agent control channel;
+- do not use stdout marker blocks as the Codex parent control channel;
 - keep parent-to-child request semantics, parser validation, target resolution, and dedupe behavior as useful protocol work;
-- plan to move reliable parent-agent control to a file-based/status-oriented mechanism.
+- use the file-based request writer for Codex parent operation.
 
-Issue #44 adds the first file-based child-to-TaskDeck transport: child sessions report constrained promise-like states such as `working`, `blocked`, `ready_for_review`, `done`, and `failed` through a latest-status JSON file. Parent-to-child control may also move to a reliable file/CLI/API request transport instead of relying on human-oriented stdout rendering.
+Issue #44 adds the first file-based child-to-TaskDeck transport: child sessions report constrained promise-like states such as `working`, `blocked`, `ready_for_review`, `done`, and `failed` through a latest-status JSON file. Parent-created child session requests now also have a file-based intake so Codex parents can run a writer script instead of printing protocol JSON through a human-oriented terminal UI.
 
 ## Purpose
 
-A parent agent may request one or more child sessions by emitting a structured request block in its terminal output. Once the protocol is wired into TaskDeck output handling, TaskDeck should detect the block, validate it, and auto-launch valid child session requests without a confirmation modal.
+A parent agent may request one or more child sessions by writing a file-based request through TaskDeck's writer script. Shell-like parent sessions may also emit structured stdout marker blocks for manual/debug use. TaskDeck validates valid requests and auto-launches child sessions without a confirmation modal.
 
 This protocol intentionally allows only structured launch metadata. Parent agents must not provide raw commands, shells, environment variables, secrets, or approval bypass flags.
 
@@ -58,6 +58,71 @@ The content between the markers must be valid JSON. Markdown fences around the b
 Parent agents should not hand-write this JSON. The preferred path is for the agent to fill typed fields and let TaskDeck-owned code serialize the final block with `JSON.stringify`, such as `createChildSessionBatchRequestBlock` in `apps/web/src/childSessionRequestGenerator.ts`. Fixed serialization prevents common malformed-output failures such as missing braces, raw newlines inside string values, missing top-level closing braces, and omitted required work package metadata.
 
 The stdout marker transport remains strict JSON. Do not make the parser more permissive to compensate for LLM-authored JSON. Generate the block from structured fields when available, then print the generated block exactly.
+
+## File-Based Request Writer
+
+Codex parent sessions should use the file-based writer instead of stdout marker blocks. The parent fills ordinary CLI arguments; fixed code builds the JSON request and writes it atomically to TaskDeck's request queue.
+
+Example:
+
+```sh
+node scripts/write-child-session-request.mjs \
+  --title "Codex low child session" \
+  --work-package codex-low-standby \
+  --instruction "You are working on hayashikentaro/task-deck. First read AGENTS.md. Do not edit files yet. Report that you are ready and wait for a scoped parent instruction."
+```
+
+Defaults:
+
+- `--profile codex`
+- `--permission read_only`
+- `--reasoning low`
+- `--cwd .`
+- `--reason "Create a child session using the file-based TaskDeck request writer."`
+- `--file` may be repeated for `filesLikelyToChange`.
+
+The writer reads `TASKDECK_TASK_ID` from the parent task environment and writes:
+
+```text
+.taskdeck/requests/child-session/<requestId>.request.json
+```
+
+It writes to a `.tmp` file first, then renames to `.request.json`. The script may print a short human-readable summary and file path, but it must not print `TASKDECK_CHILD_SESSION_BATCH_REQUEST` marker blocks.
+
+TaskDeck server polls this directory, validates request files, launches valid requests through trusted local agent profiles, and writes one result file:
+
+```text
+.taskdeck/requests/child-session/<requestId>.accepted.json
+.taskdeck/requests/child-session/<requestId>.rejected.json
+```
+
+Accepted result shape:
+
+```json
+{
+  "kind": "childSessionRequestResult",
+  "version": 1,
+  "requestId": "codex-low-standby-20260608120000-a1b2c3",
+  "state": "accepted",
+  "createdTaskIds": ["task_xxx"],
+  "processedAt": "2026-06-08T12:00:01.000Z"
+}
+```
+
+Rejected result shape:
+
+```json
+{
+  "kind": "childSessionRequestResult",
+  "version": 1,
+  "requestId": "codex-low-standby-20260608120000-a1b2c3",
+  "state": "rejected",
+  "error": "parentTaskId \"task_xxx\" does not match an existing task.",
+  "processedAt": "2026-06-08T12:00:01.000Z"
+}
+```
+
+Parent agents must not hand-write request JSON files. They should run the writer with CLI arguments and let the writer serialize JSON. `cwd` defaults to `.` and must be TaskDeck-server-visible or server-resolvable; the writer rejects container-only `/workspace/...` paths.
 
 ## JSON Shape
 
@@ -122,6 +187,8 @@ TaskDeck must reject any request containing forbidden fields. Parent agents are 
 
 For the MVP, TaskDeck should:
 
+- scan file-based child session request files written by `scripts/write-child-session-request.mjs`;
+- write accepted/rejected result files for file-based requests;
 - detect request blocks in parent session output;
 - parse the JSON between the markers;
 - validate protocol version, required fields, field types, permission values, and forbidden fields;
@@ -185,7 +252,7 @@ It is currently not considered verified for natural Codex-parent operation. In o
 
 Additionally, a Codex parent running inside Docker may see a container path such as `/workspace/task-deck` from `pwd`. That path is not the correct `cwd` value for the request unless TaskDeck itself is also running in that same filesystem namespace. Use the TaskDeck-server-visible host path in the request and let TaskDeck rewrite the Docker workdir.
 
-Do not rely on a Codex parent session printing stdout blocks as the long-term control mechanism. Prefer the upcoming status/file-based approach for child reports and a future reliable request transport for parent-generated control.
+Do not rely on a Codex parent session printing stdout blocks as the control mechanism. Use `scripts/write-child-session-request.mjs` for Codex parent-created child sessions.
 
 ## Child Status File Report
 
