@@ -1,7 +1,9 @@
 import {
+  applyCodexReasoningEffortToCommand,
   applyCodexPermissionToCommand,
   buildCodexResumeCommandForCommand,
   type CodexPermissionLevel,
+  type CodexReasoningEffort,
 } from "./codexPermissions";
 import type { AgentProfile, SavedCodexSession } from "./types";
 
@@ -25,6 +27,7 @@ export function buildLaunchCommand(
   sessionMode: AgentLaunchSessionMode,
   savedSession: SavedCodexSession | null,
   codexPermissionLevel: CodexPermissionLevel,
+  codexReasoningEffort: CodexReasoningEffort = "",
 ): AgentLaunchCommand {
   if (sessionMode === "saved_codex") {
     const resumeCommand = savedSession?.resumeCommand.trim() || "";
@@ -32,18 +35,25 @@ export function buildLaunchCommand(
   }
 
   if (sessionMode === "resume_last" && isCodexProfile(profile)) {
-    const resumeCommand = buildCodexResumeLastCommand(profile, codexPermissionLevel);
+    const resumeCommand = buildCodexResumeLastCommand(profile, codexPermissionLevel, codexReasoningEffort);
     return { command: resumeCommand, resumeCommand };
   }
 
   const command = isCodexProfile(profile)
-    ? applyCodexPermissionToCommand(profile.command.trim(), codexPermissionLevel)
+    ? applyCodexReasoningEffortToCommand(
+        applyCodexPermissionToCommand(profile.command.trim(), codexPermissionLevel),
+        codexReasoningEffort,
+      )
     : profile.command.trim();
   return { command, resumeCommand: "" };
 }
 
-export function buildCodexResumeLastCommand(profile: AgentProfile, codexPermissionLevel: CodexPermissionLevel) {
-  return buildCodexResumeCommandForCommand(profile.command, codexPermissionLevel, "--last");
+export function buildCodexResumeLastCommand(
+  profile: AgentProfile,
+  codexPermissionLevel: CodexPermissionLevel,
+  codexReasoningEffort: CodexReasoningEffort = "",
+) {
+  return buildCodexResumeCommandForCommand(profile.command, codexPermissionLevel, "--last", codexReasoningEffort);
 }
 
 export function executionCwdForSessionMode(
