@@ -145,6 +145,20 @@ describe("parseChildSessionRequestsFromText", () => {
     );
   });
 
+  it("keeps valid agent reasoning effort values", () => {
+    const result = parseChildSessionRequestsFromText(requestBlock(validRequest({ agentReasoningEffort: "high" })));
+
+    expect(result.errors).toEqual([]);
+    expect(result.requests[0].sessions[0].agentReasoningEffort).toBe("high");
+  });
+
+  it("normalizes invalid agent reasoning effort values to unset", () => {
+    const result = parseChildSessionRequestsFromText(requestBlock(validRequest({ agentReasoningEffort: "largest" })));
+
+    expect(result.errors).toEqual([]);
+    expect(result.requests[0].sessions[0].agentReasoningEffort).toBeUndefined();
+  });
+
   it.each([
     ["a non-array value", "README.md"],
     ["an array containing non-string values", ["README.md", 42]],

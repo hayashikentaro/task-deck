@@ -4,7 +4,6 @@ import { TaskCreateForm } from "./components/TaskCreateForm";
 import { TaskList } from "./components/TaskList";
 import { TerminalPane } from "./components/TerminalPane";
 import { ToolsPane } from "./components/ToolsPane";
-import { buildLaunchCommand, isCodexProfile } from "./agentLaunch";
 import {
   CHILD_SESSION_BATCH_REQUEST_START_MARKER,
   CHILD_SESSION_MESSAGE_REQUEST_START_MARKER,
@@ -14,7 +13,7 @@ import {
   type ChildSessionMessageRequest,
   type ChildSessionRequestParseError,
 } from "./childSessionRequests";
-import type { CodexPermissionLevel } from "./codexPermissions";
+import { buildChildTaskInputs } from "./childSessionTaskInputs";
 import type { CodexStatusSnapshot, CreateTaskInput, OutputEvent, SavedCodexSession, Task, TaskDeckContext } from "./types";
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
@@ -634,59 +633,6 @@ function clampPercent(value: number) {
     return 0;
   }
   return Math.min(100, Math.max(0, Math.round(value)));
-}
-
-type ChildTaskBuildResult =
-  | { status: "deferred" }
-  | { status: "rejected"; error: string }
-  | { status: "ready"; inputs: CreateTaskInput[] };
-
-function buildChildTaskInputs(
-  parentTaskId: string,
-  request: ChildSessionBatchRequest,
-  context: TaskDeckContext | null,
-  requestKey: string,
-): ChildTaskBuildResult {
-  if (!context) {
-    return { status: "deferred" };
-  }
-
-  const inputs: CreateTaskInput[] = [];
-
-  for (const [sessionIndex, session] of request.sessions.entries()) {
-    const profile = context.agentProfiles.find((agentProfile) => agentProfile.id === session.agentProfileId);
-    if (!profile) {
-      return { status: "rejected", error: `unknown agentProfileId "${session.agentProfileId}"` };
-    }
-
-    const isCodex = isCodexProfile(profile);
-    const codexPermissionLevel = (session.agentPermissionLevel ?? "full_access") as CodexPermissionLevel;
-    const launchCommand = buildLaunchCommand(profile, "new", null, codexPermissionLevel);
-    if (!launchCommand.command) {
-      return { status: "rejected", error: `empty launch command for agentProfileId "${session.agentProfileId}"` };
-    }
-    if (!session.cwd) {
-      return { status: "rejected", error: `empty cwd for "${session.title}"` };
-    }
-
-    inputs.push({
-      title: session.title,
-      command: launchCommand.command,
-      cwd: session.cwd,
-      agentProfileId: profile.id,
-      agentLabel: profile.label,
-      agentPermissionLevel: isCodex ? codexPermissionLevel : session.agentPermissionLevel,
-      sessionMode: "new",
-      initialInstruction: session.initialInstruction,
-      parentSessionId: parentTaskId,
-      spawnedFromParentRequest: true,
-      childSessionRequestKey: `${requestKey}:${sessionIndex}`,
-      workPackageId: session.workPackageId,
-      filesLikelyToChange: session.filesLikelyToChange,
-    });
-  }
-
-  return { status: "ready", inputs };
 }
 
 function childRequestBatchKey(parentTaskId: string, request: ChildSessionBatchRequest) {

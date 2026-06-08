@@ -39,6 +39,7 @@ TASKDECK_CHILD_SESSION_BATCH_REQUEST
       "title": "Document child session protocol",
       "agentProfileId": "codex",
       "agentPermissionLevel": "full_access",
+      "agentReasoningEffort": "high",
       "cwd": "/workspace/task-deck",
       "workPackageId": "issue-29-protocol-docs",
       "filesLikelyToChange": [
@@ -67,6 +68,7 @@ Each `sessions[]` item:
 - `title`: user-facing task title for the child session.
 - `agentProfileId`: configured TaskDeck agent profile id to use.
 - `agentPermissionLevel`: permission level for the selected agent profile, when applicable. Accepted values are `full_access`, `workspace_write`, and `read_only`.
+- `agentReasoningEffort`: optional Codex reasoning effort for Codex child sessions. Accepted values are `low`, `medium`, `high`, and `xhigh`. Missing or invalid values are treated as default/unset. Non-Codex child sessions ignore this field.
 - `cwd`: intended working directory for the child session.
 - `workPackageId`: stable id for this work package. Use it in branch/worktree names when useful.
 - `filesLikelyToChange`: array of repo-relative paths or globs the child session is expected to touch.
@@ -274,6 +276,8 @@ The initial pure parser/validator rejects a request block when:
 - any forbidden field appears;
 
 The parser is intentionally pure. It does not auto-launch sessions, inspect repository state, manage worktrees, infer whether work is code-editing, or search `initialInstruction` text for isolation-preflight wording.
+
+`agentReasoningEffort` is normalized rather than rejected. Valid values are preserved for Codex child sessions; invalid, non-string, or missing values become default/unset.
 
 ## Protocol And Local-Policy Validation
 
