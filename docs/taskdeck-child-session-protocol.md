@@ -55,6 +55,10 @@ END_TASKDECK_CHILD_SESSION_BATCH_REQUEST
 
 The content between the markers must be valid JSON. Markdown fences around the block are allowed in human-readable output, but the markers themselves are the protocol boundary.
 
+Parent agents should not hand-write this JSON. The preferred path is for the agent to fill typed fields and let TaskDeck-owned code serialize the final block with `JSON.stringify`, such as `createChildSessionBatchRequestBlock` in `apps/web/src/childSessionRequestGenerator.ts`. Fixed serialization prevents common malformed-output failures such as missing braces, raw newlines inside string values, missing top-level closing braces, and omitted required work package metadata.
+
+The stdout marker transport remains strict JSON. Do not make the parser more permissive to compensate for LLM-authored JSON. Generate the block from structured fields when available, then print the generated block exactly.
+
 ## JSON Shape
 
 Top-level object:
