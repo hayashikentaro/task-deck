@@ -40,7 +40,7 @@ TASKDECK_CHILD_SESSION_BATCH_REQUEST
       "agentProfileId": "codex",
       "agentPermissionLevel": "full_access",
       "agentReasoningEffort": "high",
-      "cwd": "/workspace/task-deck",
+      "cwd": "/Users/hayashikentarou/Documents/task-deck",
       "workPackageId": "issue-29-protocol-docs",
       "filesLikelyToChange": [
         "docs/taskdeck-child-session-protocol.md",
@@ -69,10 +69,37 @@ Each `sessions[]` item:
 - `agentProfileId`: configured TaskDeck agent profile id to use.
 - `agentPermissionLevel`: permission level for the selected agent profile, when applicable. Accepted values are `full_access`, `workspace_write`, and `read_only`.
 - `agentReasoningEffort`: optional Codex reasoning effort for Codex child sessions. Accepted values are `low`, `medium`, `high`, and `xhigh`. Missing or invalid values are treated as default/unset. Non-Codex child sessions ignore this field.
-- `cwd`: intended working directory for the child session.
+- `cwd`: intended working directory for the child session. This must be a TaskDeck-server-visible host path, not the container-visible path seen by an agent running inside Docker.
 - `workPackageId`: stable id for this work package. Use it in branch/worktree names when useful.
 - `filesLikelyToChange`: array of repo-relative paths or globs the child session is expected to touch.
 - `initialInstruction`: complete instruction prompt for the child session.
+
+## Working Directory Semantics
+
+`cwd` is resolved and validated by the TaskDeck server before launch. Therefore parent agents must provide the host-side path that the TaskDeck server can stat.
+
+For Docker-backed profiles, do **not** put the container path from the parent agent's `pwd` into the request. A Codex parent running inside the sandbox may see:
+
+```text
+/workspace/task-deck
+```
+
+but the request should use the corresponding host-visible path, for example:
+
+```text
+/Users/hayashikentarou/Documents/task-deck
+```
+
+TaskDeck then derives the container workdir from the configured project root and rewrites the trusted local profile command's `docker exec -w ...` value. In other words:
+
+```text
+request cwd:              /Users/hayashikentarou/Documents/task-deck
+launched Docker workdir:   /workspace/task-deck
+```
+
+Parent agents must not infer or supply raw Docker launch commands. They only request a host-visible `cwd`; TaskDeck owns the host-to-container mapping.
+
+If a parent agent is unsure which host path corresponds to its current container path, it should stop and ask the user or use a documented TaskDeck-provided context value rather than guessing from `pwd`.
 
 ## Forbidden Fields
 
@@ -151,6 +178,8 @@ Child session output is not treated as a source for message routing requests.
 This stdout-based request transport assumes clean terminal output. It should be considered verified for shell-like parent sessions that can emit exact marker blocks, such as `zsh` smoke tests.
 
 It is currently not considered verified for natural Codex-parent operation. In observed manual testing, asking a Codex parent to "create a child session" caused Codex to print a human-formatted protocol block. The rendered output included bullets, indentation, line wrapping, and surrounding command/transcript text, which can break JSON parsing or trigger nested-block rejection.
+
+Additionally, a Codex parent running inside Docker may see a container path such as `/workspace/task-deck` from `pwd`. That path is not the correct `cwd` value for the request unless TaskDeck itself is also running in that same filesystem namespace. Use the TaskDeck-server-visible host path in the request and let TaskDeck rewrite the Docker workdir.
 
 Do not rely on a Codex parent session printing stdout blocks as the long-term control mechanism. Prefer the upcoming status/file-based approach for child reports and a future reliable request transport for parent-generated control.
 
@@ -285,6 +314,7 @@ Beyond parser-level structural validation, TaskDeck and parent agents should tre
 
 - `filesLikelyToChange` should be present for code-editing work.
 - `initialInstruction` should include the required isolation preflight for code-editing work.
+- `cwd` must be a TaskDeck-server-visible host path. Container-only paths such as `/workspace/...` must not be used as request `cwd` unless TaskDeck itself can stat that path.
 - `cwd`, profile, permission, and file scope should pass local policy before launch.
 - Child sessions must stop and report when branch/worktree isolation is unsafe.
 - Child sessions must stop and report when unrelated uncommitted changes exist.
