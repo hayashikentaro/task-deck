@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLaunchCommand } from "./agentLaunch";
+import { buildLaunchCommand, executionCwdForAgentProfile, isTaskDeckManagerProfile } from "./agentLaunch";
 import {
   applyCodexPermissionToCommand,
   applyCodexReasoningEffortToCommand,
@@ -26,6 +26,13 @@ const shellProfile: AgentProfile = {
   label: "zsh",
   command: "zsh",
   description: "Plain shell",
+};
+
+const managerProfile: AgentProfile = {
+  id: "taskdeck-manager",
+  label: "TaskDeck Manager",
+  command: codexProfile.command,
+  description: "Run TaskDeck manager",
 };
 
 describe("Codex launch command generation", () => {
@@ -118,4 +125,19 @@ describe("applyCodexPermissionToCommand", () => {
       );
     },
   );
+});
+
+describe("manager launch cwd", () => {
+  it("uses the TaskDeck control root for manager sessions and preserves selected projects for workers", () => {
+    const selectedProjectPath = "/workspace/project-a";
+    const controlRoot = "/workspace/task-deck";
+
+    expect(isTaskDeckManagerProfile(managerProfile)).toBe(true);
+    expect(executionCwdForAgentProfile(managerProfile, "new", selectedProjectPath, null, controlRoot, selectedProjectPath)).toBe(
+      controlRoot,
+    );
+    expect(executionCwdForAgentProfile(codexProfile, "new", selectedProjectPath, null, controlRoot, selectedProjectPath)).toBe(
+      selectedProjectPath,
+    );
+  });
 });

@@ -2,8 +2,9 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   buildLaunchCommand,
   buildTaskTitle,
-  executionCwdForSessionMode,
+  executionCwdForAgentProfile,
   isCodexProfile,
+  isTaskDeckManagerProfile,
   savedSessionMatchesAgent,
   type AgentLaunchSessionMode,
 } from "../agentLaunch";
@@ -45,6 +46,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
     agentProfiles.find((profile) => profile.id === selectedAgentId) ??
     findDefaultAgentProfile(agentProfiles);
   const selectedAgentIsCodex = Boolean(selectedAgent && isCodexProfile(selectedAgent));
+  const selectedAgentIsManager = isTaskDeckManagerProfile(selectedAgent);
   const matchingSavedCodexSessions = useMemo(
     () => (selectedAgentIsCodex && selectedAgent ? savedCodexSessions.filter((session) => savedSessionMatchesAgent(session, selectedAgent)) : []),
     [savedCodexSessions, selectedAgent, selectedAgentIsCodex],
@@ -59,7 +61,14 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
     ? buildLaunchCommand(selectedAgent, sessionMode, selectedSavedSession, codexPermissionLevel, codexReasoningEffort)
     : { command: "", resumeCommand: "" };
   const command = launchCommand.command;
-  const effectiveCwd = executionCwdForSessionMode(sessionMode, selectedProjectPath, selectedSavedSession, context?.defaultCwd);
+  const effectiveCwd = executionCwdForAgentProfile(
+    selectedAgent,
+    sessionMode,
+    selectedProjectPath,
+    selectedSavedSession,
+    context?.defaultCwd || context?.repoRoot,
+    context?.defaultCwd,
+  );
   const canStart = !disabled && Boolean(selectedAgent) && Boolean(effectiveCwd) && Boolean(command);
 
   useEffect(() => {
@@ -116,11 +125,21 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
     }
 
     onCreateTask({
-      title: buildTaskTitle(selectedAgent?.label || "Agent", sessionMode, effectiveCwd, selectedSavedSession),
+      title: selectedAgentIsManager
+        ? "TaskDeck Manager"
+        : buildTaskTitle(selectedAgent?.label || "Agent", sessionMode, effectiveCwd, selectedSavedSession),
       command,
       cwd: effectiveCwd,
-      agentProfileId: sessionMode === "saved_codex" ? selectedSavedSession?.agentProfileId || "codex" : selectedAgent?.id || "",
-      agentLabel: sessionMode === "saved_codex" ? selectedSavedSession?.agentLabel || "Codex CLI" : selectedAgent?.label || "Agent",
+      agentProfileId: selectedAgentIsManager
+        ? selectedAgent?.id || ""
+        : sessionMode === "saved_codex"
+          ? selectedSavedSession?.agentProfileId || "codex"
+          : selectedAgent?.id || "",
+      agentLabel: selectedAgentIsManager
+        ? selectedAgent?.label || "TaskDeck Manager"
+        : sessionMode === "saved_codex"
+          ? selectedSavedSession?.agentLabel || "Codex CLI"
+          : selectedAgent?.label || "Agent",
       agentPermissionLevel: selectedAgentIsCodex ? codexPermissionLevel : undefined,
       agentReasoningEffort:
         selectedAgentIsCodex && sessionMode !== "saved_codex" && codexReasoningEffort
@@ -209,10 +228,17 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
         </SelectField>
         <SelectField
           className="project-field"
-          label="Project"
-          value={selectedProjectPath}
+          disabled={selectedAgentIsManager}
+          hint={selectedAgentIsManager ? "Global manager sessions use the TaskDeck control root." : undefined}
+          label={selectedAgentIsManager ? "Control root" : "Project"}
+          value={selectedAgentIsManager ? effectiveCwd : selectedProjectPath}
           onChange={setSelectedProjectPath}
         >
+          {selectedAgentIsManager ? (
+            <option value={effectiveCwd}>
+              Global · {basename(effectiveCwd) || "TaskDeck"}
+            </option>
+          ) : null}
           {projectSuggestions.map((project) => (
             <option key={project.path} value={project.path}>
               {project.label}

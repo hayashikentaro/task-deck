@@ -15,6 +15,12 @@ export type AgentLaunchCommand = {
   resumeCommand: string;
 };
 
+export const taskDeckManagerProfileId = "taskdeck-manager";
+
+export function isTaskDeckManagerProfile(profile: AgentProfile | null | undefined) {
+  return profile?.id === taskDeckManagerProfileId;
+}
+
 export function isCodexProfile(profile: AgentProfile) {
   return (
     profile.id.includes("codex") ||
@@ -69,6 +75,20 @@ export function executionCwdForSessionMode(
     return savedSession.cwd;
   }
   return selectedProjectPath || defaultCwd || "";
+}
+
+export function executionCwdForAgentProfile(
+  profile: AgentProfile | null | undefined,
+  sessionMode: AgentLaunchSessionMode,
+  selectedProjectPath: string,
+  savedSession: SavedCodexSession | null,
+  controlRoot?: string,
+  defaultCwd?: string,
+) {
+  if (isTaskDeckManagerProfile(profile)) {
+    return controlRoot || defaultCwd || selectedProjectPath || "";
+  }
+  return executionCwdForSessionMode(sessionMode, selectedProjectPath, savedSession, defaultCwd);
 }
 
 export function buildTaskTitle(

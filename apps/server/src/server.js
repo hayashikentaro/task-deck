@@ -914,7 +914,9 @@ async function startTaskNow({
   initialInstruction,
   attachments = [],
 }, socket) {
-  const cwdValidation = await validateCwd(cwd);
+  const isManagerLaunch = isManagerAgentProfileId(agentProfileId);
+  const launchCwd = await cwdForTaskLaunch({ cwd, isManagerLaunch });
+  const cwdValidation = await validateCwd(launchCwd);
   if (!cwdValidation.ok) {
     send(socket, { type: "error", message: cwdValidation.message });
     return { ok: false, error: cwdValidation.message };
@@ -950,7 +952,7 @@ async function startTaskNow({
     spawnedFromParentRequest,
     workPackageId,
     filesLikelyToChange,
-    isManager: isManagerAgentProfileId(agentProfileId),
+    isManager: isManagerLaunch,
     ...detectedAgentSession,
     ...explicitAgentSession,
   });
@@ -1038,6 +1040,18 @@ async function startTaskNow({
     broadcastTasks();
     return { ok: true, taskId: task.id };
   }
+}
+
+async function cwdForTaskLaunch({ cwd, isManagerLaunch }) {
+  if (isManagerLaunch) {
+    return taskDeckControlRootCwd();
+  }
+  return cwd;
+}
+
+async function taskDeckControlRootCwd() {
+  const projectRoots = await resolveProjectRoots();
+  return hostProjectPathForRepoRoot(projectRoots[0] || repoRoot);
 }
 
 async function scanChildSessionRequestFiles() {
