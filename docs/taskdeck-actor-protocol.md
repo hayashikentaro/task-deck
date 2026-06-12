@@ -185,6 +185,8 @@ Current manager-readable files:
 .taskdeck/manager-inbox/<eventId>.json
 .taskdeck/manager-readable/context.md
 .taskdeck/manager-readable/unread-events.json
+.taskdeck/manager-readable/actions.md
+.taskdeck/manager-readable/capabilities.json
 ```
 
 The dedicated manager session is started from the TaskDeck control/document root. TaskDeck marks that task as a manager session and provides environment variables that point to the actual TaskDeck runtime `dataRoot` files, not paths relative to the manager cwd:
@@ -195,14 +197,9 @@ TASKDECK_MANAGER_INBOX_DIR
 TASKDECK_MANAGER_READABLE_DIR
 TASKDECK_MANAGER_CONTEXT_FILE
 TASKDECK_MANAGER_UNREAD_EVENTS_FILE
-TASKDECK_STATUS_FILE
-```
-
-Future generated manager action guidance should add explicit pointers such as:
-
-```text
 TASKDECK_MANAGER_ACTIONS_FILE
 TASKDECK_MANAGER_CAPABILITIES_FILE
+TASKDECK_STATUS_FILE
 ```
 
 When a new unread manager event is created, TaskDeck sends only a short nudge to running manager sessions. The nudge is a wake-up signal; the durable source of truth remains the manager inbox and manager-readable files.

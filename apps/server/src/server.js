@@ -970,6 +970,11 @@ async function startTaskNow({
   const resolvedCwd = cwdValidation.resolvedCwd;
   const processCwd = await serverAccessiblePathForHostCwd(resolvedCwd);
   const effectiveCommand = await commandForTaskCwd(command, resolvedCwd, sessionMode);
+  const launchInitialInstruction = await initialInstructionForTaskLaunch({
+    isManagerLaunch,
+    command: effectiveCommand,
+    initialInstruction,
+  });
   const detectedAgentSession = detectInitialAgentSession(effectiveCommand, agentProfileId, agentLabel);
   const explicitAgentSession = normalizeExplicitAgentSession({
     agentSessionProvider,
@@ -992,7 +997,7 @@ async function startTaskNow({
     sessionMode,
     resumeCommand,
     identityColorSlot,
-    initialInstruction,
+    initialInstruction: launchInitialInstruction,
     parentSessionId,
     spawnedFromParentRequest,
     workPackageId,
@@ -1071,7 +1076,7 @@ async function startTaskNow({
       broadcastTasks();
     });
 
-    const initialInstructionInput = String(initialInstruction || "").trim();
+    const initialInstructionInput = String(task.initialInstruction || "").trim();
     if (initialInstructionInput) {
       const marker = "\r\n[TaskDeck] Sending initial instruction.\r\n";
       appendLog(task.id, marker);
@@ -1698,6 +1703,42 @@ function defaultChildStatusFilePath(task) {
   }
   const taskCwd = path.resolve(repoRoot, String(task.cwd || ""));
   return path.join(taskCwd, ".taskdeck", "statuses", `${task.id}.json`);
+}
+
+async function initialInstructionForTaskLaunch({ isManagerLaunch, command, initialInstruction }) {
+  const userInstruction = String(initialInstruction || "").trim();
+  if (!isManagerLaunch) {
+    return userInstruction;
+  }
+
+  const managerBootstrap = await buildManagerBootstrapInstruction(command);
+  return [managerBootstrap, userInstruction ? `Task-specific instruction:\n${userInstruction}` : ""]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+async function buildManagerBootstrapInstruction(command) {
+  const visibleRepoRoot = await taskVisibleHostPath(command, repoRoot);
+  const joinVisiblePath = extractDockerExecWorkdir(command) ? path.posix.join : path.join;
+  const managerRoleGuide = joinVisiblePath(visibleRepoRoot, "docs", "agents", "roles", "taskdeck-manager.md");
+  return [
+    "You are the TaskDeck Manager.",
+    "",
+    "First, read:",
+    `- docs/agents/roles/taskdeck-manager.md (${managerRoleGuide})`,
+    "- $TASKDECK_MANAGER_CONTEXT_FILE",
+    "- $TASKDECK_MANAGER_UNREAD_EVENTS_FILE",
+    "",
+    "If present, also read:",
+    "- $TASKDECK_MANAGER_ACTIONS_FILE",
+    "- $TASKDECK_MANAGER_CAPABILITIES_FILE",
+    "",
+    "Use only taskdeckctl commands listed in the generated manager action guide.",
+    "Do not invent taskdeckctl commands.",
+    "Do not call raw TaskDeck endpoints.",
+    "Do not command worker sessions directly except through supported manager actions.",
+    "Do not write TASKDECK_STATUS_FILE.",
+  ].join("\n");
 }
 
 async function taskDeckEnvironmentForTask(task, command, hostStatusFile) {

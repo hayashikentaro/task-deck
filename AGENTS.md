@@ -2,6 +2,8 @@
 
 Guidance for Codex and other AI agents working in this repository.
 
+This file is the repository router and workflow checklist. Durable product principles, actor boundaries, and role-specific guidance live in the linked docs.
+
 ## Repository Boundary
 
 This repository is intended to track:
@@ -12,10 +14,11 @@ https://github.com/hayashikentaro/task-deck
 
 Before making changes, confirm you are in the correct local checkout:
 
-```bash
+```sh
 pwd
 git remote -v
 git status --short --branch
+git branch --show-current
 ```
 
 The expected remote is:
@@ -25,7 +28,7 @@ origin  https://github.com/hayashikentaro/task-deck (fetch)
 origin  https://github.com/hayashikentaro/task-deck (push)
 ```
 
-An SSH remote for the same repository is also acceptable when local authentication requires it:
+An SSH remote for the same repository is also acceptable:
 
 ```text
 origin  git@github.com:hayashikentaro/task-deck.git (fetch)
@@ -34,112 +37,48 @@ origin  git@github.com:hayashikentaro/task-deck.git (push)
 
 Do not edit files outside this repository for TaskDeck work unless the user explicitly asks.
 
-## Product Direction
+## Required Context
 
-TaskDeck is a task-aware terminal wrapper. It is not a chatbot UI, and it is not merely a prettier terminal.
+Read the relevant docs before changing the matching area:
 
-The long-term goal is for TaskDeck to become an operational cognition system for supervising multiple AI execution processes. Its interface should be task-centric and centered on state, risk, diffs, and review rather than chat.
+- Product and agent operating principles: `docs/agents/operating-principles.md`
+- Current short-term execution order: `docs/current-work-plan.md`
+- TaskDeck actor and manager control-plane boundary: `docs/taskdeck-actor-protocol.md`
+- Dedicated manager role guidance: `docs/agents/roles/taskdeck-manager.md`
+- AI-first layering and responsibility boundaries: `docs/ai-first-layering.md`
+- Integration role guidance when doing parent/integration merge work: `docs/agents/roles/integration.md`
+- UI styling changes: `docs/guides/ui-style.md`
+- Reusable UI components, shared controls, or icon-only controls: `docs/guides/ui-components.md`
+- Child-session file protocol: `docs/taskdeck-child-session-protocol.md`
 
-Dangerous paths should be structurally constrained where possible. Inside safe capability boundaries, AI agents should be able to operate freely.
-
-## UI Direction: Session Identity First Cards
-
-TaskDeck currently treats stable task/session identity as an important card-level visual layer. In real multi-agent use, quickly recognizing which task card maps to which terminal/session is part of safe supervision.
-
-For this direction:
-
-- Stable task/session identity may be the primary card-level visual layer.
-- Supervision remains semantically central, but should be expressed through ordering, badges, acknowledgement controls, compact state markers, and action prompts.
-- `attentionState` remains the primary supervision signal for data, sorting, and action prompts; it should not automatically imply full-card state coloration.
-- Avoid drifting back to a design where full-card Needs you / Not now coloration dominates the card surface.
-- Selected task state should be visually distinct from task identity color while still feeling like the same identity is active.
-- Preserve the visual link between task card identity and terminal identity tint.
-- Do not encode session identity and supervision urgency as competing full-card color systems.
-- Do not remove supervision logic, PTY behavior, task persistence, or existing task metadata semantics as part of visual work.
-
-## Current Project State
-
-The repository now contains a working MVP application:
-
-```text
-apps/server    TaskDeck backend, PTY orchestration, REST API, and WebSocket handling
-apps/web       React/Vite frontend
-packages/core  Shared task and domain logic
-README.md      Project overview and local API notes
-AGENTS.md      Repository guidance for AI agents
-docs/architecture.md  Project architecture map and refactoring seams
-docs/taskdeck-actor-protocol.md  Actor boundary and manager control-plane protocol
-```
-
-`.taskdeck/` is local runtime state for persisted tasks, logs, presets, and related data. It should not be committed.
-
-## Issues And Repository Docs
-
-GitHub Issues are the source of truth for actionable work, open/closed state, task status, and backlog.
-
-Repository-local docs should not become a parallel issue tracker or task status system. Use them for durable design decisions, architectural notes, product context, setup/API references, and implementation tradeoffs that should live close to the code.
+GitHub Issues are the source of truth for actionable work, open/closed state, detailed acceptance criteria, and backlog. Repository docs are durable context and design guidance, not a parallel issue tracker.
 
 If `docs/issues/` is referenced, treat it as historical or decision-record-like context, not as a general backlog. Do not add task status bookkeeping there when a GitHub Issue is the appropriate source of truth.
 
-## Planning Context
+Do not treat future design notes as implemented behavior. Runtime-generated files and generated manager action guides describe the capabilities of the running app instance.
 
-For the current short-term execution order, read:
+Do not add personal cross-repository shortcuts or aliases such as `t_`, `k_`, or `th_` to this repository.
 
-- `docs/current-work-plan.md`
+## Actor Boundary
 
-For medium-term product direction and cross-issue design rationale, read:
+For parent/child sessions, manager behavior, agent-to-TaskDeck communication, request transports, or PTY command delivery, follow `docs/taskdeck-actor-protocol.md`.
 
-- `docs/roadmap-context.md`
-
-For TaskDeck actor boundaries and manager control-plane protocol, read:
-
-- `docs/taskdeck-actor-protocol.md`
-
-GitHub Issues remain the source of truth for actionable work, open/closed state, detailed acceptance criteria, and completion state. These planning docs provide sequencing and design context only.
-
-## Domain Concepts
-
-- Task: the central supervision unit, with process status, agent state, risk, logs, metadata, and diff context.
-- Task/session identity: the stable visual link between a task card and its terminal/session. This may be the dominant card-level visual channel.
-- Supervision state: whether a task may need attention. This is still driven by TaskDeck state such as `attentionState`, but it may be shown through compact UI channels rather than full-card coloration.
-- PTY: the pseudo-terminal process behind a running task. It is an interaction mechanism, not the product identity.
-- Agent profile: a configured launch profile such as Codex, Goose, container agents, zsh, or custom commands.
-- Session mode: how a new agent session starts, such as new session, resume last, custom resume, or saved session.
-- Resume last: an imprecise Codex resume mode that targets the latest Codex session.
-- Resume saved: a precise resume path using stored task/session metadata when available.
-- Saved Codex session: a best-effort session derived from TaskDeck task metadata, not from Codex internal storage.
-- Diagnostics: server/UI checks for Docker, configured agent containers, and configured workspaces.
-
-Keep state, risk, diffs, review, and agent supervision central. Terminal/PTY interaction is a means to supervise work, not a chat surface or decorative terminal skin. Keep supervision semantics central while allowing session identity to dominate the card's first visual read.
-
-## AI-First Layering
-
-When decomposing work for child or role sessions, prefer the AI-first layering model in `docs/ai-first-layering.md`.
-
-Treat layers as responsibility boundaries, decision-authority boundaries, and context-cache units for long-lived agent sessions. Useful layers include Core, Protocol, Runtime, UI, App Flow, and Integration.
-
-Use role-specific guidance when available, such as `docs/agents/roles/integration.md` for parent/integration merge work.
-
-## TaskDeck Actor Protocol Boundary
-
-For changes that affect parent/child sessions, manager behavior, agent-to-TaskDeck communication, request transports, or PTY command delivery, read `docs/taskdeck-actor-protocol.md` before editing.
-
-Follow these boundaries:
+At a high level:
 
 - Non-manager agents may only write append-only status, result, artifact, or explicitly supported request files.
 - Non-manager agents must not mutate canonical TaskDeck state.
 - Non-manager agents must not command other agents directly.
-- Manager sessions are global TaskDeck supervisor sessions. They must not be launched inside an individual project workspace; worker sessions are project-bound, while manager sessions are TaskDeck control/document-root-bound.
-- Manager agents may read file-based manager inbox events and generated readable views.
+- Manager sessions are global TaskDeck supervisor sessions launched from the TaskDeck control/document root, not an individual project workspace.
 - Manager write operations must go through `taskdeckctl`.
-- `taskdeckctl` is the manager-facing command surface; its transport may be local IPC, file, or another implementation detail, but agents should not bypass it.
 - TaskDeck server is the only actor that may validate, dedupe, log, execute mutations, and deliver PTY input to another session.
 
-Do not add raw Web API manager-write paths, raw terminal-write paths, raw SQL mutation paths, or direct worker-to-worker command paths unless the user explicitly approves a protocol change and the actor protocol document is updated in the same change.
+Do not add raw Web API manager-write paths, raw terminal-write paths, raw SQL mutation paths, or direct worker-to-worker command paths unless the user explicitly approves a protocol change and `docs/taskdeck-actor-protocol.md` is updated in the same change.
 
-## Branch Discipline
+When asked to create TaskDeck child sessions or send parent-to-child instructions, use the writer scripts defined in `docs/taskdeck-child-session-protocol.md`. Do not use platform-native multi-agent/sub-agent tools and do not treat those agents as TaskDeck child sessions.
 
-Before editing files, agents must check and record the current branch:
+## Branch And Clone Policy
+
+Before editing files, check and record the current branch:
 
 ```sh
 git status --short --branch
@@ -154,33 +93,9 @@ When committing and pushing, push back to the same branch that was current at th
 
 Preserve user changes already present in the working tree. If the working tree has unrelated changes, do not overwrite them; report them before proceeding.
 
-## Working Guidelines
-
-- Keep changes scoped to the user's request.
-- Prefer small, reviewable commits.
-- Preserve user changes already present in the working tree.
-- Prefer existing project conventions over introducing new structure.
-- Avoid broad refactors unless they are required for the task.
-- Add or update tests when changing behavior once a test setup exists.
-- Document important setup, API, config, persisted metadata, task semantics, or user-facing workflow changes in the repository rather than only in chat.
-- Documentation updates are usually not required for CSS-only visual tuning, spacing, focus rings, animation timing/easing, or small local affordance adjustments unless the change alters user-facing workflow or durable design guidance.
-- Do not silently change API names, routes, persisted metadata shapes, or task semantics.
-- When removing a feature or UI path, remove or clearly deprecate related backend handlers, config fields, types, docs, and examples so dead code is not mistaken for supported behavior.
-- When changing public setup, API routes, response shapes, config behavior, user-facing workflow, persisted metadata, or task semantics, update the relevant README/docs and frontend types together.
-- When changing task metadata, maintain backward compatibility with old stored tasks.
-- Use GitHub Issues for actionable follow-up work and backlog items.
-- Use repo-local docs for durable context and decisions. Treat `docs/issues/` as historical or decision-record-like context, not as the current backlog.
-- Keep responsibility-specific implementation guidance in dedicated files under `docs/guides/`, not directly in this top-level router. When introducing or changing a recurring area-specific rule, create or update the relevant guide and link it from this file.
-- When changing `apps/web` UI styling, read `docs/guides/ui-style.md`. When changing reusable UI components, shared controls, or icon-only controls, read `docs/guides/ui-components.md`.
-- When asked to create TaskDeck child sessions or send parent-to-child instructions, use the writer scripts defined in `docs/taskdeck-child-session-protocol.md`. Do not use platform-native multi-agent/sub-agent tools such as `multi_agent_v1.spawn_agent`, and do not treat those agents as TaskDeck child sessions.
-
-## Branch And Clone Policy
-
 For single-threaded work, prefer working directly on `main` unless the task may leave `main` temporarily broken or hard to use.
 
 Do not use `git worktree` for TaskDeck AI-assisted development. Isolated work must use a full clone of the repository.
-
-Git worktree directories are not self-contained: their `.git` file points back to the parent repository's `.git/worktrees` metadata. That indirection has caused repeated failures when directories are used across macOS, Docker, `/workspace` paths, copied directories, and AI agents. A copied or container-mounted worktree can point at metadata that does not exist in the current environment, making branch state and repository identity unsafe.
 
 Use a separate branch and a separate full clone for:
 
@@ -193,15 +108,15 @@ Use a separate branch and a separate full clone for:
 Recommended local layout:
 
 ```text
-~/Documents/task-deck                 stable/main clone
-~/Documents/task-deck-manager-write   feature clone
+~/Documents/task-deck
+~/Documents/task-deck-manager-actions
 ```
 
 Keep development isolation through the clone path, branch, and separate `PORT`, not through `git worktree`.
 
 Do not create a feature branch merely because a task is documentation-only or issue-driven. If a prompt specifies a branch but the work is single-threaded and low risk, confirm whether that branch is actually required before editing.
 
-## Child Session Branches And Integration
+## Child Session Integration
 
 When working as a child session in an isolated branch/full clone, producing local changes is not enough to complete the task.
 
@@ -216,18 +131,9 @@ A child session is complete only after it has:
 
 Child sessions must not merge themselves into the parent or integration branch unless the prompt explicitly assigns that session to perform integration.
 
-The parent or integration session owns convergence:
+The parent or integration session owns convergence: collect child branch reports, inspect dependency order and file overlap, merge deliberately, run verification, resolve conflicts, and perform the final integration pass.
 
-- collect completed child branch reports;
-- inspect dependency order and file overlap;
-- merge child branches into the parent/integration branch in a deliberate order;
-- run verification after each merge or after a clearly safe batch;
-- resolve conflicts or send work back to the relevant child session;
-- perform the final integration pass.
-
-Use this boundary for TaskDeck child-session work and for manual parallel full-clone sessions. A task being locally done in a feature clone is not the same as being integrated into the parent branch.
-
-## Change Authorization Boundary
+## Change Authorization
 
 Only edit files that are directly required by the user's requested task.
 
@@ -236,6 +142,21 @@ Do not turn analysis, diagnosis, recommendations, or proposals into repository c
 Optional cleanup, docs updates, issue updates, rule updates, formatting sweeps, and adjacent refactors require explicit user approval.
 
 The commit-and-push rule applies only after an authorized repository change has been made. It does not authorize making repository changes.
+
+## Working Guidelines
+
+- Keep changes scoped to the user's request.
+- Prefer small, reviewable commits.
+- Preserve existing user changes.
+- Prefer existing project conventions over introducing new structure.
+- Avoid broad refactors unless they are required for the task.
+- Add or update tests when changing behavior once a test setup exists.
+- Document important setup, API, config, persisted metadata, task semantics, or user-facing workflow changes in the repository rather than only in chat.
+- Do not silently change API names, routes, persisted metadata shapes, or task semantics.
+- When removing a feature or UI path, remove or clearly deprecate related backend handlers, config fields, types, docs, and examples.
+- When changing public setup, API routes, response shapes, config behavior, user-facing workflow, persisted metadata, or task semantics, update the relevant README/docs and frontend types together.
+- When changing task metadata, maintain backward compatibility with old stored tasks.
+- Use GitHub Issues for actionable follow-up work and backlog items.
 
 ## Standard Task Workflow
 
@@ -256,7 +177,7 @@ While editing:
 - Avoid broad refactors unless they are required for the task.
 - Follow existing project conventions.
 - When changing API routes, response shapes, persisted metadata, or task semantics, update related docs and frontend types together.
-- Do not duplicate instructions or guidance already present in this `AGENTS.md`; update the existing relevant section instead.
+- Do not duplicate long instructions already covered by linked docs; update the relevant dedicated guide instead.
 
 After editing:
 
@@ -272,7 +193,7 @@ When finished:
 - Push the commit.
 - Report what changed, verification results, commit hash, push status, skipped checks, and unexpected files not touched.
 
-## Prompt Handoff Convention
+## Prompt Handoff
 
 Agents working in this repository should read and follow this `AGENTS.md` before making changes.
 
@@ -288,18 +209,16 @@ If a task-specific user instruction conflicts with this file, stop and report th
 - Logs can grow; avoid moving terminal output into unbounded React state.
 - PTY process lifecycle, interrupts, server restarts, and task clearing should remain predictable.
 - WebSocket task updates should keep task lists, selected task behavior, terminal output, and session metadata in sync.
-- Treat `attentionState` as the supervision UI's primary signal for whether the user should look at a task. Prefer `may_need_user` over hiding possibly blocked tasks as merely running.
-- `attentionState` remains primary for supervision semantics, sorting, and action prompts, but must not by itself pull the visual design back to full-card Needs you / Not now coloration.
-- Agent state should be driven primarily by TaskDeck events such as start, input, PTY output activity, and exit. Do not infer thinking from silence; quiet running PTYs should keep their last known supervisor state until a stronger signal arrives. Treat TUI text matching as a fallback for explicit user-action prompts only.
-- Do not add one-off Goose/Codex spinner phrases to infer thinking. Prefer TaskDeck-owned events, process observations, or explicit action prompts. If TUI fallback is used, include reason/source/confidence metadata.
-- Keep agent state inference split by adapter (`goose`, `codex`, and `generic`) so Goose behavior can be tuned without accidentally changing Codex supervision semantics.
-- Approval prompts may override immediately, but input-prompt fallback should be gated by PTY activity so animated/repainting TUIs are not classified as waiting for input too early.
-- PTY activity signals such as visible text, ANSI/cursor-control frames, and carriage returns should remain in-memory process observations, not persisted task metadata.
-- Prefer machine-readable or non-TUI agent modes when an agent supports them, but keep PTY compatibility until those modes are proven.
-- Approval should eventually become a TaskDeck-side permission boundary instead of a scraped TUI state.
+- Treat `attentionState` as the supervision UI's primary signal for whether the user should look at a task.
+- Agent state should be driven primarily by TaskDeck events such as start, input, PTY output activity, and exit.
+- Do not infer thinking from silence; quiet running PTYs should keep their last known supervisor state until a stronger signal arrives.
+- Treat TUI text matching as a fallback for explicit user-action prompts only.
+- Do not add one-off Goose/Codex spinner phrases to infer thinking.
+- Keep agent state inference split by adapter (`goose`, `codex`, and `generic`).
+- Approval prompts may override immediately, but input-prompt fallback should be gated by PTY activity.
+- PTY activity signals should remain in-memory process observations, not persisted task metadata.
 - Agent session metadata is best-effort and should not assume every agent exposes stable ids.
 - `GET /api/agent-sessions` lists saved Codex sessions derived from TaskDeck task metadata.
-- When documenting `/api/agent-sessions`, use the current response shape from the implementation, not older proposed names.
 - `Resume last` is imprecise; `Resume saved` and the saved session picker should use precise stored resume commands when available.
 - Agent profile config should merge with built-in profiles rather than replace them wholesale.
 
@@ -312,7 +231,7 @@ Common examples:
 ```text
 .taskdeck/
 node_modules/
-dist/
+apps/web/dist/
 .env
 .DS_Store
 ```

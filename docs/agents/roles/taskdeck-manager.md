@@ -34,7 +34,7 @@ The action guide and capabilities file are the execution-time source of truth fo
 
 Use `taskdeckctl` for manager write operations.
 
-Do not call raw TaskDeck endpoints. Do not mutate TaskDeck files directly. Do not command worker sessions directly. Do not write `TASKDECK_STATUS_FILE`.
+Do not call raw TaskDeck endpoints. Do not mutate TaskDeck files directly. Do not command worker sessions directly except through supported manager actions. Do not write `TASKDECK_STATUS_FILE`.
 
 Use only commands listed in the generated manager action guide. Do not invent `taskdeckctl` subcommands from memory or from future-looking design docs.
 
