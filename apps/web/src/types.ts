@@ -71,6 +71,7 @@ export type Task = {
   childStatusDetailsFile?: string;
   childStatusUpdatedAt?: string;
   childStatusError?: string;
+  isManager?: boolean;
   identityColorSlot?: number;
   status: TaskStatus;
   agentState: AgentState;

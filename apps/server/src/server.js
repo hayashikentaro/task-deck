@@ -47,7 +47,15 @@ import {
   generateManagerChildStatusEventId,
   isManagerNotifiableChildState,
   managerEventFilenames,
+  validateManagerEvent,
 } from "@taskdeck/core/manager-inbox";
+import {
+  MANAGER_READABLE_CONTEXT_FILENAME,
+  MANAGER_READABLE_DIRNAME,
+  MANAGER_READABLE_UNREAD_EVENTS_FILENAME,
+  buildManagerReadableContext,
+  createManagerReadableEventsDocument,
+} from "@taskdeck/core/manager-readable";
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
@@ -65,15 +73,33 @@ const pendingAttachmentRoot = path.join(attachmentRoot, "pending");
 const childSessionRequestRoot = path.join(dataRoot, "requests", "child-session");
 const childSessionMessageRequestRoot = path.join(dataRoot, "requests", "child-message");
 const managerInboxRoot = path.join(dataRoot, "manager-inbox");
+const managerReadableRoot = path.join(dataRoot, MANAGER_READABLE_DIRNAME);
+const managerReadableContextPath = path.join(managerReadableRoot, MANAGER_READABLE_CONTEXT_FILENAME);
+const managerReadableUnreadEventsPath = path.join(managerReadableRoot, MANAGER_READABLE_UNREAD_EVENTS_FILENAME);
 const defaultConfigPath = path.join(repoRoot, "taskdeck.config.json");
 const localConfigPath = path.join(repoRoot, "taskdeck.local.json");
 const envConfigPath = process.env.TASKDECK_CONFIG ? path.resolve(process.env.TASKDECK_CONFIG) : "";
+const managerAgentProfileId = "taskdeck-manager";
 const defaultAgentProfiles = [
   {
     id: "codex",
     label: "Codex CLI",
     command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex'",
     description: "Run Codex CLI inside the AI agent sandbox container",
+    diagnosticContainer: "ai-agent-sandbox-agent-1",
+    diagnosticWorkspace: "/workspace",
+    modelOptions: [
+      { id: "default", label: "Default" },
+      { id: "gpt-5.5", label: "gpt-5.5" },
+      { id: "gpt-5.5-thinking", label: "gpt-5.5 Thinking" },
+      { id: "gpt-5.4-codex", label: "gpt-5.4 Codex" },
+    ],
+  },
+  {
+    id: managerAgentProfileId,
+    label: "TaskDeck Manager",
+    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex'",
+    description: "Run a dedicated Codex manager session for reading TaskDeck manager inbox and readable context files",
     diagnosticContainer: "ai-agent-sandbox-agent-1",
     diagnosticWorkspace: "/workspace",
     modelOptions: [
@@ -660,6 +686,7 @@ await initializePersistence();
 await scanChildStatusFiles();
 await scanChildSessionRequestFiles();
 await scanChildSessionMessageRequestFiles();
+await refreshManagerReadableFiles();
 await configureWebApp();
 
 server.on("error", (error) => {
@@ -923,6 +950,7 @@ async function startTaskNow({
     spawnedFromParentRequest,
     workPackageId,
     filesLikelyToChange,
+    isManager: isManagerAgentProfileId(agentProfileId),
     ...detectedAgentSession,
     ...explicitAgentSession,
   });
@@ -998,6 +1026,9 @@ async function startTaskNow({
       appendLog(task.id, marker);
       broadcast({ type: "output", taskId: task.id, data: marker });
       writeOrQueuePtyInput(activePty, `${initialInstructionInput}${terminalEnter}`, "initial-instruction");
+    }
+    if (isManagerTask(task)) {
+      await nudgeManagerTaskIfUnread(task.id);
     }
     return { ok: true, taskId: task.id };
   } catch (error) {
@@ -1605,12 +1636,51 @@ function defaultChildStatusFilePath(task) {
 
 function taskDeckEnvironmentForTask(task, command, hostStatusFile) {
   const childStatusFile = childVisibleStatusFilePathForTask(task, command, hostStatusFile);
+  const managerReadablePaths = managerReadableVisiblePathsForTask(command);
   return {
     TASKDECK_TASK_ID: task.id,
     ...(task.parentSessionId ? { TASKDECK_PARENT_TASK_ID: task.parentSessionId } : {}),
     ...(task.workPackageId ? { TASKDECK_WORK_PACKAGE_ID: task.workPackageId } : {}),
     TASKDECK_STATUS_FILE: childStatusFile,
+    ...(isManagerTask(task)
+      ? {
+          TASKDECK_MANAGER_ROLE: "manager",
+          TASKDECK_MANAGER_INBOX_DIR: managerReadablePaths.inboxDir,
+          TASKDECK_MANAGER_READABLE_DIR: managerReadablePaths.readableDir,
+          TASKDECK_MANAGER_CONTEXT_FILE: managerReadablePaths.contextFile,
+          TASKDECK_MANAGER_UNREAD_EVENTS_FILE: managerReadablePaths.unreadEventsFile,
+        }
+      : {}),
   };
+}
+
+function managerReadableVisiblePathsForTask(command) {
+  return {
+    inboxDir: taskVisibleRepoRelativePath(command, path.join(".taskdeck", "manager-inbox"), managerInboxRoot),
+    readableDir: taskVisibleRepoRelativePath(command, path.join(".taskdeck", MANAGER_READABLE_DIRNAME), managerReadableRoot),
+    contextFile: taskVisibleRepoRelativePath(
+      command,
+      path.join(".taskdeck", MANAGER_READABLE_DIRNAME, MANAGER_READABLE_CONTEXT_FILENAME),
+      managerReadableContextPath,
+    ),
+    unreadEventsFile: taskVisibleRepoRelativePath(
+      command,
+      path.join(".taskdeck", MANAGER_READABLE_DIRNAME, MANAGER_READABLE_UNREAD_EVENTS_FILENAME),
+      managerReadableUnreadEventsPath,
+    ),
+  };
+}
+
+function taskVisibleRepoRelativePath(command, repoRelativePath, hostPath) {
+  const dockerWorkdir = extractDockerExecWorkdir(command);
+  if (!dockerWorkdir) {
+    return hostPath;
+  }
+
+  return path.posix.join(
+    dockerWorkdir.split(path.sep).join(path.posix.sep),
+    ...String(repoRelativePath || "").split(path.sep).filter(Boolean),
+  );
 }
 
 function childVisibleStatusFilePathForTask(task, command, hostStatusFile) {
@@ -1754,6 +1824,14 @@ async function maybeWriteManagerChildStatusEvent(previousTask, nextTask) {
     await writeManagerEventFile(event);
   } catch (error) {
     console.warn(`TaskDeck manager inbox event write failed: ${error.message}`);
+    return;
+  }
+
+  try {
+    await refreshManagerReadableFiles();
+    nudgeRunningManagerTasks();
+  } catch (error) {
+    console.warn(`TaskDeck manager readable context refresh failed: ${error.message}`);
   }
 }
 
@@ -1765,6 +1843,140 @@ async function writeManagerEventFile(event) {
   await fs.mkdir(managerInboxRoot, { recursive: true });
   await fs.writeFile(tempPath, `${JSON.stringify(event, null, 2)}\n`);
   await fs.rename(tempPath, filePath);
+}
+
+async function refreshManagerReadableFiles() {
+  const generatedAt = new Date().toISOString();
+  const events = await readUnreadManagerInboxEvents();
+  const tasksSnapshot = Array.from(tasks.values()).map(serializeTask);
+  const document = createManagerReadableEventsDocument({
+    events,
+    tasks: tasksSnapshot,
+    generatedAt,
+  });
+  const markdown = buildManagerReadableContext({
+    events,
+    tasks: tasksSnapshot,
+    generatedAt,
+    paths: {
+      managerInboxDir: ".taskdeck/manager-inbox",
+      contextFile: path.join(".taskdeck", MANAGER_READABLE_DIRNAME, MANAGER_READABLE_CONTEXT_FILENAME),
+      unreadEventsFile: path.join(".taskdeck", MANAGER_READABLE_DIRNAME, MANAGER_READABLE_UNREAD_EVENTS_FILENAME),
+    },
+  });
+
+  await fs.mkdir(managerReadableRoot, { recursive: true });
+  await writeJsonAtomic(managerReadableUnreadEventsPath, document);
+  await writeTextAtomic(managerReadableContextPath, markdown);
+  return events;
+}
+
+async function readUnreadManagerInboxEvents() {
+  let filenames;
+  try {
+    filenames = await fs.readdir(managerInboxRoot);
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+
+  const events = [];
+  for (const filename of filenames) {
+    if (!isManagerEventDataFilename(filename)) {
+      continue;
+    }
+
+    const eventIdFromFilename = path.basename(filename, ".json");
+    const filenamesForEvent = managerEventFilenames(eventIdFromFilename);
+    if (await fileExists(path.join(managerInboxRoot, filenamesForEvent.ack))) {
+      continue;
+    }
+
+    try {
+      const parsed = JSON.parse(await fs.readFile(path.join(managerInboxRoot, filename), "utf8"));
+      const validation = validateManagerEvent(parsed);
+      if (!validation.ok) {
+        console.warn(`TaskDeck ignored invalid manager inbox event ${filename}: ${validation.error}`);
+        continue;
+      }
+      if (validation.event.eventId !== eventIdFromFilename) {
+        console.warn(`TaskDeck ignored manager inbox event ${filename}: eventId does not match filename.`);
+        continue;
+      }
+      events.push(validation.event);
+    } catch (error) {
+      console.warn(`TaskDeck could not read manager inbox event ${filename}: ${error.message}`);
+    }
+  }
+
+  return events.sort((left, right) => {
+    const createdAtOrder = left.createdAt.localeCompare(right.createdAt);
+    return createdAtOrder || left.eventId.localeCompare(right.eventId);
+  });
+}
+
+function isManagerEventDataFilename(filename) {
+  return filename.endsWith(".json") && !filename.endsWith(".ack.json") && !filename.endsWith(".tmp");
+}
+
+async function writeJsonAtomic(filePath, value) {
+  await writeTextAtomic(filePath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+async function writeTextAtomic(filePath, value) {
+  const tempPath = `${filePath}.tmp`;
+  await fs.writeFile(tempPath, value);
+  await fs.rename(tempPath, filePath);
+}
+
+async function nudgeManagerTaskIfUnread(taskId) {
+  const events = await refreshManagerReadableFiles();
+  if (events.length === 0) {
+    return false;
+  }
+  return nudgeManagerTask(taskId);
+}
+
+function nudgeRunningManagerTasks() {
+  for (const task of tasks.values()) {
+    if (isManagerTask(task) && task.status === TaskStatus.RUNNING) {
+      nudgeManagerTask(task.id);
+    }
+  }
+}
+
+function nudgeManagerTask(taskId) {
+  const task = tasks.get(taskId);
+  const activePty = activePtys.get(taskId);
+  if (!task || !isManagerTask(task) || task.status !== TaskStatus.RUNNING || !activePty) {
+    return false;
+  }
+
+  const marker = "\r\n[TaskDeck] Manager inbox event nudge sent.\r\n";
+  appendLog(task.id, marker);
+  broadcast({ type: "output", taskId: task.id, data: marker });
+  writeOrQueuePtyInput(activePty, formatManagerNudgeInputForPty(), "manager-inbox-nudge");
+  return true;
+}
+
+function formatManagerNudgeInputForPty() {
+  return formatAgentInputForPty(
+    [
+      "New TaskDeck manager event is available.",
+      "Read TASKDECK_MANAGER_CONTEXT_FILE and TASKDECK_MANAGER_UNREAD_EVENTS_FILE, then report your judgment in TASKDECK_STATUS_FILE.",
+      "Do not command workers directly.",
+    ].join("\n"),
+  );
+}
+
+function isManagerTask(task) {
+  return Boolean(task?.isManager || isManagerAgentProfileId(task?.agentProfileId));
+}
+
+function isManagerAgentProfileId(agentProfileId) {
+  return String(agentProfileId || "").trim() === managerAgentProfileId;
 }
 
 function managerChildStatusEventDedupeKey(task) {
@@ -2522,6 +2734,7 @@ function normalizeStoredTaskAgentState(task) {
   const normalizedTask = {
     ...task,
     agentModel: String(task.agentModel || ""),
+    isManager: normalizeBoolean(task.isManager) || isManagerAgentProfileId(task.agentProfileId),
     agentState: task.agentState ?? inferAgentStateFromStatus(task),
     attachments: normalizeTaskAttachmentsForServer(task.attachments),
   };

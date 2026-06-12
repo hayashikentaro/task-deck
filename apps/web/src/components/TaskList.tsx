@@ -227,6 +227,11 @@ export function TaskList({
                     <span className="task-badge" data-kind={`supervision-${bucket}`} title={supervisionTitle(task)}>
                       {supervisionBucketLabel(bucket)}
                     </span>
+                    {task.isManager ? (
+                      <span className="task-badge" data-kind="manager-session" title="TaskDeck manager session">
+                        Manager
+                      </span>
+                    ) : null}
                     {isChildSession(task) ? (
                       <span className="task-badge" data-kind="child-session" title={childSessionTitle(task)}>
                         Child

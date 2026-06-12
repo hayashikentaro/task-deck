@@ -356,6 +356,15 @@ When a child task created from a parent request reports an attention-worthy stat
 
 The first MVP event type is `childStatusChanged` for child states `blocked`, `ready_for_review`, and `failed`. This inbox is intended for a future dedicated manager agent. It is not a push into the parent Codex terminal, it is not a free-form child-to-parent chat channel, and it does not use platform-native sub-agent tooling.
 
+TaskDeck also generates manager-readable views from unread valid manager events:
+
+```text
+.taskdeck/manager-readable/context.md
+.taskdeck/manager-readable/unread-events.json
+```
+
+A running `TaskDeck Manager` session receives a short nudge when a new manager event is available. The nudge is not the source of truth; the manager must read the inbox and manager-readable files. For this MVP, the manager writes only its own bounded judgment/status/notes, such as to its own `TASKDECK_STATUS_FILE`, and must not command worker sessions directly.
+
 Read unread valid manager inbox events with:
 
 ```sh

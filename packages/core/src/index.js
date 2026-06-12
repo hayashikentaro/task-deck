@@ -84,6 +84,7 @@ export function createTask({
   workPackageId = "",
   filesLikelyToChange = [],
   childStatusFile = "",
+  isManager = false,
   identityColorSlot,
   attachments = [],
 }) {
@@ -119,6 +120,7 @@ export function createTask({
     childStatusDetailsFile: "",
     childStatusUpdatedAt: "",
     childStatusError: "",
+    isManager: normalizeBoolean(isManager),
     identityColorSlot: normalizeIdentityColorSlot(identityColorSlot),
     status: TaskStatus.IDLE,
     agentState: AgentState.STARTING,
@@ -271,6 +273,7 @@ export function serializeTask(task) {
     childStatusDetailsFile: task.childStatusDetailsFile || "",
     childStatusUpdatedAt: task.childStatusUpdatedAt || "",
     childStatusError: task.childStatusError || "",
+    isManager: normalizeBoolean(task.isManager),
     identityColorSlot: normalizeIdentityColorSlot(task.identityColorSlot),
     status: task.status,
     agentState: task.agentState ?? inferAgentStateFromStatus(task),

@@ -166,6 +166,29 @@ worker status
   -> manager reports its judgment in its own status/notes
 ```
 
+Current read-loop MVP files:
+
+```text
+.taskdeck/manager-inbox/<eventId>.json
+.taskdeck/manager-readable/context.md
+.taskdeck/manager-readable/unread-events.json
+```
+
+The dedicated manager session is started with the built-in `TaskDeck Manager` profile. TaskDeck marks that task as a manager session and provides these environment variables to the PTY:
+
+```text
+TASKDECK_MANAGER_ROLE=manager
+TASKDECK_MANAGER_INBOX_DIR
+TASKDECK_MANAGER_READABLE_DIR
+TASKDECK_MANAGER_CONTEXT_FILE
+TASKDECK_MANAGER_UNREAD_EVENTS_FILE
+TASKDECK_STATUS_FILE
+```
+
+When a new unread manager event is created, TaskDeck sends only a short nudge to running manager sessions. The nudge is a wake-up signal; the durable source of truth remains the manager inbox and manager-readable files.
+
+For this MVP, the manager reports only by writing its own bounded judgment/status/notes, for example to `TASKDECK_STATUS_FILE`. It must not command workers, call `taskdeckctl`, or mutate TaskDeck state directly.
+
 ### Manager write path
 
 Manager writes are intentionally later than manager reads.
@@ -317,6 +340,8 @@ Use the isolated QA branch/worktree to verify that child status changes emit val
 
 Introduce a way to run a manager session whose job is to read manager inbox events and generated readable context.
 
+The first implementation uses a built-in `TaskDeck Manager` profile. Start it from the normal New agent session form by choosing `TaskDeck Manager` as the Agent and the target project workspace.
+
 ### Phase 4: Add manager-readable context
 
 Generate or expose files the manager can read without scraping UI or PTY transcripts:
@@ -327,6 +352,8 @@ active tasks
 child status summaries
 relevant task summaries
 ```
+
+The current files are `.taskdeck/manager-readable/context.md` and `.taskdeck/manager-readable/unread-events.json`.
 
 ### Phase 5: Wire short manager nudge
 
@@ -348,6 +375,20 @@ manager receives nudge
 manager reads files
 manager reports its judgment in its own status/notes
 UI or logs make the manager judgment visible
+```
+
+Manual QA outline:
+
+```text
+1. Start TaskDeck from the QA worktree.
+2. Start a `TaskDeck Manager` session.
+3. Start a parent/child session or any parent-spawned child capable of writing status.
+4. Have the child write `ready_for_review`, `blocked`, or `failed` to `TASKDECK_STATUS_FILE`.
+5. Confirm `.taskdeck/manager-inbox/*.json` exists.
+6. Confirm `.taskdeck/manager-readable/context.md` and `.taskdeck/manager-readable/unread-events.json` exist.
+7. Confirm the manager terminal receives the short nudge.
+8. Have the manager read the files and write its own bounded judgment to `TASKDECK_STATUS_FILE`.
+9. Confirm no manager-to-worker command is sent.
 ```
 
 ### Phase 7: Define manager write schema and transport

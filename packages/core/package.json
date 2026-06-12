@@ -8,6 +8,7 @@
     ".": "./src/index.js",
     "./child-session-file-requests": "./src/childSessionFileRequests.js",
     "./child-session-message-file-requests": "./src/childSessionMessageFileRequests.js",
-    "./manager-inbox": "./src/managerInbox.js"
+    "./manager-inbox": "./src/managerInbox.js",
+    "./manager-readable": "./src/managerReadable.js"
   }
 }

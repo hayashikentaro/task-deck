@@ -2,12 +2,18 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { createTask, serializeTask } from "@taskdeck/core";
 import {
   createManagerChildStatusEvent,
   isManagerNotifiableChildState,
   managerEventFilenames,
   validateManagerEvent,
 } from "@taskdeck/core/manager-inbox";
+import {
+  MANAGER_READABLE_EVENTS_KIND,
+  buildManagerReadableContext,
+  createManagerReadableEventsDocument,
+} from "@taskdeck/core/manager-readable";
 import {
   formatInvalidManagerEventWarnings,
   formatManagerInboxReport,
@@ -75,6 +81,102 @@ describe("manager inbox event helpers", () => {
     expect(isManagerNotifiableChildState("failed")).toBe(true);
     expect(isManagerNotifiableChildState("working")).toBe(false);
     expect(isManagerNotifiableChildState("done")).toBe(false);
+  });
+});
+
+describe("manager readable context helpers", () => {
+  it("enriches unread manager events with relevant task summaries", () => {
+    const event = createManagerChildStatusEvent({
+      eventId: "child-status-readable-test",
+      parentTaskId: "task_parent",
+      childTaskId: "task_child",
+      workPackageId: "codex-low-standby",
+      state: "ready_for_review",
+      summary: "Implementation is ready for review.",
+      artifacts: ["docs/example.md"],
+      createdAt: "2026-06-12T00:00:00.000Z",
+    });
+    const document = createManagerReadableEventsDocument({
+      events: [event],
+      tasks: [
+        { id: "task_parent", title: "Parent", status: "running", agentState: "working", attentionState: "none" },
+        {
+          id: "task_child",
+          title: "Child",
+          status: "running",
+          agentState: "review_ready",
+          attentionState: "review_ready",
+          childReportedState: "ready_for_review",
+          childStatusSummary: "Implementation is ready for review.",
+        },
+      ],
+      generatedAt: "2026-06-12T00:02:00.000Z",
+    });
+
+    expect(document.kind).toBe(MANAGER_READABLE_EVENTS_KIND);
+    expect(document.version).toBe(1);
+    expect(document.events[0]).toMatchObject({
+      eventId: "child-status-readable-test",
+      childTask: {
+        id: "task_child",
+        title: "Child",
+        status: "running",
+        attentionState: "review_ready",
+      },
+      parentTask: {
+        id: "task_parent",
+        title: "Parent",
+      },
+    });
+    expect(document.instructions).toContain("Do not command worker sessions directly.");
+  });
+
+  it("builds markdown context with manager rules, paths, and event details", () => {
+    const event = createManagerChildStatusEvent({
+      eventId: "child-status-markdown-test",
+      parentTaskId: "task_parent",
+      childTaskId: "task_child",
+      workPackageId: "codex-low-standby",
+      state: "blocked",
+      summary: "Need a decision.",
+      artifacts: ["docs/example.md"],
+      detailsFile: ".taskdeck/statuses/details.md",
+      createdAt: "2026-06-12T00:00:00.000Z",
+    });
+    const markdown = buildManagerReadableContext({
+      events: [event],
+      tasks: [{ id: "task_child", title: "Child", status: "running", agentState: "working" }],
+      generatedAt: "2026-06-12T00:02:00.000Z",
+      paths: {
+        managerInboxDir: ".taskdeck/manager-inbox",
+        contextFile: ".taskdeck/manager-readable/context.md",
+        unreadEventsFile: ".taskdeck/manager-readable/unread-events.json",
+      },
+    });
+
+    expect(markdown).toContain("# TaskDeck Manager Context");
+    expect(markdown).toContain("Do not command worker sessions directly.");
+    expect(markdown).toContain("Do not call taskdeckctl for this MVP.");
+    expect(markdown).toContain(".taskdeck/manager-readable/unread-events.json");
+    expect(markdown).toContain("[childStatusChanged] blocked");
+    expect(markdown).toContain("Child task id: task_child");
+    expect(markdown).toContain("Summary: Need a decision.");
+    expect(markdown).toContain("- docs/example.md");
+  });
+});
+
+describe("manager task metadata", () => {
+  it("serializes manager task identity", () => {
+    const task = createTask({
+      title: "TaskDeck Manager session",
+      command: "codex",
+      cwd: ".",
+      agentProfileId: "taskdeck-manager",
+      agentLabel: "TaskDeck Manager",
+      isManager: true,
+    });
+
+    expect(serializeTask(task).isManager).toBe(true);
   });
 });
 

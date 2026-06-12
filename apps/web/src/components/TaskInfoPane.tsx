@@ -47,6 +47,7 @@ export function TaskInfoPane({ actionError, task, onInterrupt, onRerun }: TaskIn
           <Info label="Risk" value={task.risk.level} />
           <Info label="CWD" value={task.cwd} />
           <Info label="Command" value={task.command} />
+          <Info label="TaskDeck role" value={task.isManager ? "Manager" : "Worker"} />
           {hasChildSessionMetadata(task) ? (
             <>
               <InfoSection label="Child session" />
