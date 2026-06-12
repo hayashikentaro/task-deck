@@ -10,12 +10,12 @@ TaskDeck should separate agent-readable communication from state mutation.
 
 Non-manager AI agents should not directly mutate TaskDeck state and should not send commands directly to other agents. They produce append-only file outputs. The manager reads those outputs and decides what should happen next. The manager also does not directly control worker agents; it calls a constrained TaskDeck command interface, and TaskDeck server performs the actual validated mutation.
 
-The immediate implementation priority is to prove the manager read loop before implementing manager write.
+The current implementation keeps manager reads file-based and routes the first ack-only manager write path through `taskdeckctl`.
 
 ```text
 Workers write files.
 Manager reads files first.
-Manager later calls taskdeckctl.
+Manager acknowledges through taskdeckctl ack when appropriate.
 Server mutates state.
 ```
 
@@ -51,7 +51,7 @@ flowchart TD
   Manager -->|read / ack| ManagerInbox
   Manager -->|terminal response only| ManagerOutput[Manager judgment]
 
-  Manager -. future write .-> Taskdeckctl[taskdeckctl]
+  Manager -->|ack-only write| Taskdeckctl[taskdeckctl]
   Taskdeckctl -. local IPC: Unix domain socket .-> Socket[.taskdeck/run/manager-actions.sock]
   Socket -. structured manager action .-> Server
 
@@ -113,12 +113,12 @@ It may read:
 - file change notifications
 - global manager inbox
 - global generated readable views across projects
-- action results returned by TaskDeck after write support exists
+- action results returned by TaskDeck after `taskdeckctl` actions
 ```
 
-For the immediate read-loop MVP, it reports judgment in the manager terminal response only. It must not write judgment/status files, including `TASKDECK_STATUS_FILE`.
+The read-loop MVP used terminal response only for manager judgment. In the current ack-only write path, the manager may call `taskdeckctl ack` for acknowledgements. It must not write judgment/status files, including `TASKDECK_STATUS_FILE`.
 
-After the read loop is proven, manager write operations should go through:
+Manager write operations go through:
 
 ```text
 taskdeckctl
@@ -196,7 +196,7 @@ TASKDECK_STATUS_FILE
 
 When a new unread manager event is created, TaskDeck sends only a short nudge to running manager sessions. The nudge is a wake-up signal; the durable source of truth remains the manager inbox and manager-readable files.
 
-For this MVP, the manager reports judgment in the terminal response only. It must not write `TASKDECK_STATUS_FILE`, command workers, call `taskdeckctl`, mutate TaskDeck state directly, or behave as if it is scoped to one selected project.
+With the ack-only write path, the manager may call `taskdeckctl ack` only when acknowledging a manager inbox event or task attention state. It must not write `TASKDECK_STATUS_FILE`, command workers, mutate TaskDeck state directly, or behave as if it is scoped to one selected project.
 
 ### Manager write path
 
@@ -342,7 +342,7 @@ Worker:
 
 If running in containers, mount the manager action socket only into the manager environment.
 
-This boundary is for future manager write support. The immediate manager read-loop MVP does not require the socket yet.
+The ack-only manager write path uses this socket for acknowledgements; broader manager write support should preserve the same boundary.
 
 ## MVP implementation sequence
 
@@ -412,7 +412,7 @@ Manual QA outline:
 
 ### Phase 7: Define manager write schema and transport
 
-Only after the read loop is proven, define shared schema/types for manager actions and results:
+The ack-only vertical slice now defines the first manager action schema and Unix socket transport. Future actions should extend the same structured action/result model:
 
 ```text
 taskDeckManagerAction
@@ -424,7 +424,7 @@ requestHumanDecision
 
 ### Phase 8: Implement manager write support
 
-Implement, in order:
+The first implemented manager write operation is acknowledgement. Future write operations should be added behind the same server-owned action executor and local IPC boundary:
 
 ```text
 server-side manager action executor
@@ -442,14 +442,14 @@ write-path QA
 - Web API manager write endpoint
 - direct worker-to-worker communication
 - manager raw PTY access
-- manager write implementation before manager read-loop validation
+- broad manager write operations beyond the ack-only vertical slice
 ```
 
 ## Design slogan
 
 ```text
 Read as text.
-Prove manager read before manager write.
-Write through taskdeckctl later.
+Acknowledge through taskdeckctl.
+Broader writes extend the same command boundary.
 Mutate only through the server.
 ```
