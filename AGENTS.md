@@ -80,6 +80,18 @@ Repository-local docs should not become a parallel issue tracker or task status 
 
 If `docs/issues/` is referenced, treat it as historical or decision-record-like context, not as a general backlog. Do not add task status bookkeeping there when a GitHub Issue is the appropriate source of truth.
 
+## Planning Context
+
+For the current short-term execution order, read:
+
+- `docs/current-work-plan.md`
+
+For medium-term product direction and cross-issue design rationale, read:
+
+- `docs/roadmap-context.md`
+
+GitHub Issues remain the source of truth for actionable work, open/closed state, detailed acceptance criteria, and completion state. These planning docs provide sequencing and design context only.
+
 ## Domain Concepts
 
 - Task: the central supervision unit, with process status, agent state, risk, logs, metadata, and diff context.
