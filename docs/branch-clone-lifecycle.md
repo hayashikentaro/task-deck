@@ -48,7 +48,8 @@ cat > taskdeck.local.json <<JSON
 }
 JSON
 
-cat > .taskdeck-branch.json <<JSON
+mkdir -p .taskdeck
+cat > .taskdeck/branch.json <<JSON
 {
   "branch": "$BRANCH",
   "cloneName": "$NAME",
@@ -88,7 +89,8 @@ cat > taskdeck.local.json <<JSON
 }
 JSON
 
-cat > .taskdeck-branch.json <<JSON
+mkdir -p .taskdeck
+cat > .taskdeck/branch.json <<JSON
 {
   "branch": "$BRANCH",
   "cloneName": "$NAME",
@@ -107,7 +109,7 @@ HOST=0.0.0.0 PORT=$PORT npm run dev
 - Do not use `git worktree`.
 - Do not depend on another clone's `.git` metadata, `node_modules`, `.taskdeck/`, or local config.
 - Keep `taskdeck.local.json` local and ignored.
-- Keep `.taskdeck-branch.json` local and ignored.
+- Keep `.taskdeck/branch.json` local and ignored through the existing `.taskdeck/` ignore rule.
 - Use `npm_config_cache="$PWD/.npm-cache" npm ci` to avoid global npm cache permission problems.
 - Push intended changes before asking another session to continue the work.
 
