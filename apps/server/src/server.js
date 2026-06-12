@@ -4242,16 +4242,15 @@ async function readJsonObject(filePath, label) {
 }
 
 async function loadAgentProfiles() {
-  return filterLaunchableAgentProfiles((await loadAgentProfileConfig()).profiles);
+  return (await loadAgentProfileConfig()).profiles;
 }
 
 async function getAgentProfileConfigSummary() {
   const loadedConfig = await loadAgentProfileConfig();
-  const exposedCount = filterLaunchableAgentProfiles(loadedConfig.profiles).length;
   return {
     source: loadedConfig.source,
     path: loadedConfig.path,
-    message: `${loadedConfig.message} Exposing ${exposedCount} launchable agent profiles.`,
+    message: `${loadedConfig.message} Exposing ${loadedConfig.profiles.length} agent profiles.`,
   };
 }
 
@@ -4380,12 +4379,6 @@ function normalizeModelOptions(modelOptions) {
     options.push({ id, label: label || id });
   }
   return options;
-}
-
-function filterLaunchableAgentProfiles(profiles) {
-  return profiles.filter((profile) => {
-    return Boolean(String(profile.command || "").trim());
-  });
 }
 
 async function buildDiagnostics() {
