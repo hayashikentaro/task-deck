@@ -7,14 +7,39 @@ GitHub Issues remain the source of truth for actionable work, open/closed state,
 ## Current priority order
 
 1. Document and enforce the TaskDeck actor protocol boundary.
-2. Validate the existing manager inbox MVP on the isolated QA branch/worktree.
-3. Add a dedicated global manager session launched from the TaskDeck control/document root, not from a selected project workspace.
-4. Add or generate global manager-readable context files across all projects for unread manager events, active tasks, child status, and relevant task summaries.
-5. Wire short manager nudges when manager inbox events are available.
-6. Verify the manager read loop: worker status -> manager inbox/readable files -> manager reads -> manager reports its judgment.
-7. Define the manager action schema, result shape, and `taskdeckctl`/local IPC write path after the read loop is proven.
-8. Add the server-side manager action executor, Unix socket endpoint, and `taskdeckctl` manager commands.
-9. Resume broader product work such as Electron packaging, Claude support, and external configuration after the manager control plane boundary is stable.
+2. Read-only global manager MVP: complete.
+3. Next phase: manager action/write path.
+4. Resume broader product work such as Electron packaging, Claude support, and external configuration after the manager control plane boundary is stable.
+
+## Completed read-only manager MVP
+
+Read-only global manager MVP: complete.
+
+The completed scope includes:
+
+- global manager launch from the control/document root;
+- manager cwd `/workspace` in the QA environment;
+- project-bound worker sessions;
+- manager inbox unread events;
+- generated manager-readable context and unread event files;
+- manager nudge;
+- terminal-only manager judgment;
+- no `TASKDECK_STATUS_FILE` writes by the manager;
+- no `STATUS ERROR` from manager status parsing;
+- no `taskdeckctl` or manager write path yet.
+
+## Next phase
+
+Next phase: manager action/write path.
+
+This phase includes:
+
+- `taskdeckctl`;
+- local IPC / Unix socket;
+- manager action schema;
+- server-side manager action executor;
+- ack, review, close, and spawn-child actions;
+- any future worker command delivery.
 
 ## Why this order
 
@@ -24,7 +49,7 @@ GitHub Issues remain the source of truth for actionable work, open/closed state,
 - Manager reads are file-based and global across projects: manager inbox, generated readable views, and file change notifications.
 - Proving that a real manager agent can read and understand the manager inbox is more important than building the write path first.
 - Manager writes should not be raw Web API calls, raw terminal writes, or direct edits to TaskDeck state.
-- The intended manager write path remains `taskdeckctl` calling a local IPC endpoint owned by TaskDeck server, but it should be implemented after the read loop is validated.
+- The intended manager write path remains `taskdeckctl` calling a local IPC endpoint owned by TaskDeck server, but it belongs to the next phase now that the read-only manager MVP is complete.
 - TaskDeck server remains the only actor that validates, dedupes, logs, executes mutations, and delivers PTY input.
 
 ## Current constraints

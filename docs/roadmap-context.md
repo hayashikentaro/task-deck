@@ -22,10 +22,13 @@ The current design direction is:
 - worker agents write append-only status/result/artifact files from their project scope;
 - the manager session is a global TaskDeck supervisor launched from the TaskDeck control/document root, not from an individual project workspace;
 - manager-readable context is global across projects and includes file-based manager inbox events and generated readable views;
-- the immediate priority is to prove the manager read loop with a real manager session before building manager write;
+- Read-only global manager MVP: complete. The completed scope includes global manager launch from the control/document root, manager cwd `/workspace` in QA, project-bound worker sessions, manager inbox unread events, generated manager-readable context/unread files, manager nudge, terminal-only manager judgment, no manager writes to `TASKDECK_STATUS_FILE`, no `STATUS ERROR` from manager status parsing, and no `taskdeckctl` or manager write path yet;
+- Next phase: manager action/write path;
 - once read behavior is proven, manager writes should go through `taskdeckctl`;
 - `taskdeckctl` should talk to a local IPC endpoint, preferably a Unix domain socket, rather than an exposed Web API;
 - TaskDeck server validates, dedupes, logs, executes, and broadcasts every mutation.
+
+The manager action/write path phase includes `taskdeckctl`, local IPC / Unix socket, manager action schema, the server-side manager action executor, ack/review/close/spawn-child actions, and any future worker command delivery.
 
 Related design doc:
 
