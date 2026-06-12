@@ -12,6 +12,22 @@ It is not a chatbot UI, a provider-specific Codex UI, or merely a prettier termi
 
 ## Medium-term themes
 
+### Manager control plane
+
+Introduce a dedicated manager control plane so non-manager agents can report bounded outputs while TaskDeck server remains the only actor that mutates state or delivers commands.
+
+The current design direction is:
+
+- worker agents read generated context and write append-only status/result/artifact files;
+- manager reads file-based manager inbox events and generated readable views;
+- manager writes through `taskdeckctl`;
+- `taskdeckctl` talks to a local IPC endpoint, preferably a Unix domain socket, rather than an exposed Web API;
+- TaskDeck server validates, dedupes, logs, executes, and broadcasts every mutation.
+
+Related design doc:
+
+- `docs/taskdeck-actor-protocol.md`
+
 ### Desktop app packaging
 
 Package TaskDeck as an Electron desktop app so users can open TaskDeck, choose a workspace, and supervise agent sessions without manually starting server/web processes.
@@ -45,9 +61,11 @@ Related issues:
 ## Design stance
 
 - Keep machine control data out of human display planes.
-- Prefer file, environment, and request-file protocols for bounded machine-readable coordination.
-- Keep child-to-parent reporting constrained.
-- Avoid free-form child-to-parent chat.
+- Prefer bounded file, environment, local IPC, and command protocols for machine-readable coordination.
+- Keep worker-to-TaskDeck reporting constrained and append-only where possible.
+- Avoid free-form child-to-parent or worker-to-worker chat.
+- Keep manager write operations behind `taskdeckctl` and server-side validation.
+- Avoid exposing manager write as a broad Web API surface.
 - Avoid building UI around unstable configuration concepts.
 - Prefer diagnostics over settings mutation UI.
 - Keep TaskDeck provider-neutral.
@@ -55,6 +73,9 @@ Related issues:
 ## Non-goals for this phase
 
 - Public HTTP API.
+- Broad manager Web API surface.
+- SQLite migration.
+- tmux/session reattach.
 - General workflow queue.
 - Full settings editor.
 - Provider-specific transcript parsers.
