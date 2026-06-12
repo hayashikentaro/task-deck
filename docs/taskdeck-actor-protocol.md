@@ -189,7 +189,7 @@ Current read-loop MVP files:
 .taskdeck/manager-readable/unread-events.json
 ```
 
-The dedicated manager session is started from the TaskDeck control/document root. TaskDeck marks that task as a manager session and provides these environment variables to the PTY:
+The dedicated manager session is started from the TaskDeck control/document root. TaskDeck marks that task as a manager session and provides environment variables that point to the actual TaskDeck runtime `dataRoot` files, not paths relative to the manager cwd:
 
 ```text
 TASKDECK_MANAGER_ROLE=manager
@@ -368,7 +368,7 @@ child status summaries across projects
 relevant task summaries
 ```
 
-The current files are `.taskdeck/manager-readable/context.md` and `.taskdeck/manager-readable/unread-events.json` under the TaskDeck control/document root.
+The current files are `.taskdeck/manager-readable/context.md` and `.taskdeck/manager-readable/unread-events.json` under the TaskDeck runtime `dataRoot`. The manager still launches from the TaskDeck control/document root; do not infer the readable file location from the manager cwd.
 
 ### Phase 5: Wire short manager nudge
 

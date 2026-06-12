@@ -66,7 +66,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
     sessionMode,
     selectedProjectPath,
     selectedSavedSession,
-    context?.defaultCwd || context?.repoRoot,
+    context?.controlRoot,
     context?.defaultCwd,
   );
   const canStart = !disabled && Boolean(selectedAgent) && Boolean(effectiveCwd) && Boolean(command);
@@ -229,7 +229,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
         <SelectField
           className="project-field"
           disabled={selectedAgentIsManager}
-          hint={selectedAgentIsManager ? "Global manager sessions use the TaskDeck control root." : undefined}
+          hint={selectedAgentIsManager ? "Global manager sessions use the document/control root." : undefined}
           label={selectedAgentIsManager ? "Control root" : "Project"}
           value={selectedAgentIsManager ? effectiveCwd : selectedProjectPath}
           onChange={setSelectedProjectPath}

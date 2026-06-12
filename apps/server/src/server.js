@@ -180,8 +180,11 @@ app.get("/api/context", async (_request, response) => {
   const projectRoots = await buildProjectRoots();
   const projectSuggestions = await buildProjectSuggestions(projectRoots);
   const defaultProjectRoot = projectRoots[0] || repoRoot;
+  const controlRoot = await taskDeckControlRootCwd();
   response.json({
     repoRoot,
+    controlRoot,
+    dataRoot,
     projectRoot: defaultProjectRoot,
     defaultCwd: selectDefaultProjectCwd(projectSuggestions, defaultProjectRoot),
     serverCwd: process.cwd(),
@@ -964,7 +967,7 @@ async function startTaskNow({
     childStatusFile,
     attachments: finalizedAttachments,
   });
-  const taskDeckEnv = taskDeckEnvironmentForTask(task, effectiveCommand, childStatusFile);
+  const taskDeckEnv = await taskDeckEnvironmentForTask(task, effectiveCommand, childStatusFile);
   const commandForProcess = commandWithTaskDeckEnv(effectiveCommand, taskDeckEnv);
   tasks.set(task.id, task);
   logs.set(task.id, "");
@@ -1051,7 +1054,7 @@ async function cwdForTaskLaunch({ cwd, isManagerLaunch }) {
 
 async function taskDeckControlRootCwd() {
   const projectRoots = await resolveProjectRoots();
-  return hostProjectPathForRepoRoot(projectRoots[0] || repoRoot);
+  return path.resolve(projectRoots[0] || path.dirname(repoRoot));
 }
 
 async function scanChildSessionRequestFiles() {
@@ -1644,13 +1647,16 @@ function childStatusFilePathForTask(task) {
 }
 
 function defaultChildStatusFilePath(task) {
+  if (isManagerTask(task)) {
+    return path.join(dataRoot, "statuses", `${task.id}.json`);
+  }
   const taskCwd = path.resolve(repoRoot, String(task.cwd || ""));
   return path.join(taskCwd, ".taskdeck", "statuses", `${task.id}.json`);
 }
 
-function taskDeckEnvironmentForTask(task, command, hostStatusFile) {
-  const childStatusFile = childVisibleStatusFilePathForTask(task, command, hostStatusFile);
-  const managerReadablePaths = managerReadableVisiblePathsForTask(command);
+async function taskDeckEnvironmentForTask(task, command, hostStatusFile) {
+  const childStatusFile = await childVisibleStatusFilePathForTask(task, command, hostStatusFile);
+  const managerReadablePaths = await managerReadableVisiblePathsForTask(command);
   return {
     TASKDECK_TASK_ID: task.id,
     ...(task.parentSessionId ? { TASKDECK_PARENT_TASK_ID: task.parentSessionId } : {}),
@@ -1668,36 +1674,44 @@ function taskDeckEnvironmentForTask(task, command, hostStatusFile) {
   };
 }
 
-function managerReadableVisiblePathsForTask(command) {
+async function managerReadableVisiblePathsForTask(command) {
+  const visibleDataRoot = await taskVisibleHostPath(command, dataRoot);
+  const joinVisiblePath = extractDockerExecWorkdir(command) ? path.posix.join : path.join;
   return {
-    inboxDir: taskVisibleRepoRelativePath(command, path.join(".taskdeck", "manager-inbox"), managerInboxRoot),
-    readableDir: taskVisibleRepoRelativePath(command, path.join(".taskdeck", MANAGER_READABLE_DIRNAME), managerReadableRoot),
-    contextFile: taskVisibleRepoRelativePath(
-      command,
-      path.join(".taskdeck", MANAGER_READABLE_DIRNAME, MANAGER_READABLE_CONTEXT_FILENAME),
-      managerReadableContextPath,
-    ),
-    unreadEventsFile: taskVisibleRepoRelativePath(
-      command,
-      path.join(".taskdeck", MANAGER_READABLE_DIRNAME, MANAGER_READABLE_UNREAD_EVENTS_FILENAME),
-      managerReadableUnreadEventsPath,
-    ),
+    inboxDir: joinVisiblePath(visibleDataRoot, "manager-inbox"),
+    readableDir: joinVisiblePath(visibleDataRoot, MANAGER_READABLE_DIRNAME),
+    contextFile: joinVisiblePath(visibleDataRoot, MANAGER_READABLE_DIRNAME, MANAGER_READABLE_CONTEXT_FILENAME),
+    unreadEventsFile: joinVisiblePath(visibleDataRoot, MANAGER_READABLE_DIRNAME, MANAGER_READABLE_UNREAD_EVENTS_FILENAME),
   };
 }
 
-function taskVisibleRepoRelativePath(command, repoRelativePath, hostPath) {
+async function taskVisibleHostPath(command, hostPath) {
   const dockerWorkdir = extractDockerExecWorkdir(command);
   if (!dockerWorkdir) {
     return hostPath;
   }
 
-  return path.posix.join(
-    dockerWorkdir.split(path.sep).join(path.posix.sep),
-    ...String(repoRelativePath || "").split(path.sep).filter(Boolean),
-  );
+  const containerPath = await containerCwdForHostCwd(hostPath, defaultContainerWorkspaceRoot);
+  if (containerPath) {
+    return containerPath;
+  }
+
+  const resolvedHostPath = path.resolve(String(hostPath || ""));
+  if (isPathWithin(resolvedHostPath, repoRoot)) {
+    return path.posix.join(
+      dockerWorkdir.split(path.sep).join(path.posix.sep),
+      ...path.relative(repoRoot, resolvedHostPath).split(path.sep).filter(Boolean),
+    );
+  }
+
+  return resolvedHostPath;
 }
 
-function childVisibleStatusFilePathForTask(task, command, hostStatusFile) {
+async function childVisibleStatusFilePathForTask(task, command, hostStatusFile) {
+  if (isManagerTask(task)) {
+    return taskVisibleHostPath(command, hostStatusFile);
+  }
+
   const dockerWorkdir = extractDockerExecWorkdir(command);
   if (!dockerWorkdir) {
     return hostStatusFile;

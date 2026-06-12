@@ -5,6 +5,8 @@ import type { TaskDeckContext } from "./types";
 
 const context: TaskDeckContext = {
   repoRoot: "/workspace/task-deck",
+  controlRoot: "/workspace",
+  dataRoot: "/workspace/task-deck/.taskdeck",
   defaultCwd: "/workspace/task-deck",
   serverCwd: "/workspace/task-deck",
   shell: "bash",

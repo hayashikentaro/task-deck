@@ -130,7 +130,7 @@ describe("applyCodexPermissionToCommand", () => {
 describe("manager launch cwd", () => {
   it("uses the TaskDeck control root for manager sessions and preserves selected projects for workers", () => {
     const selectedProjectPath = "/workspace/project-a";
-    const controlRoot = "/workspace/task-deck";
+    const controlRoot = "/workspace";
 
     expect(isTaskDeckManagerProfile(managerProfile)).toBe(true);
     expect(executionCwdForAgentProfile(managerProfile, "new", selectedProjectPath, null, controlRoot, selectedProjectPath)).toBe(
