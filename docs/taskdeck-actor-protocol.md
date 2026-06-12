@@ -26,19 +26,25 @@ flowchart TD
   User[User] -->|UI operation| UI[TaskDeck UI]
   UI -->|fast structured action| Server[TaskDeck Server]
 
-  Server -->|validated PTY input / process control| Runtime[Runtime / PTY Sessions]
-  Runtime --> WorkerA[Worker Agent A]
-  Runtime --> WorkerB[Worker Agent B]
-  Runtime --> Manager[Manager Agent]
+  ControlRoot[TaskDeck Control Root<br/>.taskdeck runtime state] --> ManagerInbox[Manager Inbox]
+  ControlRoot --> ReadModel[Global Manager Readable Context]
+  ControlRoot --> Manager[Global Manager Agent]
 
-  WorkerA -->|append-only status / result / artifact files| Files[.taskdeck file protocol]
-  WorkerB -->|append-only status / result / artifact files| Files
+  Server -->|validated PTY input / process control| Runtime[Runtime / PTY Sessions]
+  Runtime --> ProjectA[Project A Worker Sessions]
+  Runtime --> ProjectB[Project B Worker Sessions]
+  Runtime --> ProjectC[Project C Worker Sessions]
+  Runtime --> Manager
+
+  ProjectA -->|append-only status / result / artifact files| Files[.taskdeck file protocol]
+  ProjectB -->|append-only status / result / artifact files| Files
+  ProjectC -->|append-only status / result / artifact files| Files
 
   Files -->|watch + scan| Ingest[Watcher / Ingestor]
   Ingest -->|validate / dedupe / reduce| Server
 
-  Server -->|generated text / json / markdown| ReadModel[Agent-readable views]
-  Server -->|durable manager event| ManagerInbox[Manager Inbox]
+  Server -->|generated text / json / markdown| ReadModel
+  Server -->|durable manager event| ManagerInbox
   Server -->|short nudge only| Manager
 
   Manager -->|read| ReadModel
@@ -51,10 +57,11 @@ flowchart TD
 
   Server -->|broadcast state update| UI
 
-  WorkerA -. forbidden .-> WorkerB
-  WorkerB -. forbidden .-> WorkerA
-  Manager -. no direct terminal write .-> WorkerA
-  Manager -. no direct terminal write .-> WorkerB
+  ProjectA -. forbidden .-> ProjectB
+  ProjectB -. forbidden .-> ProjectA
+  Manager -. no direct terminal write .-> ProjectA
+  Manager -. no direct terminal write .-> ProjectB
+  Manager -. no direct terminal write .-> ProjectC
 ```
 
 ## Actors
@@ -62,6 +69,8 @@ flowchart TD
 ### Worker agents
 
 Worker agents include ordinary Codex, Goose, shell, or future provider sessions that are not the dedicated manager.
+
+Worker agents are project-bound. They are launched in a selected project workspace and perform actual work inside that project scope.
 
 They may read:
 
@@ -92,16 +101,18 @@ They must not:
 - smuggle raw commands, env, secrets, or auto-approval fields through request files
 ```
 
-### Manager agent
+### Global Manager Agent
 
-The manager agent reads TaskDeck-generated files and manager inbox events, then decides what action should happen next.
+The global manager agent is a TaskDeck-level supervisor. It must be launched from the TaskDeck control/document root, not from an individual project workspace or Project dropdown selection.
+
+The manager reads TaskDeck-generated files and manager inbox events across all supervised projects, then decides what action should happen next.
 
 It may read:
 
 ```text
 - file change notifications
-- manager inbox
-- generated readable views
+- global manager inbox
+- global generated readable views across projects
 - action results returned by TaskDeck after write support exists
 ```
 
@@ -120,6 +131,8 @@ taskdeckctl
 ```
 
 The manager must not directly mutate TaskDeck state or directly write into worker terminals.
+
+It is not a worker inside Project A, Project B, or Project C. Worker sessions remain project-bound; the manager session remains TaskDeck control/document-root-bound.
 
 ### TaskDeck server
 
@@ -149,7 +162,7 @@ Manager reads are file-based.
 
 ```text
 App/Server
-  -> manager inbox / readable projection files
+  -> global manager inbox / global readable projection files
   -> file change notification / short nudge
   -> Manager reads files
 ```
@@ -160,11 +173,13 @@ The read loop is the first behavior to prove with a real manager session:
 
 ```text
 worker status
-  -> server emits manager event / readable context
-  -> manager receives short nudge
-  -> manager reads files
-  -> manager reports its judgment in its own status/notes
+  -> server emits global manager event / global readable context
+  -> global manager receives short nudge
+  -> global manager reads files
+  -> global manager reports its judgment in its own status/notes
 ```
+
+The read-loop MVP should prove that worker status from any project can flow into global manager inbox/context, be read by the global manager, and produce bounded manager judgment output.
 
 Current read-loop MVP files:
 
@@ -174,7 +189,7 @@ Current read-loop MVP files:
 .taskdeck/manager-readable/unread-events.json
 ```
 
-The dedicated manager session is started with the built-in `TaskDeck Manager` profile. TaskDeck marks that task as a manager session and provides these environment variables to the PTY:
+The dedicated manager session is started from the TaskDeck control/document root. TaskDeck marks that task as a manager session and provides these environment variables to the PTY:
 
 ```text
 TASKDECK_MANAGER_ROLE=manager
@@ -187,7 +202,7 @@ TASKDECK_STATUS_FILE
 
 When a new unread manager event is created, TaskDeck sends only a short nudge to running manager sessions. The nudge is a wake-up signal; the durable source of truth remains the manager inbox and manager-readable files.
 
-For this MVP, the manager reports only by writing its own bounded judgment/status/notes, for example to `TASKDECK_STATUS_FILE`. It must not command workers, call `taskdeckctl`, or mutate TaskDeck state directly.
+For this MVP, the manager reports only by writing its own bounded judgment/status/notes, for example to `TASKDECK_STATUS_FILE`. It must not command workers, call `taskdeckctl`, mutate TaskDeck state directly, or behave as if it is scoped to one selected project.
 
 ### Manager write path
 
@@ -338,22 +353,22 @@ Use the isolated QA branch/worktree to verify that child status changes emit val
 
 ### Phase 3: Add a dedicated manager agent profile/session
 
-Introduce a way to run a manager session whose job is to read manager inbox events and generated readable context.
+Introduce a way to run a global manager session whose job is to read manager inbox events and generated readable context across all projects.
 
-The first implementation uses a built-in `TaskDeck Manager` profile. Start it from the normal New agent session form by choosing `TaskDeck Manager` as the Agent and the target project workspace.
+The first implementation uses a built-in `TaskDeck Manager` profile. It must launch from the TaskDeck control/document root, not from a selected project workspace.
 
 ### Phase 4: Add manager-readable context
 
-Generate or expose files the manager can read without scraping UI or PTY transcripts:
+Generate or expose global files the manager can read without scraping UI or PTY transcripts:
 
 ```text
-unread manager events
-active tasks
-child status summaries
+unread manager events across projects
+active tasks across projects
+child status summaries across projects
 relevant task summaries
 ```
 
-The current files are `.taskdeck/manager-readable/context.md` and `.taskdeck/manager-readable/unread-events.json`.
+The current files are `.taskdeck/manager-readable/context.md` and `.taskdeck/manager-readable/unread-events.json` under the TaskDeck control/document root.
 
 ### Phase 5: Wire short manager nudge
 
@@ -369,11 +384,11 @@ Read the manager inbox and decide the next action.
 Verify:
 
 ```text
-worker writes append-only status
-server emits manager event / readable context
-manager receives nudge
-manager reads files
-manager reports its judgment in its own status/notes
+worker in any project writes append-only status
+server emits global manager event / readable context
+global manager receives nudge
+global manager reads files
+global manager reports its judgment in its own status/notes
 UI or logs make the manager judgment visible
 ```
 
@@ -381,7 +396,7 @@ Manual QA outline:
 
 ```text
 1. Start TaskDeck from the QA worktree.
-2. Start a `TaskDeck Manager` session.
+2. Start a `TaskDeck Manager` session from the TaskDeck control/document root, not from an individual project workspace.
 3. Start a parent/child session or any parent-spawned child capable of writing status.
 4. Have the child write `ready_for_review`, `blocked`, or `failed` to `TASKDECK_STATUS_FILE`.
 5. Confirm `.taskdeck/manager-inbox/*.json` exists.

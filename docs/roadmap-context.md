@@ -18,8 +18,10 @@ Introduce a dedicated manager control plane so non-manager agents can report bou
 
 The current design direction is:
 
-- worker agents read generated context and write append-only status/result/artifact files;
-- manager reads file-based manager inbox events and generated readable views;
+- worker sessions are project-bound and read generated context for the selected project workspace;
+- worker agents write append-only status/result/artifact files from their project scope;
+- the manager session is a global TaskDeck supervisor launched from the TaskDeck control/document root, not from an individual project workspace;
+- manager-readable context is global across projects and includes file-based manager inbox events and generated readable views;
 - the immediate priority is to prove the manager read loop with a real manager session before building manager write;
 - once read behavior is proven, manager writes should go through `taskdeckctl`;
 - `taskdeckctl` should talk to a local IPC endpoint, preferably a Unix domain socket, rather than an exposed Web API;
@@ -64,6 +66,8 @@ Related issues:
 - Keep machine control data out of human display planes.
 - Prefer bounded file, environment, local IPC, and command protocols for machine-readable coordination.
 - Keep worker-to-TaskDeck reporting constrained and append-only where possible.
+- Keep worker sessions project-bound and keep the manager session TaskDeck-control-root-bound.
+- Treat manager-readable context as global cross-project supervision context.
 - Avoid free-form child-to-parent or worker-to-worker chat.
 - Prove manager read behavior before implementing manager write behavior.
 - Keep future manager write operations behind `taskdeckctl` and server-side validation.

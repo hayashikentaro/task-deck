@@ -8,8 +8,8 @@ GitHub Issues remain the source of truth for actionable work, open/closed state,
 
 1. Document and enforce the TaskDeck actor protocol boundary.
 2. Validate the existing manager inbox MVP on the isolated QA branch/worktree.
-3. Add a dedicated manager agent profile/session.
-4. Add or generate manager-readable context files for unread manager events, active tasks, child status, and relevant task summaries.
+3. Add a dedicated global manager session launched from the TaskDeck control/document root, not from a selected project workspace.
+4. Add or generate global manager-readable context files across all projects for unread manager events, active tasks, child status, and relevant task summaries.
 5. Wire short manager nudges when manager inbox events are available.
 6. Verify the manager read loop: worker status -> manager inbox/readable files -> manager reads -> manager reports its judgment.
 7. Define the manager action schema, result shape, and `taskdeckctl`/local IPC write path after the read loop is proven.
@@ -20,7 +20,8 @@ GitHub Issues remain the source of truth for actionable work, open/closed state,
 
 - The current architectural focus is the manager control plane, not provider expansion or desktop packaging.
 - Worker agents should continue to communicate through append-only files and bounded status/reporting surfaces.
-- Manager reads are file-based: manager inbox, generated readable views, and file change notifications.
+- Worker sessions are project-bound; the manager session is a global TaskDeck supervisor launched from the TaskDeck control/document root.
+- Manager reads are file-based and global across projects: manager inbox, generated readable views, and file change notifications.
 - Proving that a real manager agent can read and understand the manager inbox is more important than building the write path first.
 - Manager writes should not be raw Web API calls, raw terminal writes, or direct edits to TaskDeck state.
 - The intended manager write path remains `taskdeckctl` calling a local IPC endpoint owned by TaskDeck server, but it should be implemented after the read loop is validated.
@@ -32,6 +33,7 @@ GitHub Issues remain the source of truth for actionable work, open/closed state,
 - Do not use platform-native multi-agent/sub-agent tools as TaskDeck child sessions.
 - Do not let non-manager agents command other agents directly.
 - Do not let manager agents write directly into worker terminals.
+- Do not launch the manager inside an individual project workspace; launch it from the TaskDeck control/document root.
 - Do not implement manager write before validating manager read behavior with a real manager session.
 - Do not expose a manager Web API endpoint as the first manager write path.
 - Do not start a SQLite migration as part of the immediate manager control plane work.

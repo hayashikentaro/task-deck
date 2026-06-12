@@ -129,6 +129,7 @@ Follow these boundaries:
 - Non-manager agents may only write append-only status, result, artifact, or explicitly supported request files.
 - Non-manager agents must not mutate canonical TaskDeck state.
 - Non-manager agents must not command other agents directly.
+- Manager sessions are global TaskDeck supervisor sessions. They must not be launched inside an individual project workspace; worker sessions are project-bound, while manager sessions are TaskDeck control/document-root-bound.
 - Manager agents may read file-based manager inbox events and generated readable views.
 - Manager write operations must go through `taskdeckctl`.
 - `taskdeckctl` is the manager-facing command surface; its transport may be local IPC, file, or another implementation detail, but agents should not bypass it.
