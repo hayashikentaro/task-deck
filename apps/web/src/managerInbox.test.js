@@ -17,8 +17,11 @@ import {
   validateManagerEvent,
 } from "@taskdeck/core/manager-inbox";
 import {
+  MANAGER_READABLE_CAPABILITIES_KIND,
   MANAGER_READABLE_EVENTS_KIND,
+  buildManagerActionGuide,
   buildManagerReadableContext,
+  createManagerActionCapabilitiesDocument,
   createManagerReadableEventsDocument,
 } from "@taskdeck/core/manager-readable";
 import {
@@ -122,8 +125,14 @@ describe("manager readable context helpers", () => {
 
     expect(document.kind).toBe(MANAGER_READABLE_EVENTS_KIND);
     expect(document.version).toBe(1);
+    expect(document.supportedActions.map((action) => action.command)).toContain("taskdeckctl review --task <taskId>");
     expect(document.events[0]).toMatchObject({
       eventId: "child-status-readable-test",
+      suggestedActions: [
+        "taskdeckctl ack --event child-status-readable-test",
+        "taskdeckctl ack --task task_child",
+        "taskdeckctl review --task task_child",
+      ],
       childTask: {
         id: "task_child",
         title: "Child",
@@ -138,7 +147,7 @@ describe("manager readable context helpers", () => {
     expect(document.instructions).toContain("Do not command worker sessions directly.");
   });
 
-  it("builds markdown context with manager rules, paths, and event details", () => {
+  it("builds markdown context with manager rules, actions, paths, and event details", () => {
     const event = createManagerChildStatusEvent({
       eventId: "child-status-markdown-test",
       parentTaskId: "task_parent",
@@ -160,15 +169,23 @@ describe("manager readable context helpers", () => {
         managerActionHistoryFile: ".taskdeck/manager-actions/history.json",
         contextFile: ".taskdeck/manager-readable/context.md",
         unreadEventsFile: ".taskdeck/manager-readable/unread-events.json",
+        actionsFile: ".taskdeck/manager-readable/actions.md",
+        capabilitiesFile: ".taskdeck/manager-readable/capabilities.json",
       },
     });
 
     expect(markdown).toContain("# TaskDeck Manager Context");
+    expect(markdown).toContain("Read the generated manager action guide before taking action.");
     expect(markdown).toContain("Report your judgment in this terminal response only.");
     expect(markdown).toContain("Do not write TASKDECK_STATUS_FILE.");
     expect(markdown).toContain("Do not command worker sessions directly.");
-    expect(markdown).toContain("Use taskdeckctl ack, taskdeckctl review, or taskdeckctl close");
+    expect(markdown).toContain("Use only taskdeckctl commands listed in the generated manager action guide.");
     expect(markdown).toContain(".taskdeck/manager-actions/history.json");
+    expect(markdown).toContain(".taskdeck/manager-readable/actions.md");
+    expect(markdown).toContain(".taskdeck/manager-readable/capabilities.json");
+    expect(markdown).toContain("## Supported Manager Actions");
+    expect(markdown).toContain("taskdeckctl ack --event <eventId>");
+    expect(markdown).toContain("taskdeckctl review --task <taskId>");
     expect(markdown).toContain("Judgment output: this terminal response only");
     expect(markdown).not.toContain("Your bounded judgment/status: TASKDECK_STATUS_FILE");
     expect(markdown).toContain(".taskdeck/manager-readable/unread-events.json");
@@ -176,6 +193,40 @@ describe("manager readable context helpers", () => {
     expect(markdown).toContain("Child task id: task_child");
     expect(markdown).toContain("Summary: Need a decision.");
     expect(markdown).toContain("- docs/example.md");
+    expect(markdown).toContain("taskdeckctl ack --event child-status-markdown-test");
+    expect(markdown).toContain("taskdeckctl ack --task task_child");
+  });
+
+  it("builds a standalone manager action guide and capabilities document", () => {
+    const event = createManagerChildStatusEvent({
+      eventId: "child-status-actions-test",
+      parentTaskId: "task_parent",
+      childTaskId: "task_child",
+      state: "failed",
+      summary: "Child failed.",
+      createdAt: "2026-06-12T00:00:00.000Z",
+    });
+    const capabilities = createManagerActionCapabilitiesDocument({ generatedAt: "2026-06-12T00:02:00.000Z" });
+    const markdown = buildManagerActionGuide({
+      generatedAt: "2026-06-12T00:02:00.000Z",
+      events: [event],
+      paths: {
+        actionsFile: ".taskdeck/manager-readable/actions.md",
+        capabilitiesFile: ".taskdeck/manager-readable/capabilities.json",
+      },
+    });
+
+    expect(capabilities.kind).toBe(MANAGER_READABLE_CAPABILITIES_KIND);
+    expect(capabilities.actions.map((action) => action.command)).toEqual([
+      "taskdeckctl ack --event <eventId>",
+      "taskdeckctl ack --task <taskId>",
+      "taskdeckctl review --task <taskId>",
+      "taskdeckctl close --task <taskId>",
+    ]);
+    expect(markdown).toContain("# TaskDeck Manager Actions");
+    expect(markdown).toContain("Use only commands listed here.");
+    expect(markdown).toContain("Manager-to-worker messaging is unavailable unless it appears in this guide.");
+    expect(markdown).toContain("taskdeckctl close --task task_child");
   });
 });
 
