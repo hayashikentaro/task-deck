@@ -68,6 +68,7 @@ packages/core  Shared task and domain logic
 README.md      Project overview and local API notes
 AGENTS.md      Repository guidance for AI agents
 docs/architecture.md  Project architecture map and refactoring seams
+docs/taskdeck-actor-protocol.md  Actor boundary and manager control-plane protocol
 ```
 
 `.taskdeck/` is local runtime state for persisted tasks, logs, presets, and related data. It should not be committed.
@@ -89,6 +90,10 @@ For the current short-term execution order, read:
 For medium-term product direction and cross-issue design rationale, read:
 
 - `docs/roadmap-context.md`
+
+For TaskDeck actor boundaries and manager control-plane protocol, read:
+
+- `docs/taskdeck-actor-protocol.md`
 
 GitHub Issues remain the source of truth for actionable work, open/closed state, detailed acceptance criteria, and completion state. These planning docs provide sequencing and design context only.
 
@@ -114,6 +119,22 @@ When decomposing work for child or role sessions, prefer the AI-first layering m
 Treat layers as responsibility boundaries, decision-authority boundaries, and context-cache units for long-lived agent sessions. Useful layers include Core, Protocol, Runtime, UI, App Flow, and Integration.
 
 Use role-specific guidance when available, such as `docs/agents/roles/integration.md` for parent/integration merge work.
+
+## TaskDeck Actor Protocol Boundary
+
+For changes that affect parent/child sessions, manager behavior, agent-to-TaskDeck communication, request transports, or PTY command delivery, read `docs/taskdeck-actor-protocol.md` before editing.
+
+Follow these boundaries:
+
+- Non-manager agents may only write append-only status, result, artifact, or explicitly supported request files.
+- Non-manager agents must not mutate canonical TaskDeck state.
+- Non-manager agents must not command other agents directly.
+- Manager agents may read file-based manager inbox events and generated readable views.
+- Manager write operations must go through `taskdeckctl`.
+- `taskdeckctl` is the manager-facing command surface; its transport may be local IPC, file, or another implementation detail, but agents should not bypass it.
+- TaskDeck server is the only actor that may validate, dedupe, log, execute mutations, and deliver PTY input to another session.
+
+Do not add raw Web API manager-write paths, raw terminal-write paths, raw SQL mutation paths, or direct worker-to-worker command paths unless the user explicitly approves a protocol change and the actor protocol document is updated in the same change.
 
 ## Working Guidelines
 
