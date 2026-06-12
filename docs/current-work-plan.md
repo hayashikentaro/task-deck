@@ -6,26 +6,38 @@ GitHub Issues remain the source of truth for actionable work, open/closed state,
 
 ## Current priority order
 
-1. #52 — Add file-based parent-to-child message request transport.
-2. #55 — Package TaskDeck as an Electron desktop app.
-3. #56 — Add Claude agent adapter support.
-4. #57 — Introduce external TaskDeck config file with schema validation.
-5. #58 — Add AI-editable TaskDeck config guide docs.
-6. #59 — Show loaded config and validation diagnostics without adding a settings editor.
+1. Document and enforce the TaskDeck actor protocol boundary.
+2. Validate the existing manager inbox MVP on the isolated QA branch/worktree.
+3. Define the manager action schema and result shape.
+4. Add a single server-side manager action executor.
+5. Add a local manager action IPC endpoint using a Unix domain socket.
+6. Add `taskdeckctl` manager commands that call the local IPC endpoint.
+7. Wire short manager nudges when manager inbox events are available.
+8. Resume broader product work such as Electron packaging, Claude support, and external configuration after the manager control plane boundary is stable.
 
 ## Why this order
 
-- #52 removes the remaining stdout-marker parent-to-child control path.
-- #55 and #56 should come after #52 so Electron and Claude support do not freeze deprecated stdout-control assumptions into new surfaces.
-- #57, #58, and #59 can follow once the agent/control surface is more stable.
+- The current architectural focus is the manager control plane, not provider expansion or desktop packaging.
+- Worker agents should continue to communicate through append-only files and bounded status/reporting surfaces.
+- Manager reads are file-based: manager inbox, generated readable views, and file change notifications.
+- Manager writes should not be raw Web API calls, raw terminal writes, or direct edits to TaskDeck state.
+- The near-term manager write path is `taskdeckctl` calling a local IPC endpoint owned by TaskDeck server.
+- TaskDeck server remains the only actor that validates, dedupes, logs, executes mutations, and delivers PTY input.
 
 ## Current constraints
 
 - Do not use Codex TUI or terminal transcript output as machine control data.
-- Do not add a settings editor UI yet.
-- Do not redesign child session creation while implementing #52.
-- Do not change child status file reporting as part of #52.
-- Prefer file-based request transport for parent-to-TaskDeck control paths.
+- Do not use platform-native multi-agent/sub-agent tools as TaskDeck child sessions.
+- Do not let non-manager agents command other agents directly.
+- Do not let manager agents write directly into worker terminals.
+- Do not expose a manager Web API endpoint as the first manager write path.
+- Do not start a SQLite migration as part of the immediate manager control plane work.
+- Do not start tmux/session reattach work as part of the immediate manager control plane work; see #60 for future recovery tracking.
+
+## Primary design docs
+
+- `docs/taskdeck-actor-protocol.md`
+- `docs/taskdeck-child-session-protocol.md`
 
 ## Update policy
 
