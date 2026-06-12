@@ -206,7 +206,6 @@ describe("manager readable context helpers", () => {
       summary: "Child failed.",
       createdAt: "2026-06-12T00:00:00.000Z",
     });
-    const capabilities = createManagerActionCapabilitiesDocument({ generatedAt: "2026-06-12T00:02:00.000Z" });
     const markdown = buildManagerActionGuide({
       generatedAt: "2026-06-12T00:02:00.000Z",
       events: [event],
@@ -215,8 +214,19 @@ describe("manager readable context helpers", () => {
         capabilitiesFile: ".taskdeck/manager-readable/capabilities.json",
       },
     });
+    const capabilities = createManagerActionCapabilitiesDocument({
+      generatedAt: "2026-06-12T00:02:00.000Z",
+      paths: {
+        actionsFile: ".taskdeck/manager-readable/actions.md",
+        capabilitiesFile: ".taskdeck/manager-readable/capabilities.json",
+      },
+    });
 
     expect(capabilities.kind).toBe(MANAGER_READABLE_CAPABILITIES_KIND);
+    expect(capabilities.paths).toEqual({
+      actionsFile: ".taskdeck/manager-readable/actions.md",
+      capabilitiesFile: ".taskdeck/manager-readable/capabilities.json",
+    });
     expect(capabilities.actions.map((action) => action.command)).toEqual([
       "taskdeckctl ack --event <eventId>",
       "taskdeckctl ack --task <taskId>",
@@ -227,6 +237,8 @@ describe("manager readable context helpers", () => {
     expect(markdown).toContain("Use only commands listed here.");
     expect(markdown).toContain("Manager-to-worker messaging is unavailable unless it appears in this guide.");
     expect(markdown).toContain("taskdeckctl close --task task_child");
+    expect(JSON.stringify(capabilities)).not.toContain("send-task-input");
+    expect(markdown).not.toContain("send-task-input");
   });
 });
 

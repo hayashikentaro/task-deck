@@ -57,12 +57,19 @@ export function managerReadableFilenames() {
 export function createManagerActionCapabilitiesDocument({
   generatedAt = new Date().toISOString(),
   actions = supportedManagerActions,
+  paths = {},
 } = {}) {
   return {
     kind: MANAGER_READABLE_CAPABILITIES_KIND,
     version: MANAGER_READABLE_VERSION,
     generatedAt,
     instructions: [...managerReadableInstructions],
+    paths: {
+      ...(paths.actionsFile ? { actionsFile: String(paths.actionsFile) } : {}),
+      ...(paths.capabilitiesFile ? { capabilitiesFile: String(paths.capabilitiesFile) } : {}),
+      ...(paths.contextFile ? { contextFile: String(paths.contextFile) } : {}),
+      ...(paths.unreadEventsFile ? { unreadEventsFile: String(paths.unreadEventsFile) } : {}),
+    },
     actions: actions.map((action) => ({
       action: String(action.action || ""),
       command: String(action.command || ""),
@@ -78,7 +85,7 @@ export function buildManagerActionGuide({
   paths = {},
   events = [],
 } = {}) {
-  const capabilities = createManagerActionCapabilitiesDocument({ generatedAt, actions });
+  const capabilities = createManagerActionCapabilitiesDocument({ generatedAt, actions, paths });
   const normalizedEvents = normalizeEventList(events);
   const lines = [
     "# TaskDeck Manager Actions",

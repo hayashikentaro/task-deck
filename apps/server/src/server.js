@@ -80,6 +80,8 @@ const managerInboxRoot = path.join(dataRoot, "manager-inbox");
 const managerReadableRoot = path.join(dataRoot, MANAGER_READABLE_DIRNAME);
 const managerReadableContextPath = path.join(managerReadableRoot, MANAGER_READABLE_CONTEXT_FILENAME);
 const managerReadableUnreadEventsPath = path.join(managerReadableRoot, MANAGER_READABLE_UNREAD_EVENTS_FILENAME);
+const managerReadableActionsPath = path.join(managerReadableRoot, MANAGER_READABLE_ACTIONS_FILENAME);
+const managerReadableCapabilitiesPath = path.join(managerReadableRoot, MANAGER_READABLE_CAPABILITIES_FILENAME);
 const managerActionRunRoot = path.join(dataRoot, "run");
 const managerActionDefaultSocketPath = path.join(managerActionRunRoot, "manager-actions.sock");
 const managerActionSocketPointerPath = path.join(managerActionRunRoot, "manager-actions.json");
@@ -1713,6 +1715,8 @@ async function taskDeckEnvironmentForTask(task, command, hostStatusFile) {
           TASKDECK_MANAGER_READABLE_DIR: managerReadablePaths.readableDir,
           TASKDECK_MANAGER_CONTEXT_FILE: managerReadablePaths.contextFile,
           TASKDECK_MANAGER_UNREAD_EVENTS_FILE: managerReadablePaths.unreadEventsFile,
+          TASKDECK_MANAGER_ACTIONS_FILE: managerReadablePaths.actionsFile,
+          TASKDECK_MANAGER_CAPABILITIES_FILE: managerReadablePaths.capabilitiesFile,
           TASKDECK_MANAGER_ACTION_SOCKET: managerReadablePaths.actionSocket,
           TASKDECK_MANAGER_ACTION_LOG_DIR: managerReadablePaths.actionLogDir,
           TASKDECK_MANAGER_ACTION_HISTORY_FILE: managerReadablePaths.actionHistoryFile,
@@ -1729,6 +1733,8 @@ async function managerReadableVisiblePathsForTask(command) {
     readableDir: joinVisiblePath(visibleDataRoot, MANAGER_READABLE_DIRNAME),
     contextFile: joinVisiblePath(visibleDataRoot, MANAGER_READABLE_DIRNAME, MANAGER_READABLE_CONTEXT_FILENAME),
     unreadEventsFile: joinVisiblePath(visibleDataRoot, MANAGER_READABLE_DIRNAME, MANAGER_READABLE_UNREAD_EVENTS_FILENAME),
+    actionsFile: joinVisiblePath(visibleDataRoot, MANAGER_READABLE_DIRNAME, MANAGER_READABLE_ACTIONS_FILENAME),
+    capabilitiesFile: joinVisiblePath(visibleDataRoot, MANAGER_READABLE_DIRNAME, MANAGER_READABLE_CAPABILITIES_FILENAME),
     actionSocket: joinVisiblePath(visibleDataRoot, "run", path.basename(managerActionSocketPath)),
     actionLogDir: joinVisiblePath(visibleDataRoot, "manager-actions"),
     actionHistoryFile: joinVisiblePath(visibleDataRoot, "manager-actions", "history.json"),
@@ -2456,22 +2462,36 @@ async function refreshManagerReadableFiles() {
     tasks: tasksSnapshot,
     generatedAt,
   });
+  const readablePaths = {
+    managerInboxDir: ".taskdeck/manager-inbox",
+    managerActionsDir: ".taskdeck/manager-actions",
+    managerActionHistoryFile: path.join(".taskdeck", "manager-actions", "history.json"),
+    contextFile: path.join(".taskdeck", MANAGER_READABLE_DIRNAME, MANAGER_READABLE_CONTEXT_FILENAME),
+    unreadEventsFile: path.join(".taskdeck", MANAGER_READABLE_DIRNAME, MANAGER_READABLE_UNREAD_EVENTS_FILENAME),
+    actionsFile: path.join(".taskdeck", MANAGER_READABLE_DIRNAME, MANAGER_READABLE_ACTIONS_FILENAME),
+    capabilitiesFile: path.join(".taskdeck", MANAGER_READABLE_DIRNAME, MANAGER_READABLE_CAPABILITIES_FILENAME),
+  };
   const markdown = buildManagerReadableContext({
     events,
     tasks: tasksSnapshot,
     generatedAt,
-    paths: {
-      managerInboxDir: ".taskdeck/manager-inbox",
-      managerActionsDir: ".taskdeck/manager-actions",
-      managerActionHistoryFile: path.join(".taskdeck", "manager-actions", "history.json"),
-      contextFile: path.join(".taskdeck", MANAGER_READABLE_DIRNAME, MANAGER_READABLE_CONTEXT_FILENAME),
-      unreadEventsFile: path.join(".taskdeck", MANAGER_READABLE_DIRNAME, MANAGER_READABLE_UNREAD_EVENTS_FILENAME),
-    },
+    paths: readablePaths,
+  });
+  const actionsMarkdown = buildManagerActionGuide({
+    events,
+    generatedAt,
+    paths: readablePaths,
+  });
+  const capabilitiesDocument = createManagerActionCapabilitiesDocument({
+    generatedAt,
+    paths: readablePaths,
   });
 
   await fs.mkdir(managerReadableRoot, { recursive: true });
   await writeJsonAtomic(managerReadableUnreadEventsPath, document);
   await writeTextAtomic(managerReadableContextPath, markdown);
+  await writeTextAtomic(managerReadableActionsPath, actionsMarkdown);
+  await writeJsonAtomic(managerReadableCapabilitiesPath, capabilitiesDocument);
   return events;
 }
 
@@ -2569,7 +2589,7 @@ function formatManagerNudgeInputForPty() {
   return formatAgentInputForPty(
     [
       "New TaskDeck manager event is available.",
-      "Read TASKDECK_MANAGER_CONTEXT_FILE and TASKDECK_MANAGER_UNREAD_EVENTS_FILE.",
+      "Read TASKDECK_MANAGER_CONTEXT_FILE, TASKDECK_MANAGER_UNREAD_EVENTS_FILE, TASKDECK_MANAGER_ACTIONS_FILE, and TASKDECK_MANAGER_CAPABILITIES_FILE before acting.",
       "Report your judgment in this terminal response only.",
       "Do not write TASKDECK_STATUS_FILE.",
       "Do not command workers directly.",
