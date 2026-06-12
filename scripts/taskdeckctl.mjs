@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import fs from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -7,6 +8,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(__filename), "..");
 const defaultSocketPath = path.join(repoRoot, ".taskdeck", "run", "manager-actions.sock");
+const socketPointerPath = path.join(repoRoot, ".taskdeck", "run", "manager-actions.json");
 
 function usage() {
   return `Usage:
@@ -34,7 +36,7 @@ function parseArgs(args) {
     actorTaskId: process.env.TASKDECK_MANAGER_ROLE === "manager" ? process.env.TASKDECK_TASK_ID || "" : "",
     eventId: "",
     taskId: "",
-    socketPath: process.env.TASKDECK_MANAGER_ACTION_SOCKET || defaultSocketPath,
+    socketPath: process.env.TASKDECK_MANAGER_ACTION_SOCKET || "",
     json: false,
   };
 
@@ -73,6 +75,26 @@ function parseArgs(args) {
   }
 
   return parsed;
+}
+
+async function resolveSocketPath(explicitSocketPath) {
+  if (explicitSocketPath) {
+    return explicitSocketPath;
+  }
+
+  try {
+    const pointer = JSON.parse(await fs.readFile(socketPointerPath, "utf8"));
+    const socketPath = String(pointer?.socketPath || "").trim();
+    if (socketPath) {
+      return socketPath;
+    }
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      process.stderr.write(`Warning: could not read manager action socket pointer: ${error.message}\n`);
+    }
+  }
+
+  return defaultSocketPath;
 }
 
 function requiredValue(args, index, flag) {
@@ -115,7 +137,8 @@ try {
     process.exit(0);
   }
 
-  const { socketPath, json, ...action } = parsed;
+  const { socketPath: explicitSocketPath, json, ...action } = parsed;
+  const socketPath = await resolveSocketPath(explicitSocketPath);
   const result = await sendManagerAction(socketPath, {
     ...action,
     requestedAt: new Date().toISOString(),

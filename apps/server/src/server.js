@@ -79,7 +79,8 @@ const managerReadableRoot = path.join(dataRoot, MANAGER_READABLE_DIRNAME);
 const managerReadableContextPath = path.join(managerReadableRoot, MANAGER_READABLE_CONTEXT_FILENAME);
 const managerReadableUnreadEventsPath = path.join(managerReadableRoot, MANAGER_READABLE_UNREAD_EVENTS_FILENAME);
 const managerActionRunRoot = path.join(dataRoot, "run");
-const managerActionSocketPath = path.join(managerActionRunRoot, "manager-actions.sock");
+const managerActionDefaultSocketPath = path.join(managerActionRunRoot, "manager-actions.sock");
+const managerActionSocketPointerPath = path.join(managerActionRunRoot, "manager-actions.json");
 const managerActionLogRoot = path.join(dataRoot, "manager-actions");
 const defaultConfigPath = path.join(repoRoot, "taskdeck.config.json");
 const localConfigPath = path.join(repoRoot, "taskdeck.local.json");
@@ -195,6 +196,7 @@ const pendingChildSessionStarts = new Map();
 const processedChildSessionMessageRequestIds = new Set();
 const processedManagerActionIds = new Set();
 const childStatusFileSnapshots = new Map();
+let managerActionSocketPath = managerActionDefaultSocketPath;
 let persistTasksQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
 let persistSessionLabelsQueue = Promise.resolve();
@@ -1712,7 +1714,7 @@ async function managerReadableVisiblePathsForTask(command) {
     readableDir: joinVisiblePath(visibleDataRoot, MANAGER_READABLE_DIRNAME),
     contextFile: joinVisiblePath(visibleDataRoot, MANAGER_READABLE_DIRNAME, MANAGER_READABLE_CONTEXT_FILENAME),
     unreadEventsFile: joinVisiblePath(visibleDataRoot, MANAGER_READABLE_DIRNAME, MANAGER_READABLE_UNREAD_EVENTS_FILENAME),
-    actionSocket: joinVisiblePath(visibleDataRoot, "run", "manager-actions.sock"),
+    actionSocket: joinVisiblePath(visibleDataRoot, "run", path.basename(managerActionSocketPath)),
   };
 }
 
@@ -1906,7 +1908,7 @@ async function writeManagerEventFile(event) {
 
 async function startManagerActionSocket() {
   await fs.mkdir(managerActionRunRoot, { recursive: true });
-  await removeStaleManagerActionSocket();
+  managerActionSocketPath = await prepareManagerActionSocketPath();
 
   const actionServer = net.createServer((socket) => {
     let buffer = "";
@@ -1947,23 +1949,50 @@ async function startManagerActionSocket() {
         console.warn(`TaskDeck could not restrict manager action socket permissions: ${error.message}`);
       }
     }
+    await writeManagerActionSocketPointer();
     console.log(`TaskDeck manager action socket listening at ${managerActionSocketPath}`);
   });
 }
 
-async function removeStaleManagerActionSocket() {
+async function prepareManagerActionSocketPath() {
   try {
-    const stat = await fs.lstat(managerActionSocketPath);
-    if (!stat.isSocket()) {
-      console.warn(`TaskDeck manager action path exists and is not a socket: ${managerActionSocketPath}`);
+    await removeManagerActionSocketPath(managerActionDefaultSocketPath);
+    return managerActionDefaultSocketPath;
+  } catch (error) {
+    if (error.code !== "ENOTSUP") {
+      throw error;
+    }
+
+    const fallbackSocketPath = path.join(managerActionRunRoot, `manager-actions-${process.pid}-${Date.now()}.sock`);
+    console.warn(
+      `TaskDeck could not remove stale manager action socket ${managerActionDefaultSocketPath}; using ${fallbackSocketPath}.`,
+    );
+    await removeManagerActionSocketPath(fallbackSocketPath);
+    return fallbackSocketPath;
+  }
+}
+
+async function removeManagerActionSocketPath(socketPath) {
+  try {
+    await fs.unlink(socketPath);
+  } catch (error) {
+    if (error.code === "EISDIR" || error.code === "EPERM") {
+      console.warn(`TaskDeck manager action path exists and cannot be removed: ${socketPath}`);
       return;
     }
-    await fs.unlink(managerActionSocketPath);
-  } catch (error) {
     if (error.code !== "ENOENT") {
       throw error;
     }
   }
+}
+
+async function writeManagerActionSocketPointer() {
+  await writeJsonAtomic(managerActionSocketPointerPath, {
+    kind: "taskDeckManagerActionSocket",
+    version: 1,
+    socketPath: managerActionSocketPath,
+    updatedAt: new Date().toISOString(),
+  });
 }
 
 async function handleManagerActionSocketMessage(rawAction) {
@@ -2057,6 +2086,7 @@ async function executeManagerAckAction(action) {
   let ackedEvent = null;
   let taskId = action.taskId;
   let managerEventAcked = false;
+  let managerEventAlreadyAcknowledged = false;
   let taskAttentionAcknowledged = false;
   let taskAttentionSkippedReason = "";
 
@@ -2066,8 +2096,9 @@ async function executeManagerAckAction(action) {
       return managerActionError(eventResult.code, eventResult.error, action);
     }
     ackedEvent = eventResult.event;
+    managerEventAlreadyAcknowledged = Boolean(eventResult.alreadyAcknowledged);
     taskId = taskId || ackedEvent.childTaskId;
-    managerEventAcked = await writeManagerEventAck(ackedEvent, ackedAt, action);
+    managerEventAcked = managerEventAlreadyAcknowledged ? false : await writeManagerEventAck(ackedEvent, ackedAt, action);
   }
 
   if (taskId) {
@@ -2089,6 +2120,7 @@ async function executeManagerAckAction(action) {
     eventId: action.eventId || "",
     taskId: taskId || "",
     managerEventAcked,
+    managerEventAlreadyAcknowledged,
     taskAttentionAcknowledged,
     taskAttentionSkippedReason,
     event: ackedEvent,
@@ -2102,10 +2134,6 @@ async function readManagerInboxEvent(eventId) {
   const filenames = managerEventFilenames(eventId);
   const eventPath = path.join(managerInboxRoot, filenames.event);
   const ackPath = path.join(managerInboxRoot, filenames.ack);
-
-  if (await fileExists(ackPath)) {
-    return { ok: false, code: "event_already_acked", error: "Manager event is already acknowledged." };
-  }
 
   let parsed;
   try {
@@ -2124,7 +2152,11 @@ async function readManagerInboxEvent(eventId) {
   if (validation.event.eventId !== eventId) {
     return { ok: false, code: "invalid_event", error: "Manager event id does not match requested event id." };
   }
-  return { ok: true, event: validation.event };
+  return {
+    ok: true,
+    event: validation.event,
+    alreadyAcknowledged: await fileExists(ackPath),
+  };
 }
 
 async function writeManagerEventAck(event, ackedAt, action) {
@@ -2315,7 +2347,7 @@ function formatManagerNudgeInputForPty() {
       "Report your judgment in this terminal response only.",
       "Do not write TASKDECK_STATUS_FILE.",
       "Do not command workers directly.",
-      "Do not call taskdeckctl for this MVP.",
+      "Use taskdeckctl ack only when acknowledging a manager inbox event or task attention state.",
       "Do not mutate TaskDeck state directly.",
     ].join("\n"),
   );

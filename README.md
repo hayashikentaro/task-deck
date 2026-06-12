@@ -78,7 +78,7 @@ Agent profiles merge by `id`: built-in defaults load first, then committed confi
 
 TaskDeck stores runtime data under `.taskdeck/`, including task records, persisted logs, session labels, presets, and attachments. This directory is intentionally ignored by Git and may contain sensitive agent output.
 
-TaskDeck also starts a local manager action Unix socket at `.taskdeck/run/manager-actions.sock`. Manager sessions use `taskdeckctl ack --event <eventId>` or `taskdeckctl ack --task <taskId>` for the current ack-only write path; the server validates, logs, mutates, and broadcasts the result.
+TaskDeck also starts a local manager action Unix socket at `.taskdeck/run/manager-actions.sock` and records the active socket path in `.taskdeck/run/manager-actions.json`. Manager sessions use `taskdeckctl ack --event <eventId>` or `taskdeckctl ack --task <taskId>` for the current ack-only write path; the server validates, logs, mutates, and broadcasts the result.
 
 ## Safety Notes
 

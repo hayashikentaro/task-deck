@@ -217,6 +217,8 @@ The preferred local IPC endpoint is a Unix domain socket, not an exposed Web API
 .taskdeck/run/manager-actions.sock
 ```
 
+The server records the active socket path in `.taskdeck/run/manager-actions.json`; this lets `taskdeckctl` follow a fallback socket path if the local filesystem leaves an undeletable stale socket entry.
+
 This avoids opening a network API surface while still avoiding the roundabout manager-action-file path for commands.
 
 Current supported command:
@@ -226,7 +228,7 @@ taskdeckctl ack --event <eventId>
 taskdeckctl ack --task <taskId>
 ```
 
-`taskdeckctl ack --event` writes the manager event `.ack.json` sidecar through the server, refreshes the generated manager-readable files, acknowledges the target task attention state when applicable, logs the manager action under `.taskdeck/manager-actions/`, and broadcasts the updated task snapshot. Repeated `actionId` values are deduped by the server process.
+`taskdeckctl ack --event` writes the manager event `.ack.json` sidecar through the server, refreshes the generated manager-readable files, acknowledges the target task attention state when applicable, logs the manager action under `.taskdeck/manager-actions/`, and broadcasts the updated task snapshot. Repeated `actionId` values are deduped by the server process, and events that already have an ack sidecar return a successful already-acknowledged result.
 
 ### Why not raw Web API as the manager-facing surface
 
