@@ -116,7 +116,7 @@ It may read:
 - action results returned by TaskDeck after `taskdeckctl` actions
 ```
 
-The read-loop MVP used terminal response only for manager judgment. In the current ack-only write path, the manager may call `taskdeckctl ack` for acknowledgements. It must not write judgment/status files, including `TASKDECK_STATUS_FILE`.
+The read-loop MVP used terminal response only for manager judgment. In the current minimum write path, the manager may call `taskdeckctl ack`, `taskdeckctl review`, and `taskdeckctl close` for supported actions. It must not write judgment/status files, including `TASKDECK_STATUS_FILE`.
 
 Manager write operations go through:
 
@@ -344,7 +344,7 @@ Worker:
 
 If running in containers, mount the manager action socket only into the manager environment.
 
-The ack-only manager write path uses this socket for acknowledgements; broader manager write support should preserve the same boundary.
+The minimum manager write path uses this socket for ack, review, and close actions; future manager write support should preserve the same boundary.
 
 ## MVP implementation sequence
 
@@ -414,7 +414,7 @@ Manual QA outline:
 
 ### Phase 7: Define manager write schema and transport
 
-The ack-only vertical slice now defines the first manager action schema and Unix socket transport. Future actions should extend the same structured action/result model:
+The minimum manager write vertical slice now defines the first manager action schema and Unix socket transport. Future actions should extend the same structured action/result model:
 
 ```text
 taskDeckManagerAction
@@ -426,7 +426,7 @@ requestHumanDecision
 
 ### Phase 8: Implement manager write support
 
-The first implemented manager write operation is acknowledgement. Future write operations should be added behind the same server-owned action executor and local IPC boundary:
+The first implemented manager write operations are acknowledgement, review marking, and task closing. Future write operations should be added behind the same server-owned action executor and local IPC boundary:
 
 ```text
 server-side manager action executor
@@ -444,14 +444,14 @@ write-path QA
 - Web API manager write endpoint
 - direct worker-to-worker communication
 - manager raw PTY access
-- broad manager write operations beyond the ack-only vertical slice
+- broad manager write operations beyond ack/review/close
 ```
 
 ## Design slogan
 
 ```text
 Read as text.
-Acknowledge through taskdeckctl.
-Broader writes extend the same command boundary.
+Write through taskdeckctl.
+Future writes extend the same command boundary.
 Mutate only through the server.
 ```
