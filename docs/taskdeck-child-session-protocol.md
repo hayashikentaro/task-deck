@@ -6,6 +6,8 @@ The active control path for Codex parent sessions is file-based. Parent agents r
 
 Parent agents must not hand-write protocol JSON. Parent agents must not print stdout marker blocks as the Codex control path.
 
+Parent agents must not use platform-native multi-agent or sub-agent tools such as `multi_agent_v1.spawn_agent` to create TaskDeck child sessions. A platform-native sub-agent is not a TaskDeck child session because TaskDeck cannot supervise it, route file-based messages to it, or track its task metadata.
+
 ## Supported Transports
 
 ### Parent to TaskDeck: file-based request files
@@ -23,6 +25,10 @@ Child sessions report bounded latest status by writing JSON to `TASKDECK_STATUS_
 
 This is already file-based and remains the supported child-to-TaskDeck reporting path.
 
+### Unsupported: platform-native sub-agent tools
+
+Platform-native multi-agent or sub-agent tools, including `multi_agent_v1.spawn_agent`, are not TaskDeck transports. Do not use them to create TaskDeck child sessions or to send parent-to-child instructions.
+
 ### Deprecated / debug-only stdout marker transport
 
 Stdout marker blocks are not the Codex parent control path.
@@ -39,6 +45,8 @@ node scripts/write-child-session-request.mjs \
   --work-package codex-low-standby \
   --instruction "You are working on hayashikentaro/task-deck. First read AGENTS.md. Do not edit files yet. Report that you are ready and wait for a scoped parent instruction."
 ```
+
+Do not use `multi_agent_v1.spawn_agent` or any other platform-native sub-agent tool for this operation. Creating a TaskDeck child session means writing a TaskDeck child-session request file through this writer script.
 
 Defaults:
 
@@ -195,6 +203,8 @@ node scripts/write-child-session-message-request.mjs \
   --work-package codex-low-standby \
   --message "Please inspect issue #34 and report whether you need more context. Do not edit files."
 ```
+
+Do not use `multi_agent_v1.spawn_agent` or any other platform-native sub-agent tool for this operation. TaskDeck can route parent-to-child instructions only to TaskDeck child tasks created through the file-based request protocol.
 
 Target one child by either:
 
