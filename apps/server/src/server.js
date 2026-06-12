@@ -4242,16 +4242,16 @@ async function readJsonObject(filePath, label) {
 }
 
 async function loadAgentProfiles() {
-  return filterContainerAgentProfiles((await loadAgentProfileConfig()).profiles);
+  return filterLaunchableAgentProfiles((await loadAgentProfileConfig()).profiles);
 }
 
 async function getAgentProfileConfigSummary() {
   const loadedConfig = await loadAgentProfileConfig();
-  const exposedCount = filterContainerAgentProfiles(loadedConfig.profiles).length;
+  const exposedCount = filterLaunchableAgentProfiles(loadedConfig.profiles).length;
   return {
     source: loadedConfig.source,
     path: loadedConfig.path,
-    message: `${loadedConfig.message} Exposing ${exposedCount} container-backed agent profiles.`,
+    message: `${loadedConfig.message} Exposing ${exposedCount} launchable agent profiles.`,
   };
 }
 
@@ -4382,10 +4382,9 @@ function normalizeModelOptions(modelOptions) {
   return options;
 }
 
-function filterContainerAgentProfiles(profiles) {
+function filterLaunchableAgentProfiles(profiles) {
   return profiles.filter((profile) => {
-    const command = String(profile.command || "");
-    return Boolean(profile.diagnosticContainer) && /\bdocker\b[\s\S]*\b(exec|start)\b/.test(command);
+    return Boolean(String(profile.command || "").trim());
   });
 }
 
