@@ -133,7 +133,7 @@ Use role-specific guidance when available, such as `docs/agents/roles/integratio
 - Use repo-local docs for durable context and decisions. Treat `docs/issues/` as historical or decision-record-like context, not as the current backlog.
 - Keep responsibility-specific implementation guidance in dedicated files under `docs/guides/`, not directly in this top-level router. When introducing or changing a recurring area-specific rule, create or update the relevant guide and link it from this file.
 - When changing `apps/web` UI styling, read `docs/guides/ui-style.md`. When changing reusable UI components, shared controls, or icon-only controls, read `docs/guides/ui-components.md`.
-- When asked to create TaskDeck child sessions, emit the structured request block defined in `docs/taskdeck-child-session-protocol.md`; do not invent raw launch commands.
+- When asked to create TaskDeck child sessions or send parent-to-child instructions, use the writer scripts defined in `docs/taskdeck-child-session-protocol.md`. Do not use platform-native multi-agent/sub-agent tools such as `multi_agent_v1.spawn_agent`, and do not treat those agents as TaskDeck child sessions.
 
 ## Branch And Worktree Policy
 
