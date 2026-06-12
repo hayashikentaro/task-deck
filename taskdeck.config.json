@@ -2,9 +2,9 @@
   "agentProfiles": [
     {
       "id": "codex",
-      "label": "Codex CLI",
+      "label": "Codex",
       "command": "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex'",
-      "description": "Run Codex CLI inside the AI agent sandbox container",
+      "description": "Run Codex inside the AI agent sandbox container",
       "diagnosticContainer": "ai-agent-sandbox-agent-1",
       "diagnosticWorkspace": "/workspace",
       "modelOptions": [
@@ -15,12 +15,34 @@
       ]
     },
     {
+      "id": "claude",
+      "label": "Claude",
+      "command": "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 claude",
+      "description": "Run Claude inside the AI agent sandbox container",
+      "diagnosticContainer": "ai-agent-sandbox-agent-1",
+      "diagnosticWorkspace": "/workspace"
+    },
+    {
+      "id": "aider",
+      "label": "Aider",
+      "command": "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 aider",
+      "description": "Run Aider inside the AI agent sandbox container",
+      "diagnosticContainer": "ai-agent-sandbox-agent-1",
+      "diagnosticWorkspace": "/workspace"
+    },
+    {
       "id": "goose",
       "label": "Goose",
       "command": "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 goose",
       "description": "Run Goose inside the AI agent sandbox container",
       "diagnosticContainer": "ai-agent-sandbox-agent-1",
       "diagnosticWorkspace": "/workspace"
+    },
+    {
+      "id": "zsh-host",
+      "label": "zsh - host",
+      "command": "zsh",
+      "description": "Run zsh on the host in the selected project cwd"
     }
   ]
 }
