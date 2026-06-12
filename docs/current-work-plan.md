@@ -57,6 +57,8 @@ This phase includes:
 
 - Do not use Codex TUI or terminal transcript output as machine control data.
 - Do not use platform-native multi-agent/sub-agent tools as TaskDeck child sessions.
+- Do not use `git worktree` for TaskDeck AI-assisted development; isolated work must use a full clone.
+- Worktree directories are not self-contained because their `.git` file points back to the parent repository's `.git/worktrees` metadata, which is unsafe across macOS, Docker, `/workspace` paths, copied directories, and AI agents.
 - Do not let non-manager agents command other agents directly.
 - Do not let manager agents write directly into worker terminals.
 - Do not launch the manager inside an individual project workspace; launch it from the TaskDeck control/document root.
@@ -69,6 +71,27 @@ This phase includes:
 
 - `docs/taskdeck-actor-protocol.md`
 - `docs/taskdeck-child-session-protocol.md`
+
+## Clone isolation
+
+Use full clones for isolated TaskDeck development, not `git worktree`.
+
+Recommended local layout:
+
+```text
+~/Documents/task-deck                 stable/main clone
+~/Documents/task-deck-manager-write   feature clone
+```
+
+Keep development isolation through separate clone path, branch, and `PORT`.
+
+For current manager write verification:
+
+```text
+branch: feature/manager-write-path
+clone path: /Users/hayashikentarou/Documents/task-deck-manager-write
+port: 3001
+```
 
 ## Update policy
 

@@ -4,6 +4,29 @@ This document records the current actor boundary and near-term manager control-p
 
 GitHub Issues remain the source of truth for actionable work and completion state. This document is durable design guidance for how TaskDeck actors are allowed to communicate.
 
+## Repository isolation for AI-assisted development
+
+Do not use `git worktree` for TaskDeck AI-assisted development. Isolated work must use a full clone.
+
+Worktree directories are not self-contained because their `.git` file points back to the parent repository's `.git/worktrees` metadata. That indirection is unsafe across macOS, Docker, `/workspace` paths, copied directories, and AI agents.
+
+Recommended local layout:
+
+```text
+~/Documents/task-deck                 stable/main clone
+~/Documents/task-deck-manager-write   feature clone
+```
+
+Keep development isolation through separate clone path, branch, and `PORT`.
+
+For current manager write verification:
+
+```text
+branch: feature/manager-write-path
+clone path: /Users/hayashikentarou/Documents/task-deck-manager-write
+port: 3001
+```
+
 ## Core principle
 
 TaskDeck should separate agent-readable communication from state mutation.
@@ -354,7 +377,7 @@ Add and maintain this actor protocol document. Reference it from `AGENTS.md` so 
 
 ### Phase 2: Validate manager inbox MVP
 
-Use the isolated QA branch/worktree to verify that child status changes emit valid manager inbox events.
+Use an isolated QA branch in a full clone to verify that child status changes emit valid manager inbox events.
 
 ### Phase 3: Add a dedicated manager agent profile/session
 
@@ -400,7 +423,7 @@ the manager terminal makes the manager judgment visible
 Manual QA outline:
 
 ```text
-1. Start TaskDeck from the QA worktree.
+1. Start TaskDeck from the QA clone.
 2. Start a `TaskDeck Manager` session from the TaskDeck control/document root, not from an individual project workspace.
 3. Start a parent/child session or any parent-spawned child capable of writing status.
 4. Have the child write `ready_for_review`, `blocked`, or `failed` to `TASKDECK_STATUS_FILE`.

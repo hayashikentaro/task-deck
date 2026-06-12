@@ -34,6 +34,21 @@ Related design doc:
 
 - `docs/taskdeck-actor-protocol.md`
 
+### AI-assisted development isolation
+
+TaskDeck AI-assisted development should use full clones for isolation, not `git worktree`.
+
+Git worktree directories are not self-contained because their `.git` file points back to the parent repository's `.git/worktrees` metadata. That indirection is unsafe across macOS, Docker, `/workspace` paths, copied directories, and AI agents.
+
+Recommended local layout:
+
+```text
+~/Documents/task-deck                 stable/main clone
+~/Documents/task-deck-manager-write   feature clone
+```
+
+Keep development isolation through the clone path, branch, and separate `PORT`.
+
 ### Desktop app packaging
 
 Package TaskDeck as an Electron desktop app so users can open TaskDeck, choose a workspace, and supervise agent sessions without manually starting server/web processes.

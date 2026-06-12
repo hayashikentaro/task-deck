@@ -174,11 +174,15 @@ Preserve user changes already present in the working tree. If the working tree h
 - When changing `apps/web` UI styling, read `docs/guides/ui-style.md`. When changing reusable UI components, shared controls, or icon-only controls, read `docs/guides/ui-components.md`.
 - When asked to create TaskDeck child sessions or send parent-to-child instructions, use the writer scripts defined in `docs/taskdeck-child-session-protocol.md`. Do not use platform-native multi-agent/sub-agent tools such as `multi_agent_v1.spawn_agent`, and do not treat those agents as TaskDeck child sessions.
 
-## Branch And Worktree Policy
+## Branch And Clone Policy
 
 For single-threaded work, prefer working directly on `main` unless the task may leave `main` temporarily broken or hard to use.
 
-Use a separate branch and, when useful, a separate worktree for:
+Do not use `git worktree` for TaskDeck AI-assisted development. Isolated work must use a full clone of the repository.
+
+Git worktree directories are not self-contained: their `.git` file points back to the parent repository's `.git/worktrees` metadata. That indirection has caused repeated failures when directories are used across macOS, Docker, `/workspace` paths, copied directories, and AI agents. A copied or container-mounted worktree can point at metadata that does not exist in the current environment, making branch state and repository identity unsafe.
+
+Use a separate branch and a separate full clone for:
 
 - parallel work by multiple sessions;
 - long-running work that should not block `main`;
@@ -186,11 +190,20 @@ Use a separate branch and, when useful, a separate worktree for:
 - changes that may require intermediate broken states;
 - experiments that may be discarded.
 
+Recommended local layout:
+
+```text
+~/Documents/task-deck                 stable/main clone
+~/Documents/task-deck-manager-write   feature clone
+```
+
+Keep development isolation through the clone path, branch, and separate `PORT`, not through `git worktree`.
+
 Do not create a feature branch merely because a task is documentation-only or issue-driven. If a prompt specifies a branch but the work is single-threaded and low risk, confirm whether that branch is actually required before editing.
 
 ## Child Session Branches And Integration
 
-When working as a child session in an isolated branch/worktree, producing local changes is not enough to complete the task.
+When working as a child session in an isolated branch/full clone, producing local changes is not enough to complete the task.
 
 A child session is complete only after it has:
 
@@ -212,7 +225,7 @@ The parent or integration session owns convergence:
 - resolve conflicts or send work back to the relevant child session;
 - perform the final integration pass.
 
-Use this boundary for TaskDeck child-session work and for manual parallel worktree sessions. A worktree task being locally done is not the same as being integrated into the parent branch.
+Use this boundary for TaskDeck child-session work and for manual parallel full-clone sessions. A task being locally done in a feature clone is not the same as being integrated into the parent branch.
 
 ## Change Authorization Boundary
 
