@@ -42,6 +42,12 @@ import {
   createChildSessionMessageRequestResult,
   validateChildSessionMessageFileRequest,
 } from "@taskdeck/core/child-session-message-file-requests";
+import {
+  createManagerChildStatusEvent,
+  generateManagerChildStatusEventId,
+  isManagerNotifiableChildState,
+  managerEventFilenames,
+} from "@taskdeck/core/manager-inbox";
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
@@ -58,6 +64,7 @@ const attachmentRoot = path.join(dataRoot, "attachments");
 const pendingAttachmentRoot = path.join(attachmentRoot, "pending");
 const childSessionRequestRoot = path.join(dataRoot, "requests", "child-session");
 const childSessionMessageRequestRoot = path.join(dataRoot, "requests", "child-message");
+const managerInboxRoot = path.join(dataRoot, "manager-inbox");
 const defaultConfigPath = path.join(repoRoot, "taskdeck.config.json");
 const localConfigPath = path.join(repoRoot, "taskdeck.local.json");
 const envConfigPath = process.env.TASKDECK_CONFIG ? path.resolve(process.env.TASKDECK_CONFIG) : "";
@@ -1688,7 +1695,7 @@ async function scanChildStatusFileForTask(task) {
   return updateTaskFromChildStatusResult(task.id, parseChildStatusReportJson(fileContents));
 }
 
-function updateTaskFromChildStatusResult(taskId, result) {
+async function updateTaskFromChildStatusResult(taskId, result) {
   const task = tasks.get(taskId);
   if (!task) {
     return false;
@@ -1704,7 +1711,72 @@ function updateTaskFromChildStatusResult(taskId, result) {
   }
 
   tasks.set(task.id, nextTask);
+  if (result.ok) {
+    await maybeWriteManagerChildStatusEvent(task, nextTask);
+  }
   return true;
+}
+
+async function maybeWriteManagerChildStatusEvent(previousTask, nextTask) {
+  if (!nextTask.spawnedFromParentRequest || !nextTask.parentSessionId) {
+    return;
+  }
+  if (!isManagerNotifiableChildState(nextTask.childReportedState)) {
+    return;
+  }
+
+  const dedupeKey = managerChildStatusEventDedupeKey(nextTask);
+  if (managerChildStatusEventDedupeKey(previousTask) === dedupeKey) {
+    return;
+  }
+
+  const now = new Date();
+  const eventId = generateManagerChildStatusEventId({
+    parentTaskId: nextTask.parentSessionId,
+    childTaskId: nextTask.id,
+    workPackageId: nextTask.workPackageId,
+    state: nextTask.childReportedState,
+    now,
+  });
+  const event = createManagerChildStatusEvent({
+    eventId,
+    parentTaskId: nextTask.parentSessionId,
+    childTaskId: nextTask.id,
+    workPackageId: nextTask.workPackageId,
+    state: nextTask.childReportedState,
+    summary: nextTask.childStatusSummary,
+    artifacts: nextTask.childStatusArtifacts,
+    detailsFile: nextTask.childStatusDetailsFile,
+    createdAt: now.toISOString(),
+  });
+
+  try {
+    await writeManagerEventFile(event);
+  } catch (error) {
+    console.warn(`TaskDeck manager inbox event write failed: ${error.message}`);
+  }
+}
+
+async function writeManagerEventFile(event) {
+  const filenames = managerEventFilenames(event.eventId);
+  const filePath = path.join(managerInboxRoot, filenames.event);
+  const tempPath = path.join(managerInboxRoot, filenames.temp);
+
+  await fs.mkdir(managerInboxRoot, { recursive: true });
+  await fs.writeFile(tempPath, `${JSON.stringify(event, null, 2)}\n`);
+  await fs.rename(tempPath, filePath);
+}
+
+function managerChildStatusEventDedupeKey(task) {
+  return JSON.stringify([
+    task.id,
+    task.parentSessionId || "",
+    task.workPackageId || "",
+    task.childReportedState || "",
+    task.childStatusSummary || "",
+    normalizeStringArray(task.childStatusArtifacts),
+    task.childStatusDetailsFile || "",
+  ]);
 }
 
 function haveSameChildStatusFields(left, right) {

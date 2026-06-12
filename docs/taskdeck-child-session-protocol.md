@@ -343,6 +343,33 @@ Supervision behavior:
 
 Free-form child-to-parent protocol blocks are not supported in this MVP. Use `summary`, `artifacts`, and `detailsFile` for bounded reporting.
 
+## Manager Inbox Events
+
+Child status files remain a child-to-TaskDeck reporting path. A child still writes only its latest bounded status JSON to `TASKDECK_STATUS_FILE`, and TaskDeck still owns polling, validation, task metadata updates, and supervision attention state.
+
+When a child task created from a parent request reports an attention-worthy status, TaskDeck also writes a manager inbox event file:
+
+```text
+.taskdeck/manager-inbox/<eventId>.json
+.taskdeck/manager-inbox/<eventId>.ack.json
+```
+
+The first MVP event type is `childStatusChanged` for child states `blocked`, `ready_for_review`, and `failed`. This inbox is intended for a future dedicated manager agent. It is not a push into the parent Codex terminal, it is not a free-form child-to-parent chat channel, and it does not use platform-native sub-agent tooling.
+
+Read unread valid manager inbox events with:
+
+```sh
+node scripts/read-manager-inbox.mjs
+```
+
+Read and acknowledge them with:
+
+```sh
+node scripts/read-manager-inbox.mjs --ack
+```
+
+Acknowledgement creates a sidecar `.ack.json` file and does not delete the event.
+
 ## Required Isolation Preflight
 
 Every code-editing child session must include an isolation preflight in `initialInstruction`.

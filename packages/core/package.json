@@ -7,6 +7,7 @@
   "exports": {
     ".": "./src/index.js",
     "./child-session-file-requests": "./src/childSessionFileRequests.js",
-    "./child-session-message-file-requests": "./src/childSessionMessageFileRequests.js"
+    "./child-session-message-file-requests": "./src/childSessionMessageFileRequests.js",
+    "./manager-inbox": "./src/managerInbox.js"
   }
 }
