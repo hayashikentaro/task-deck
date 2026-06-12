@@ -5,7 +5,9 @@ const codexCommandTokenPattern = /(^|[^-\w])codex(?![-\w])/i;
 const codexCommandWithPermissionPattern =
   /(^|[^-\w])codex(?![-\w])(?:(?:\s+--dangerously-bypass-approvals-and-sandbox)|(?:\s+--sandbox\s+(?:read-only|workspace-write|danger-full-access)))*/i;
 const codexReasoningEffortArgPattern = /\s+-c\s+model_reasoning_effort=(?:"[^"]*"|'[^']*'|[^\s]+)/gi;
+const codexStartupUpdateCheckArgPattern = /\s+-c\s+check_for_update_on_startup=(?:"[^"]*"|'[^']*'|[^\s]+)/gi;
 const codexReasoningEfforts = new Set<CodexReasoningEffort>(["low", "medium", "high", "xhigh"]);
+const codexStartupUpdateCheckArgs = "-c check_for_update_on_startup=false";
 
 export function codexPermissionArgs(permissionLevel: string | undefined) {
   if (permissionLevel === "workspace_write") return "--sandbox workspace-write";
@@ -20,6 +22,10 @@ export function normalizeCodexReasoningEffort(value: string | undefined): CodexR
 export function codexReasoningEffortArgs(reasoningEffort: string | undefined) {
   const normalizedReasoningEffort = normalizeCodexReasoningEffort(reasoningEffort);
   return normalizedReasoningEffort ? `-c model_reasoning_effort="${normalizedReasoningEffort}"` : "";
+}
+
+export function codexTaskDeckStartupArgs() {
+  return codexStartupUpdateCheckArgs;
 }
 
 export function applyCodexPermissionToCommand(command: string, permissionLevel: CodexPermissionLevel) {
@@ -48,13 +54,23 @@ export function applyCodexReasoningEffortToCommand(command: string, reasoningEff
     .replace(codexCommandTokenPattern, (_match, prefix: string) => `${prefix}codex ${args}`);
 }
 
+export function applyCodexTaskDeckStartupArgsToCommand(command: string) {
+  if (!command) {
+    return command;
+  }
+
+  return command
+    .replace(codexStartupUpdateCheckArgPattern, "")
+    .replace(codexCommandTokenPattern, (_match, prefix: string) => `${prefix}codex ${codexTaskDeckStartupArgs()}`);
+}
+
 export function buildCodexResumeCommandForCommand(
   command: string,
   permissionLevel: string | undefined,
   resumeTarget: string,
   reasoningEffort: string | undefined = "",
 ) {
-  const codexArgs = [codexPermissionArgs(permissionLevel), codexReasoningEffortArgs(reasoningEffort)]
+  const codexArgs = [codexPermissionArgs(permissionLevel), codexTaskDeckStartupArgs(), codexReasoningEffortArgs(reasoningEffort)]
     .filter(Boolean)
     .join(" ");
   const codexCommand = `codex ${codexArgs} resume ${resumeTarget}`;

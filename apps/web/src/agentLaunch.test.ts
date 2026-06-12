@@ -42,10 +42,17 @@ describe("Codex launch command generation", () => {
     );
   });
 
+  it("adds the TaskDeck Codex startup config override", () => {
+    const command = buildLaunchCommand(codexProfile, "new", null, "read_only", "").command;
+
+    expect(command).toContain("codex -c check_for_update_on_startup=false --sandbox read-only");
+    expect(command).not.toContain("--dangerously-bypass-approvals-and-sandbox");
+  });
+
   it("adds high reasoning effort without changing permission behavior", () => {
     const command = buildLaunchCommand(codexProfile, "new", null, "read_only", "high").command;
 
-    expect(command).toContain('codex -c model_reasoning_effort="high" --sandbox read-only');
+    expect(command).toContain('codex -c check_for_update_on_startup=false -c model_reasoning_effort="high" --sandbox read-only');
     expect(command).not.toContain("--dangerously-bypass-approvals-and-sandbox");
   });
 
@@ -53,7 +60,9 @@ describe("Codex launch command generation", () => {
     const command = buildLaunchCommand(codexProfile, "new", null, "full_access", "high").command;
 
     expect(command).toContain("docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc");
-    expect(command).toContain('codex -c model_reasoning_effort="high" --dangerously-bypass-approvals-and-sandbox');
+    expect(command).toContain(
+      'codex -c check_for_update_on_startup=false -c model_reasoning_effort="high" --dangerously-bypass-approvals-and-sandbox',
+    );
     expect(command).not.toContain('docker exec -c model_reasoning_effort="high"');
   });
 
@@ -61,7 +70,9 @@ describe("Codex launch command generation", () => {
     const command = buildLaunchCommand(codexContainerNameProfile, "new", null, "workspace_write", "medium").command;
 
     expect(command).toContain("ai-agent-sandbox-codex-1");
-    expect(command).toContain('codex -c model_reasoning_effort="medium" --sandbox workspace-write');
+    expect(command).toContain(
+      'codex -c check_for_update_on_startup=false -c model_reasoning_effort="medium" --sandbox workspace-write',
+    );
     expect(command).not.toContain('ai-agent-sandbox-codex -c model_reasoning_effort="medium"-1');
   });
 
@@ -72,7 +83,9 @@ describe("Codex launch command generation", () => {
   it("applies reasoning effort to resume-last commands generated from the selected Codex profile", () => {
     const command = buildLaunchCommand(codexProfile, "resume_last", null, "workspace_write", "xhigh").command;
 
-    expect(command).toContain('codex --sandbox workspace-write -c model_reasoning_effort="xhigh" resume --last');
+    expect(command).toContain(
+      'codex --sandbox workspace-write -c check_for_update_on_startup=false -c model_reasoning_effort="xhigh" resume --last',
+    );
   });
 
   it("does not mutate saved Codex resume commands", () => {

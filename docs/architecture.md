@@ -133,7 +133,7 @@ Agent profiles can be changed without editing application code. TaskDeck merges 
 
 Each profile supports `id`, `label`, `command`, `description`, optional `diagnosticContainer`, optional `diagnosticWorkspace`, and optional `modelOptions`. The diagnostics panel uses the diagnostic fields to inspect/start configured Docker containers and check whether expected container workspace directories exist. The committed profiles are `codex` and `goose`, both running inside `ai-agent-sandbox-agent-1`.
 
-Agent profiles are limited to container-backed profiles in the current UI. Codex launches through `sh -lc 'TERM=xterm-256color codex'` so the CLI sees a conventional terminal environment. Prefer machine-readable or non-TUI agent modes when an agent exposes one, but keep the PTY path as the current compatibility layer.
+Agent profiles are limited to container-backed profiles in the current UI. Codex launches through `sh -lc 'TERM=xterm-256color codex'` so the CLI sees a conventional terminal environment. TaskDeck adds `-c check_for_update_on_startup=false` to generated Codex launch commands so Codex startup update checks do not interrupt supervised sessions. Prefer machine-readable or non-TUI agent modes when an agent exposes one, but keep the PTY path as the current compatibility layer.
 
 ## Where To Change What
 

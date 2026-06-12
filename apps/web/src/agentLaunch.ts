@@ -1,6 +1,7 @@
 import {
   applyCodexReasoningEffortToCommand,
   applyCodexPermissionToCommand,
+  applyCodexTaskDeckStartupArgsToCommand,
   buildCodexResumeCommandForCommand,
   type CodexPermissionLevel,
   type CodexReasoningEffort,
@@ -40,9 +41,11 @@ export function buildLaunchCommand(
   }
 
   const command = isCodexProfile(profile)
-    ? applyCodexReasoningEffortToCommand(
-        applyCodexPermissionToCommand(profile.command.trim(), codexPermissionLevel),
-        codexReasoningEffort,
+    ? applyCodexTaskDeckStartupArgsToCommand(
+        applyCodexReasoningEffortToCommand(
+          applyCodexPermissionToCommand(profile.command.trim(), codexPermissionLevel),
+          codexReasoningEffort,
+        ),
       )
     : profile.command.trim();
   return { command, resumeCommand: "" };

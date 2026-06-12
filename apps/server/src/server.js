@@ -1197,9 +1197,11 @@ function buildServerLaunchCommand(profile, codexPermissionLevel, codexReasoningE
     return command;
   }
 
-  return applyCodexReasoningEffortToCommand(
-    applyCodexPermissionToCommand(command, codexPermissionLevel),
-    codexReasoningEffort,
+  return applyCodexTaskDeckStartupArgsToCommand(
+    applyCodexReasoningEffortToCommand(
+      applyCodexPermissionToCommand(command, codexPermissionLevel),
+      codexReasoningEffort,
+    ),
   );
 }
 
@@ -1207,7 +1209,9 @@ const codexCommandTokenPattern = /(^|[^-\w])codex(?![-\w])/i;
 const codexCommandWithPermissionPattern =
   /(^|[^-\w])codex(?![-\w])(?:(?:\s+--dangerously-bypass-approvals-and-sandbox)|(?:\s+--sandbox\s+(?:read-only|workspace-write|danger-full-access)))*/i;
 const codexReasoningEffortArgPattern = /\s+-c\s+model_reasoning_effort=(?:"[^"]*"|'[^']*'|[^\s]+)/gi;
+const codexStartupUpdateCheckArgPattern = /\s+-c\s+check_for_update_on_startup=(?:"[^"]*"|'[^']*'|[^\s]+)/gi;
 const codexReasoningEfforts = new Set(["low", "medium", "high", "xhigh"]);
+const codexStartupUpdateCheckArgs = "-c check_for_update_on_startup=false";
 
 function normalizeCodexReasoningEffort(value) {
   return codexReasoningEfforts.has(value) ? value : "";
@@ -1222,6 +1226,10 @@ function codexPermissionArgs(permissionLevel) {
 function codexReasoningEffortArgs(reasoningEffort) {
   const normalizedReasoningEffort = normalizeCodexReasoningEffort(reasoningEffort);
   return normalizedReasoningEffort ? `-c model_reasoning_effort="${normalizedReasoningEffort}"` : "";
+}
+
+function codexTaskDeckStartupArgs() {
+  return codexStartupUpdateCheckArgs;
 }
 
 function applyCodexPermissionToCommand(command, permissionLevel) {
@@ -1248,6 +1256,16 @@ function applyCodexReasoningEffortToCommand(command, reasoningEffort) {
   return command
     .replace(codexReasoningEffortArgPattern, "")
     .replace(codexCommandTokenPattern, (_match, prefix) => `${prefix}codex ${args}`);
+}
+
+function applyCodexTaskDeckStartupArgsToCommand(command) {
+  if (!command) {
+    return command;
+  }
+
+  return command
+    .replace(codexStartupUpdateCheckArgPattern, "")
+    .replace(codexCommandTokenPattern, (_match, prefix) => `${prefix}codex ${codexTaskDeckStartupArgs()}`);
 }
 
 function assignTaskIdentityColorSlot() {
@@ -3007,7 +3025,7 @@ function extractCodexResumeId(command) {
 
 function buildCodexSessionResumeCommand(task, sessionId, options = {}) {
   const command = String(task.command || "");
-  const codexCommand = `codex ${codexPermissionArgsForTask(task)} resume ${sessionId}`;
+  const codexCommand = `codex ${codexPermissionArgsForTask(task)} ${codexTaskDeckStartupArgs()} resume ${sessionId}`;
   const dockerWorkdir = String(options.containerCwd || extractDockerExecWorkdir(command) || "/workspace").trim();
   if (task.agentProfileId === "ai-dev-container-codex" || /\bdocker\b[\s\S]*\bai-agent-sandbox-agent-1\b/.test(command)) {
     return `docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w ${quoteShellToken(dockerWorkdir)} ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color ${codexCommand}'`;
