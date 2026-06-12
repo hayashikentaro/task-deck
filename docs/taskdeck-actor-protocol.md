@@ -75,8 +75,8 @@ flowchart TD
   Manager -->|terminal response only| ManagerOutput[Manager judgment]
 
   Manager -->|supported write| Taskdeckctl[taskdeckctl]
-  Taskdeckctl -. local IPC: Unix domain socket .-> Socket[.taskdeck/run/manager-actions.sock]
-  Socket -. structured manager action .-> Server
+  Taskdeckctl -. local IPC transport .-> ManagerActionEndpoint[manager action endpoint]
+  ManagerActionEndpoint -. structured manager action .-> Server
 
   Server -->|broadcast state update| UI
 
@@ -228,7 +228,7 @@ Manager writes go through `taskdeckctl`. The first implemented vertical slice su
 ```text
 Manager
   -> taskdeckctl ack/review/close
-  -> local IPC endpoint / Unix domain socket
+  -> local IPC endpoint
   -> TaskDeck server
   -> validation / dedupe / action log
   -> acknowledgement mutation
@@ -240,7 +240,7 @@ The preferred local IPC endpoint is a Unix domain socket, not an exposed Web API
 .taskdeck/run/manager-actions.sock
 ```
 
-The server records the active socket path in `.taskdeck/run/manager-actions.json`; this lets `taskdeckctl` follow a fallback socket path if the local filesystem leaves an undeletable stale socket entry.
+The server records the active transports in `.taskdeck/run/manager-actions.json`; this lets `taskdeckctl` follow a fallback socket path if the local filesystem leaves an undeletable stale socket entry. It also advertises a token-protected loopback TCP fallback for Docker manager sessions where a macOS host Unix socket can be mounted as a file but cannot be used as a Linux Unix socket endpoint.
 
 This avoids opening a network API surface while still avoiding the roundabout manager-action-file path for commands.
 
@@ -273,7 +273,7 @@ Raw Web API is not the preferred manager-facing protocol because it exposes too 
 - Docker localhost confusion
 ```
 
-If HTTP is used later, it should be hidden behind `taskdeckctl`.
+If HTTP is used later, it should be hidden behind `taskdeckctl`. The current container fallback is not HTTP; it is the same newline-delimited manager action protocol over a loopback TCP listener with a per-server-run token from `.taskdeck/run/manager-actions.json`.
 
 ### Why not manager-action files as the primary write path
 
@@ -357,17 +357,18 @@ Desired structural boundary:
 
 ```text
 Manager:
-  can see .taskdeck/run/manager-actions.sock
+  can see .taskdeck/run/manager-actions.json
+  can use the advertised manager action transport
   can execute taskdeckctl
 
 Worker:
-  cannot see manager-actions.sock
+  cannot see manager-actions.json or manager-actions.sock
   cannot execute manager action commands
 ```
 
-If running in containers, mount the manager action socket only into the manager environment.
+If running in containers, mount the manager action pointer and runtime directory only into the manager environment. Docker Desktop on macOS may show the host Unix socket file inside the Linux container while still failing to connect to it; `taskdeckctl` should then fall back to the token-protected TCP transport advertised by the pointer file.
 
-The minimum manager write path uses this socket for ack, review, and close actions; future manager write support should preserve the same boundary.
+The minimum manager write path uses these server-owned transports for ack, review, and close actions; future manager write support should preserve the same boundary.
 
 ## MVP implementation sequence
 
@@ -437,7 +438,7 @@ Manual QA outline:
 
 ### Phase 7: Define manager write schema and transport
 
-The minimum manager write vertical slice now defines the first manager action schema and Unix socket transport. Future actions should extend the same structured action/result model:
+The minimum manager write vertical slice now defines the first manager action schema and server-owned local IPC transports. Future actions should extend the same structured action/result model:
 
 ```text
 taskDeckManagerAction

@@ -1,6 +1,6 @@
 import express from "express";
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import http from "node:http";
 import net from "node:net";
@@ -83,6 +83,8 @@ const managerReadableUnreadEventsPath = path.join(managerReadableRoot, MANAGER_R
 const managerActionRunRoot = path.join(dataRoot, "run");
 const managerActionDefaultSocketPath = path.join(managerActionRunRoot, "manager-actions.sock");
 const managerActionSocketPointerPath = path.join(managerActionRunRoot, "manager-actions.json");
+const managerActionTcpHost = process.env.TASKDECK_MANAGER_ACTION_HOST || "127.0.0.1";
+const managerActionContainerHost = process.env.TASKDECK_MANAGER_ACTION_CONTAINER_HOST || "host.docker.internal";
 const managerActionLogRoot = path.join(dataRoot, "manager-actions");
 const managerActionHistoryPath = path.join(managerActionLogRoot, "history.json");
 const defaultConfigPath = path.join(repoRoot, "taskdeck.config.json");
@@ -200,6 +202,8 @@ const processedChildSessionMessageRequestIds = new Set();
 const processedManagerActionIds = new Set();
 const childStatusFileSnapshots = new Map();
 let managerActionSocketPath = managerActionDefaultSocketPath;
+let managerActionTcpPort = 0;
+let managerActionTcpToken = "";
 let persistTasksQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
 let persistSessionLabelsQueue = Promise.resolve();
@@ -1922,8 +1926,57 @@ async function writeManagerEventFile(event) {
 async function startManagerActionSocket() {
   await fs.mkdir(managerActionRunRoot, { recursive: true });
   managerActionSocketPath = await prepareManagerActionSocketPath();
+  managerActionTcpToken = randomBytes(32).toString("hex");
 
-  const actionServer = net.createServer((socket) => {
+  const actionServer = createManagerActionLineServer({
+    label: "socket",
+    handleRawMessage: handleManagerActionSocketMessage,
+  });
+
+  actionServer.on("error", (error) => {
+    console.error(`TaskDeck manager action socket failed at ${managerActionSocketPath}: ${error.message}`);
+  });
+
+  await new Promise((resolve, reject) => {
+    actionServer.once("error", reject);
+    actionServer.listen(managerActionSocketPath, async () => {
+      actionServer.off("error", reject);
+      try {
+        await fs.chmod(managerActionSocketPath, 0o600);
+      } catch (error) {
+        if (error.code !== "EINVAL") {
+          console.warn(`TaskDeck could not restrict manager action socket permissions: ${error.message}`);
+        }
+      }
+      console.log(`TaskDeck manager action socket listening at ${managerActionSocketPath}`);
+      resolve();
+    });
+  });
+
+  const tcpServer = createManagerActionLineServer({
+    label: "tcp",
+    handleRawMessage: handleManagerActionTcpMessage,
+  });
+
+  tcpServer.on("error", (error) => {
+    console.error(`TaskDeck manager action TCP endpoint failed at ${managerActionTcpHost}: ${error.message}`);
+  });
+
+  await new Promise((resolve, reject) => {
+    tcpServer.once("error", reject);
+    tcpServer.listen(0, managerActionTcpHost, async () => {
+      tcpServer.off("error", reject);
+      const address = tcpServer.address();
+      managerActionTcpPort = typeof address === "object" && address ? address.port : 0;
+      await writeManagerActionPointer();
+      console.log(`TaskDeck manager action TCP endpoint listening at ${managerActionTcpHost}:${managerActionTcpPort}`);
+      resolve();
+    });
+  });
+}
+
+function createManagerActionLineServer({ label, handleRawMessage }) {
+  return net.createServer((socket) => {
     let buffer = "";
 
     socket.setEncoding("utf8");
@@ -1936,7 +1989,7 @@ async function startManagerActionSocket() {
 
       const rawAction = buffer.slice(0, newlineIndex);
       buffer = "";
-      handleManagerActionSocketMessage(rawAction)
+      handleRawMessage(rawAction)
         .then((result) => {
           socket.end(`${JSON.stringify(result)}\n`);
         })
@@ -1946,24 +1999,8 @@ async function startManagerActionSocket() {
     });
 
     socket.on("error", (error) => {
-      console.warn(`TaskDeck manager action socket error: ${error.message}`);
+      console.warn(`TaskDeck manager action ${label} error: ${error.message}`);
     });
-  });
-
-  actionServer.on("error", (error) => {
-    console.error(`TaskDeck manager action socket failed at ${managerActionSocketPath}: ${error.message}`);
-  });
-
-  actionServer.listen(managerActionSocketPath, async () => {
-    try {
-      await fs.chmod(managerActionSocketPath, 0o600);
-    } catch (error) {
-      if (error.code !== "EINVAL") {
-        console.warn(`TaskDeck could not restrict manager action socket permissions: ${error.message}`);
-      }
-    }
-    await writeManagerActionSocketPointer();
-    console.log(`TaskDeck manager action socket listening at ${managerActionSocketPath}`);
   });
 }
 
@@ -1999,11 +2036,24 @@ async function removeManagerActionSocketPath(socketPath) {
   }
 }
 
-async function writeManagerActionSocketPointer() {
+async function writeManagerActionPointer() {
   await writeJsonAtomic(managerActionSocketPointerPath, {
-    kind: "taskDeckManagerActionSocket",
-    version: 1,
+    kind: "taskDeckManagerActionTransport",
+    version: 2,
     socketPath: managerActionSocketPath,
+    transports: [
+      {
+        type: "unix",
+        path: managerActionSocketPath,
+      },
+      {
+        type: "tcp",
+        host: managerActionTcpHost,
+        containerHost: managerActionContainerHost,
+        port: managerActionTcpPort,
+        token: managerActionTcpToken,
+      },
+    ],
     updatedAt: new Date().toISOString(),
   });
 }
@@ -2018,6 +2068,31 @@ async function handleManagerActionSocketMessage(rawAction) {
     return result;
   }
   return executeManagerAction(parsed);
+}
+
+async function handleManagerActionTcpMessage(rawMessage) {
+  let parsed;
+  try {
+    parsed = JSON.parse(rawMessage);
+  } catch {
+    const result = managerActionError("invalid_json", "Manager action TCP message must be a JSON object.");
+    await writeManagerActionLog(managerActionLogRecord({ action: "invalid_json" }), result);
+    return result;
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    const result = managerActionError("invalid_action", "Manager action TCP message must be a JSON object.");
+    await writeManagerActionLog(managerActionLogRecord({ action: "invalid_tcp_message" }), result);
+    return result;
+  }
+
+  if (!managerActionTcpToken || parsed.token !== managerActionTcpToken) {
+    const result = managerActionError("unauthorized", "Manager action TCP token is invalid.");
+    await writeManagerActionLog(managerActionLogRecord({ action: "unauthorized_tcp" }), result);
+    return result;
+  }
+
+  return executeManagerAction(parsed.action);
 }
 
 async function executeManagerAction(action) {

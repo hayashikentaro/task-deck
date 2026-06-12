@@ -19,6 +19,8 @@ function usage() {
 
 Options:
   --socket <path>       Override the manager action Unix socket.
+  --host <host>         Override the manager action TCP host.
+  --port <port>         Override the manager action TCP port.
   --json                Print the full JSON result.
 `;
 }
@@ -41,6 +43,8 @@ function parseArgs(args) {
     taskId: "",
     reason: "",
     socketPath: process.env.TASKDECK_MANAGER_ACTION_SOCKET || "",
+    tcpHost: process.env.TASKDECK_MANAGER_ACTION_HOST || "",
+    tcpPort: Number(process.env.TASKDECK_MANAGER_ACTION_PORT || 0),
     json: false,
   };
 
@@ -68,6 +72,15 @@ function parseArgs(args) {
         break;
       case "--socket":
         parsed.socketPath = requiredValue(args, ++index, arg);
+        break;
+      case "--host":
+        parsed.tcpHost = requiredValue(args, ++index, arg);
+        break;
+      case "--port":
+        parsed.tcpPort = Number(requiredValue(args, ++index, arg));
+        if (!Number.isInteger(parsed.tcpPort) || parsed.tcpPort <= 0) {
+          throw new Error("--port requires a positive integer.");
+        }
         break;
       case "--json":
         parsed.json = true;
@@ -102,24 +115,44 @@ function normalizeCommand(command) {
   }
 }
 
-async function resolveSocketPath(explicitSocketPath) {
-  if (explicitSocketPath) {
-    return explicitSocketPath;
-  }
-
+async function resolveManagerActionTransports({ explicitSocketPath, explicitTcpHost, explicitTcpPort }) {
+  let pointer = null;
   try {
-    const pointer = JSON.parse(await fs.readFile(socketPointerPath, "utf8"));
-    const socketPath = String(pointer?.socketPath || "").trim();
-    if (socketPath) {
-      return socketPath;
-    }
+    pointer = JSON.parse(await fs.readFile(socketPointerPath, "utf8"));
   } catch (error) {
     if (error.code !== "ENOENT") {
-      process.stderr.write(`Warning: could not read manager action socket pointer: ${error.message}\n`);
+      process.stderr.write(`Warning: could not read manager action transport pointer: ${error.message}\n`);
     }
   }
 
-  return defaultSocketPath;
+  const transports = [];
+  const socketPath = explicitSocketPath || String(pointer?.socketPath || "").trim() || defaultSocketPath;
+  if (socketPath) {
+    transports.push({ type: "unix", path: socketPath });
+  }
+
+  const tcpTransport = Array.isArray(pointer?.transports)
+    ? pointer.transports.find((transport) => transport?.type === "tcp")
+    : null;
+  const pointerHost = String(tcpTransport?.host || "").trim();
+  const pointerContainerHost = String(tcpTransport?.containerHost || "").trim();
+  const pointerPort = Number(tcpTransport?.port || 0);
+  const pointerToken = String(tcpTransport?.token || "").trim();
+  const tcpPort = explicitTcpPort || pointerPort;
+  const tcpHosts = [...new Set([explicitTcpHost, pointerHost, pointerContainerHost].filter(Boolean))];
+
+  if (tcpPort > 0 && pointerToken) {
+    for (const host of tcpHosts) {
+      transports.push({
+        type: "tcp",
+        host,
+        port: tcpPort,
+        token: pointerToken,
+      });
+    }
+  }
+
+  return transports;
 }
 
 function requiredValue(args, index, flag) {
@@ -130,14 +163,18 @@ function requiredValue(args, index, flag) {
   return value;
 }
 
-function sendManagerAction(socketPath, action) {
+function sendManagerAction(transport, action) {
   return new Promise((resolve, reject) => {
-    const socket = net.createConnection(socketPath);
+    const socket =
+      transport.type === "tcp"
+        ? net.createConnection({ host: transport.host, port: transport.port })
+        : net.createConnection(transport.path);
     let response = "";
 
     socket.setEncoding("utf8");
     socket.on("connect", () => {
-      socket.write(`${JSON.stringify(action)}\n`);
+      const payload = transport.type === "tcp" ? { token: transport.token, action } : action;
+      socket.write(`${JSON.stringify(payload)}\n`);
     });
     socket.on("data", (chunk) => {
       response += chunk;
@@ -155,6 +192,23 @@ function sendManagerAction(socketPath, action) {
   });
 }
 
+async function sendManagerActionWithFallback(transports, action) {
+  const errors = [];
+  for (const transport of transports) {
+    try {
+      return await sendManagerAction(transport, action);
+    } catch (error) {
+      const label =
+        transport.type === "tcp" ? `tcp://${transport.host}:${transport.port}` : transport.path || "Unix socket";
+      errors.push(`${label}: ${error.message}`);
+    }
+  }
+  if (errors.length > 0) {
+    throw new Error(`No manager action transport succeeded. Tried ${errors.join("; ")}`);
+  }
+  throw new Error("No manager action transport is available.");
+}
+
 try {
   const parsed = parseArgs(process.argv.slice(2));
   if (parsed.help) {
@@ -162,9 +216,15 @@ try {
     process.exit(0);
   }
 
-  const { socketPath: explicitSocketPath, json, ...action } = parsed;
-  const socketPath = await resolveSocketPath(explicitSocketPath);
-  const result = await sendManagerAction(socketPath, {
+  const {
+    socketPath: explicitSocketPath,
+    tcpHost: explicitTcpHost,
+    tcpPort: explicitTcpPort,
+    json,
+    ...action
+  } = parsed;
+  const transports = await resolveManagerActionTransports({ explicitSocketPath, explicitTcpHost, explicitTcpPort });
+  const result = await sendManagerActionWithFallback(transports, {
     ...action,
     requestedAt: new Date().toISOString(),
   });

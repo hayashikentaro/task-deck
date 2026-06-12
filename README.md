@@ -86,7 +86,7 @@ See [Branch clone lifecycle](docs/branch-clone-lifecycle.md) for the standard se
 
 TaskDeck stores runtime data under `.taskdeck/`, including task records, persisted logs, session labels, presets, and attachments. This directory is intentionally ignored by Git and may contain sensitive agent output.
 
-TaskDeck also starts a local manager action Unix socket at `.taskdeck/run/manager-actions.sock` and records the active socket path in `.taskdeck/run/manager-actions.json`. Manager sessions use `taskdeckctl ack`, `taskdeckctl review`, and `taskdeckctl close` for the current manager write path; the server validates, logs under `.taskdeck/manager-actions/`, mutates, and broadcasts the result.
+TaskDeck also starts local manager action transports and records them in `.taskdeck/run/manager-actions.json`. The preferred transport is the Unix socket at `.taskdeck/run/manager-actions.sock`; a token-protected loopback TCP fallback is advertised for manager sessions running inside Docker containers where a mounted macOS host socket is visible but not connectable. Manager sessions use `taskdeckctl ack`, `taskdeckctl review`, and `taskdeckctl close`; the server validates, logs under `.taskdeck/manager-actions/`, mutates, and broadcasts the result.
 
 ## Safety Notes
 
