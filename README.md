@@ -64,6 +64,8 @@ Then edit `taskdeck.local.json`:
 
 TaskDeck ships with committed Codex and Goose profiles that expect a Docker container named `ai-agent-sandbox-agent-1` with a `/workspace` directory. For your machine, override profiles in `taskdeck.local.json` or point `TASKDECK_CONFIG` at another config file.
 
+For TaskDeck-launched Codex sessions, TaskDeck adds `-c check_for_update_on_startup=false` to suppress Codex CLI startup update prompts in supervised PTY sessions.
+
 For example:
 
 ```bash
