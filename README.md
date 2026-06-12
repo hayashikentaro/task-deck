@@ -86,5 +86,7 @@ TaskDeck can launch local or container agent CLIs that may edit files and run co
 
 - [Architecture map](docs/architecture.md)
 - [Local API reference](docs/api.md)
+- [Actor protocol and manager control plane](docs/taskdeck-actor-protocol.md)
 - [Child session request protocol](docs/taskdeck-child-session-protocol.md)
+- [Current work plan](docs/current-work-plan.md)
 - [Session identity card experiment](docs/issues/0015-session-identity-first-cards.md)
