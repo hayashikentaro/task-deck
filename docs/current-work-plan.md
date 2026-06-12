@@ -26,11 +26,11 @@ The completed scope includes:
 - terminal-only manager judgment;
 - no `TASKDECK_STATUS_FILE` writes by the manager;
 - no `STATUS ERROR` from manager status parsing;
-- no `taskdeckctl` or manager write path yet.
+- no `taskdeckctl` or manager write path yet in the completed read-only MVP baseline.
 
 ## Next phase
 
-Next phase: manager action/write path.
+Next phase: manager action/write path. The minimum practical merge line is `taskdeckctl` over local IPC with ack, review, and close actions only.
 
 This phase includes:
 
@@ -38,7 +38,8 @@ This phase includes:
 - local IPC / Unix socket;
 - manager action schema;
 - server-side manager action executor;
-- ack, review, close, and spawn-child actions;
+- ack, review, and close actions first;
+- spawn-child actions later;
 - any future worker command delivery.
 
 ## Why this order

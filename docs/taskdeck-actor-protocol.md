@@ -10,12 +10,12 @@ TaskDeck should separate agent-readable communication from state mutation.
 
 Non-manager AI agents should not directly mutate TaskDeck state and should not send commands directly to other agents. They produce append-only file outputs. The manager reads those outputs and decides what should happen next. The manager also does not directly control worker agents; it calls a constrained TaskDeck command interface, and TaskDeck server performs the actual validated mutation.
 
-The current implementation keeps manager reads file-based and routes the first ack-only manager write path through `taskdeckctl`.
+The read loop has been proven first; the current implementation routes the minimum manager write path through `taskdeckctl`.
 
 ```text
 Workers write files.
 Manager reads files first.
-Manager acknowledges through taskdeckctl ack when appropriate.
+Manager calls taskdeckctl for supported writes.
 Server mutates state.
 ```
 
@@ -51,7 +51,7 @@ flowchart TD
   Manager -->|read / ack| ManagerInbox
   Manager -->|terminal response only| ManagerOutput[Manager judgment]
 
-  Manager -->|ack-only write| Taskdeckctl[taskdeckctl]
+  Manager -->|supported write| Taskdeckctl[taskdeckctl]
   Taskdeckctl -. local IPC: Unix domain socket .-> Socket[.taskdeck/run/manager-actions.sock]
   Socket -. structured manager action .-> Server
 
@@ -196,15 +196,15 @@ TASKDECK_STATUS_FILE
 
 When a new unread manager event is created, TaskDeck sends only a short nudge to running manager sessions. The nudge is a wake-up signal; the durable source of truth remains the manager inbox and manager-readable files.
 
-With the ack-only write path, the manager may call `taskdeckctl ack` only when acknowledging a manager inbox event or task attention state. It must not write `TASKDECK_STATUS_FILE`, command workers, mutate TaskDeck state directly, or behave as if it is scoped to one selected project.
+For the completed read-loop MVP, the manager reported judgment in the terminal response only. In the current minimum write path, it may call `taskdeckctl` for supported manager actions, but it must not write `TASKDECK_STATUS_FILE`, command workers directly, mutate TaskDeck state directly, or behave as if it is scoped to one selected project.
 
 ### Manager write path
 
-Manager writes go through `taskdeckctl`. The first implemented vertical slice is acknowledgement only.
+Manager writes go through `taskdeckctl`. The first implemented vertical slice supports acknowledgement, review marking, and task closing only.
 
 ```text
 Manager
-  -> taskdeckctl ack
+  -> taskdeckctl ack/review/close
   -> local IPC endpoint / Unix domain socket
   -> TaskDeck server
   -> validation / dedupe / action log
@@ -226,9 +226,15 @@ Current supported command:
 ```sh
 taskdeckctl ack --event <eventId>
 taskdeckctl ack --task <taskId>
+taskdeckctl review --task <taskId>
+taskdeckctl close --task <taskId>
 ```
 
 `taskdeckctl ack --event` writes the manager event `.ack.json` sidecar through the server, refreshes the generated manager-readable files, acknowledges the target task attention state when applicable, logs the manager action under `.taskdeck/manager-actions/`, and broadcasts the updated task snapshot. Repeated `actionId` values are deduped by the server process, and events that already have an ack sidecar return a successful already-acknowledged result.
+
+`taskdeckctl review --task` marks a task as reviewed and clears review-ready attention when applicable. `taskdeckctl close --task` marks a task closed, stops any active PTY process for that task, preserves the task record/logs for history, and removes it from the running task set. Both commands are idempotent when the target task is already reviewed or closed.
+
+Every manager action result is written as a per-action JSON file under `.taskdeck/manager-actions/`. A compact recent history is also available at `.taskdeck/manager-actions/history.json`.
 
 ### Why not raw Web API as the manager-facing surface
 
@@ -304,12 +310,8 @@ Required safeguards:
 Allowed action types:
 
 ```text
-sendTaskInput
-createChildSession
-requestHumanDecision
 acknowledgeManagerEvent
 markTaskReviewed
-archiveTask
 closeTask
 ```
 

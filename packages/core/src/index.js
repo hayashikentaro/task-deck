@@ -4,6 +4,7 @@ export const TaskStatus = Object.freeze({
   SUCCEEDED: "succeeded",
   FAILED: "failed",
   INTERRUPTED: "interrupted",
+  CLOSED: "closed",
 });
 
 export const AgentState = Object.freeze({
@@ -132,6 +133,10 @@ export function createTask({
     attentionStateSource: AgentStateSource.TASKDECK_EVENT,
     attentionStateConfidence: AgentStateConfidence.HIGH,
     attentionAcknowledgedAt: null,
+    reviewedAt: null,
+    reviewedByTaskId: "",
+    closedAt: null,
+    closedByTaskId: "",
     terminalInputLockedAt: null,
     risk: assessCommandRisk(normalizedCommand),
     createdAt: now,
@@ -202,6 +207,44 @@ export function markTaskAttentionAcknowledged(task, acknowledgedAt = new Date().
     attentionStateConfidence: AgentStateConfidence.HIGH,
     attentionAcknowledgedAt: acknowledgedAt,
     updatedAt: acknowledgedAt,
+  };
+}
+
+export function markTaskReviewed(task, { reviewedAt = new Date().toISOString(), reviewedByTaskId = "" } = {}) {
+  const clearsReviewAttention = task.attentionState === AttentionState.REVIEW_READY;
+  return {
+    ...task,
+    ...(clearsReviewAttention
+      ? {
+          attentionState: AttentionState.NONE,
+          attentionStateReason: "Manager marked this task reviewed.",
+          attentionStateSource: AgentStateSource.MANUAL,
+          attentionStateConfidence: AgentStateConfidence.HIGH,
+          attentionAcknowledgedAt: reviewedAt,
+        }
+      : {}),
+    reviewedAt,
+    reviewedByTaskId: String(reviewedByTaskId || "").trim(),
+    updatedAt: reviewedAt,
+  };
+}
+
+export function markTaskClosed(task, { closedAt = new Date().toISOString(), closedByTaskId = "" } = {}) {
+  return {
+    ...task,
+    status: TaskStatus.CLOSED,
+    agentState: AgentState.STOPPED,
+    agentStateReason: "Manager closed this task.",
+    agentStateSource: AgentStateSource.MANUAL,
+    agentStateConfidence: AgentStateConfidence.HIGH,
+    attentionState: AttentionState.NONE,
+    attentionStateReason: "Manager closed this task.",
+    attentionStateSource: AgentStateSource.MANUAL,
+    attentionStateConfidence: AgentStateConfidence.HIGH,
+    closedAt,
+    closedByTaskId: String(closedByTaskId || "").trim(),
+    updatedAt: closedAt,
+    endedAt: task.endedAt || closedAt,
   };
 }
 
@@ -285,6 +328,10 @@ export function serializeTask(task) {
     attentionStateSource: task.attentionStateSource || inferAttentionStateSourceFromTask(task),
     attentionStateConfidence: task.attentionStateConfidence || inferAttentionStateConfidenceFromTask(task),
     attentionAcknowledgedAt: task.attentionAcknowledgedAt || null,
+    reviewedAt: task.reviewedAt || null,
+    reviewedByTaskId: task.reviewedByTaskId || "",
+    closedAt: task.closedAt || null,
+    closedByTaskId: task.closedByTaskId || "",
     terminalInputLockedAt: task.terminalInputLockedAt || null,
     risk: task.risk,
     createdAt: task.createdAt,
@@ -536,6 +583,7 @@ export function inferAgentStateFromStatus(task) {
   if (task.status === TaskStatus.SUCCEEDED) return AgentState.DONE;
   if (task.status === TaskStatus.INTERRUPTED) return AgentState.STOPPED;
   if (task.status === TaskStatus.FAILED) return AgentState.FAILED;
+  if (task.status === TaskStatus.CLOSED) return AgentState.STOPPED;
   return AgentState.STARTING;
 }
 

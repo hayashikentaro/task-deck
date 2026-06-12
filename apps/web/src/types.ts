@@ -1,4 +1,4 @@
-export type TaskStatus = "idle" | "running" | "succeeded" | "failed" | "interrupted";
+export type TaskStatus = "idle" | "running" | "succeeded" | "failed" | "interrupted" | "closed";
 export type AgentState =
   | "starting"
   | "thinking"
@@ -83,6 +83,10 @@ export type Task = {
   attentionStateSource?: AttentionStateSource;
   attentionStateConfidence?: AttentionStateConfidence;
   attentionAcknowledgedAt?: string | null;
+  reviewedAt?: string | null;
+  reviewedByTaskId?: string;
+  closedAt?: string | null;
+  closedByTaskId?: string;
   terminalInputLockedAt?: string | null;
   risk: TaskRisk;
   createdAt: string;

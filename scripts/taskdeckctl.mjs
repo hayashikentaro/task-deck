@@ -14,6 +14,8 @@ function usage() {
   return `Usage:
   taskdeckctl ack --event <eventId> [--task <taskId>] [--actor-task <taskId>] [--action-id <id>]
   taskdeckctl ack --task <taskId> [--actor-task <taskId>] [--action-id <id>]
+  taskdeckctl review --task <taskId> [--actor-task <taskId>] [--action-id <id>]
+  taskdeckctl close --task <taskId> [--actor-task <taskId>] [--action-id <id>]
 
 Options:
   --socket <path>       Override the manager action Unix socket.
@@ -26,16 +28,18 @@ function parseArgs(args) {
   if (!command || command === "--help" || command === "-h") {
     return { help: true };
   }
-  if (command !== "ack") {
-    throw new Error("Only ack is supported.");
+  const action = normalizeCommand(command);
+  if (!["ack", "review", "close"].includes(action)) {
+    throw new Error("Only ack, review, and close are supported.");
   }
 
   const parsed = {
-    action: command,
+    action,
     actionId: randomUUID(),
     actorTaskId: process.env.TASKDECK_MANAGER_ROLE === "manager" ? process.env.TASKDECK_TASK_ID || "" : "",
     eventId: "",
     taskId: "",
+    reason: "",
     socketPath: process.env.TASKDECK_MANAGER_ACTION_SOCKET || "",
     json: false,
   };
@@ -59,6 +63,9 @@ function parseArgs(args) {
       case "--action-id":
         parsed.actionId = requiredValue(args, ++index, arg);
         break;
+      case "--reason":
+        parsed.reason = requiredValue(args, ++index, arg);
+        break;
       case "--socket":
         parsed.socketPath = requiredValue(args, ++index, arg);
         break;
@@ -70,11 +77,29 @@ function parseArgs(args) {
     }
   }
 
-  if (!parsed.eventId && !parsed.taskId) {
+  if (parsed.action === "ack" && !parsed.eventId && !parsed.taskId) {
     throw new Error("ack requires --event or --task.");
+  }
+  if ((parsed.action === "review" || parsed.action === "close") && !parsed.taskId) {
+    throw new Error(`${parsed.action} requires --task.`);
   }
 
   return parsed;
+}
+
+function normalizeCommand(command) {
+  switch (command) {
+    case "mark-reviewed":
+    case "markReviewed":
+    case "mark-task-reviewed":
+      return "review";
+    case "archive":
+    case "archive-task":
+    case "close-task":
+      return "close";
+    default:
+      return command;
+  }
 }
 
 async function resolveSocketPath(explicitSocketPath) {
@@ -147,7 +172,7 @@ try {
   if (json) {
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } else if (result.ok) {
-    process.stdout.write(`Acked${result.eventId ? ` event ${result.eventId}` : ""}${result.taskId ? ` task ${result.taskId}` : ""}.\n`);
+    process.stdout.write(formatSuccess(result));
   } else {
     process.stderr.write(`${result.error || "Manager action failed."}\n`);
   }
@@ -156,4 +181,17 @@ try {
 } catch (error) {
   process.stderr.write(`${error.message}\n\n${usage()}`);
   process.exit(1);
+}
+
+function formatSuccess(result) {
+  if (result.action === "ack") {
+    return `Acked${result.eventId ? ` event ${result.eventId}` : ""}${result.taskId ? ` task ${result.taskId}` : ""}.\n`;
+  }
+  if (result.action === "review") {
+    return `${result.alreadyReviewed ? "Already reviewed" : "Reviewed"} task ${result.taskId}.\n`;
+  }
+  if (result.action === "close") {
+    return `${result.alreadyClosed ? "Already closed" : "Closed"} task ${result.taskId}.\n`;
+  }
+  return `${result.action || "Action"} succeeded.\n`;
 }

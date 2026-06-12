@@ -9,7 +9,7 @@ const managerReadableInstructions = [
   "Report your judgment in this terminal response only.",
   "Do not write TASKDECK_STATUS_FILE.",
   "Do not command worker sessions directly.",
-  "Use taskdeckctl ack only when acknowledging a manager inbox event or task attention state.",
+  "Use taskdeckctl ack, taskdeckctl review, or taskdeckctl close for supported manager writes.",
   "Do not mutate TaskDeck state directly.",
 ];
 
@@ -62,6 +62,8 @@ export function buildManagerReadableContext({
 
   lines.push("", "## Files");
   if (paths.managerInboxDir) lines.push(`- Manager inbox: ${paths.managerInboxDir}`);
+  if (paths.managerActionsDir) lines.push(`- Manager action logs: ${paths.managerActionsDir}`);
+  if (paths.managerActionHistoryFile) lines.push(`- Manager action history: ${paths.managerActionHistoryFile}`);
   if (paths.contextFile) lines.push(`- Context: ${paths.contextFile}`);
   if (paths.unreadEventsFile) lines.push(`- Unread events JSON: ${paths.unreadEventsFile}`);
   lines.push("- Judgment output: this terminal response only");
@@ -145,6 +147,8 @@ function taskSummary(task) {
     childStatusArtifacts: normalizeStringArray(task.childStatusArtifacts),
     childStatusDetailsFile: String(task.childStatusDetailsFile || ""),
     childStatusUpdatedAt: String(task.childStatusUpdatedAt || ""),
+    reviewedAt: String(task.reviewedAt || ""),
+    closedAt: String(task.closedAt || ""),
     isManager: task.isManager === true,
   };
 }
@@ -155,6 +159,8 @@ function formatTaskSummary(task) {
   const parts = [`${title} (${task.id})`];
   if (state) parts.push(state);
   if (task.attentionState) parts.push(`attention=${task.attentionState}`);
+  if (task.reviewedAt) parts.push(`reviewed=${task.reviewedAt}`);
+  if (task.closedAt) parts.push(`closed=${task.closedAt}`);
   return parts.join(" - ");
 }
 

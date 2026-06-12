@@ -22,7 +22,9 @@ import {
   markTaskAttentionAcknowledged,
   markTaskAttentionState,
   markTaskAgentState,
+  markTaskClosed,
   markTaskExited,
+  markTaskReviewed,
   markTaskRunning,
   markTaskTerminalInputLocked,
   markTaskTerminalInputUnlocked,
@@ -82,6 +84,7 @@ const managerActionRunRoot = path.join(dataRoot, "run");
 const managerActionDefaultSocketPath = path.join(managerActionRunRoot, "manager-actions.sock");
 const managerActionSocketPointerPath = path.join(managerActionRunRoot, "manager-actions.json");
 const managerActionLogRoot = path.join(dataRoot, "manager-actions");
+const managerActionHistoryPath = path.join(managerActionLogRoot, "history.json");
 const defaultConfigPath = path.join(repoRoot, "taskdeck.config.json");
 const localConfigPath = path.join(repoRoot, "taskdeck.local.json");
 const envConfigPath = process.env.TASKDECK_CONFIG ? path.resolve(process.env.TASKDECK_CONFIG) : "";
@@ -203,6 +206,8 @@ let persistSessionLabelsQueue = Promise.resolve();
 let childStatusPollInFlight = false;
 let childSessionRequestPollInFlight = false;
 let childSessionMessageRequestPollInFlight = false;
+
+const managerActionTypes = new Set(["ack", "review", "close"]);
 
 app.use(express.json());
 
@@ -1052,6 +1057,10 @@ async function startTaskNow({
       if (!currentTask) {
         return;
       }
+      if (currentTask.status === TaskStatus.CLOSED) {
+        broadcastTasks();
+        return;
+      }
       setTask(markTaskExited(currentTask, { exitCode, signal }));
       broadcastTasks();
     });
@@ -1701,6 +1710,8 @@ async function taskDeckEnvironmentForTask(task, command, hostStatusFile) {
           TASKDECK_MANAGER_CONTEXT_FILE: managerReadablePaths.contextFile,
           TASKDECK_MANAGER_UNREAD_EVENTS_FILE: managerReadablePaths.unreadEventsFile,
           TASKDECK_MANAGER_ACTION_SOCKET: managerReadablePaths.actionSocket,
+          TASKDECK_MANAGER_ACTION_LOG_DIR: managerReadablePaths.actionLogDir,
+          TASKDECK_MANAGER_ACTION_HISTORY_FILE: managerReadablePaths.actionHistoryFile,
         }
       : {}),
   };
@@ -1715,6 +1726,8 @@ async function managerReadableVisiblePathsForTask(command) {
     contextFile: joinVisiblePath(visibleDataRoot, MANAGER_READABLE_DIRNAME, MANAGER_READABLE_CONTEXT_FILENAME),
     unreadEventsFile: joinVisiblePath(visibleDataRoot, MANAGER_READABLE_DIRNAME, MANAGER_READABLE_UNREAD_EVENTS_FILENAME),
     actionSocket: joinVisiblePath(visibleDataRoot, "run", path.basename(managerActionSocketPath)),
+    actionLogDir: joinVisiblePath(visibleDataRoot, "manager-actions"),
+    actionHistoryFile: joinVisiblePath(visibleDataRoot, "manager-actions", "history.json"),
   };
 }
 
@@ -2000,7 +2013,9 @@ async function handleManagerActionSocketMessage(rawAction) {
   try {
     parsed = JSON.parse(rawAction);
   } catch {
-    return managerActionError("invalid_json", "Manager action must be a JSON object.");
+    const result = managerActionError("invalid_json", "Manager action must be a JSON object.");
+    await writeManagerActionLog(managerActionLogRecord({ action: "invalid_json" }), result);
+    return result;
   }
   return executeManagerAction(parsed);
 }
@@ -2008,25 +2023,33 @@ async function handleManagerActionSocketMessage(rawAction) {
 async function executeManagerAction(action) {
   const validation = validateManagerAction(action);
   if (!validation.ok) {
-    return managerActionError("invalid_action", validation.error);
+    const result = managerActionError("invalid_action", validation.error);
+    await writeManagerActionLog(managerActionLogRecord(action), result);
+    return result;
   }
 
   const normalizedAction = validation.action;
   if (processedManagerActionIds.has(normalizedAction.actionId)) {
-    return {
+    const result = {
       ok: true,
       deduped: true,
       actionId: normalizedAction.actionId,
       action: normalizedAction.action,
       message: "Manager action was already processed.",
     };
+    await writeManagerActionLog(normalizedAction, result);
+    return result;
   }
 
   let result;
   if (normalizedAction.action === "ack") {
     result = await executeManagerAckAction(normalizedAction);
+  } else if (normalizedAction.action === "review") {
+    result = await executeManagerReviewAction(normalizedAction);
+  } else if (normalizedAction.action === "close") {
+    result = await executeManagerCloseAction(normalizedAction);
   } else {
-    result = managerActionError("unsupported_action", "Only ack is supported by this manager action endpoint.");
+    result = managerActionError("unsupported_action", "Only ack, review, and close are supported by this manager action endpoint.");
   }
 
   if (result.ok) {
@@ -2041,9 +2064,9 @@ function validateManagerAction(value) {
     return { ok: false, error: "Manager action must be a JSON object." };
   }
 
-  const action = String(value.action || value.type || "").trim();
-  if (action !== "ack") {
-    return { ok: false, error: "Manager action must be ack." };
+  const action = normalizeManagerActionType(value.action || value.type);
+  if (!managerActionTypes.has(action)) {
+    return { ok: false, error: "Manager action must be ack, review, or close." };
   }
 
   const actionId = sanitizeManagerEventId(value.actionId || randomUUID());
@@ -2064,8 +2087,11 @@ function validateManagerAction(value) {
 
   const eventId = sanitizeManagerEventId(value.eventId || value.managerEventId || "");
   const taskId = String(value.taskId || value.targetTaskId || "").trim();
-  if (!eventId && !taskId) {
+  if (action === "ack" && !eventId && !taskId) {
     return { ok: false, error: "ack requires eventId or taskId." };
+  }
+  if ((action === "review" || action === "close") && !taskId) {
+    return { ok: false, error: `${action} requires taskId.` };
   }
 
   return {
@@ -2076,9 +2102,33 @@ function validateManagerAction(value) {
       actorTaskId,
       eventId,
       taskId,
+      reason: String(value.reason || "").trim(),
       requestedAt: typeof value.requestedAt === "string" && value.requestedAt.trim() ? value.requestedAt : new Date().toISOString(),
     },
   };
+}
+
+function managerActionLogRecord(value = {}) {
+  return {
+    action: normalizeManagerActionType(value.action || value.type) || "invalid",
+    actionId: sanitizeManagerEventId(value.actionId || randomUUID()) || randomUUID(),
+    actorTaskId: String(value.actorTaskId || "").trim(),
+    eventId: sanitizeManagerEventId(value.eventId || value.managerEventId || ""),
+    taskId: String(value.taskId || value.targetTaskId || "").trim(),
+    reason: String(value.reason || "").trim(),
+    requestedAt: typeof value.requestedAt === "string" && value.requestedAt.trim() ? value.requestedAt : new Date().toISOString(),
+  };
+}
+
+function normalizeManagerActionType(action) {
+  const normalizedAction = String(action || "").trim();
+  if (normalizedAction === "mark-reviewed" || normalizedAction === "markReviewed" || normalizedAction === "markTaskReviewed") {
+    return "review";
+  }
+  if (normalizedAction === "archive" || normalizedAction === "archive-task" || normalizedAction === "closeTask") {
+    return "close";
+  }
+  return normalizedAction;
 }
 
 async function executeManagerAckAction(action) {
@@ -2124,6 +2174,67 @@ async function executeManagerAckAction(action) {
     taskAttentionAcknowledged,
     taskAttentionSkippedReason,
     event: ackedEvent,
+    tasks: listTasks(),
+    runningTaskId: getPrimaryRunningTaskId(),
+    runningTaskIds: getRunningTaskIds(),
+  };
+}
+
+async function executeManagerReviewAction(action) {
+  const reviewedAt = new Date().toISOString();
+  const task = tasks.get(action.taskId);
+  if (!task) {
+    return managerActionError("task_not_found", "Task not found.", action);
+  }
+
+  const alreadyReviewed = Boolean(task.reviewedAt);
+  if (!alreadyReviewed) {
+    setTask(markTaskReviewed(task, { reviewedAt, reviewedByTaskId: action.actorTaskId }));
+    await persistTasks();
+  }
+
+  await refreshManagerReadableFiles();
+  broadcastTasks();
+
+  return {
+    ok: true,
+    actionId: action.actionId,
+    action: action.action,
+    taskId: action.taskId,
+    reviewed: !alreadyReviewed,
+    alreadyReviewed,
+    task: serializeTaskForClient(tasks.get(action.taskId)),
+    tasks: listTasks(),
+    runningTaskId: getPrimaryRunningTaskId(),
+    runningTaskIds: getRunningTaskIds(),
+  };
+}
+
+async function executeManagerCloseAction(action) {
+  const closedAt = new Date().toISOString();
+  const task = tasks.get(action.taskId);
+  if (!task) {
+    return managerActionError("task_not_found", "Task not found.", action);
+  }
+
+  const alreadyClosed = Boolean(task.closedAt || task.status === TaskStatus.CLOSED);
+  if (!alreadyClosed) {
+    setTask(markTaskClosed(task, { closedAt, closedByTaskId: action.actorTaskId }));
+    await persistTasks();
+    await stopTaskProcesses(action.taskId);
+  }
+
+  await refreshManagerReadableFiles();
+  broadcastTasks();
+
+  return {
+    ok: true,
+    actionId: action.actionId,
+    action: action.action,
+    taskId: action.taskId,
+    closed: !alreadyClosed,
+    alreadyClosed,
+    task: serializeTaskForClient(tasks.get(action.taskId)),
     tasks: listTasks(),
     runningTaskId: getPrimaryRunningTaskId(),
     runningTaskIds: getRunningTaskIds(),
@@ -2208,9 +2319,47 @@ async function writeManagerActionLog(action, result) {
   const filename = `${action.requestedAt.replace(/[^0-9]/g, "").slice(0, 14)}-${action.actionId}.json`;
   const filePath = path.join(managerActionLogRoot, filename);
   const tempPath = `${filePath}.tmp`;
+  const loggedAt = new Date().toISOString();
+  const entry = { action, result, loggedAt };
   await fs.mkdir(managerActionLogRoot, { recursive: true });
-  await fs.writeFile(tempPath, `${JSON.stringify({ action, result, loggedAt: new Date().toISOString() }, null, 2)}\n`);
+  await fs.writeFile(tempPath, `${JSON.stringify(entry, null, 2)}\n`);
   await fs.rename(tempPath, filePath);
+  await writeManagerActionHistory(entry, filename);
+}
+
+async function writeManagerActionHistory(entry, filename) {
+  let history = [];
+  try {
+    const parsed = JSON.parse(await fs.readFile(managerActionHistoryPath, "utf8"));
+    if (Array.isArray(parsed?.actions)) {
+      history = parsed.actions;
+    }
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      console.warn(`TaskDeck could not read manager action history: ${error.message}`);
+    }
+  }
+
+  const actionSummary = {
+    actionId: entry.action.actionId,
+    action: entry.action.action,
+    actorTaskId: entry.action.actorTaskId || "",
+    eventId: entry.action.eventId || "",
+    taskId: entry.action.taskId || "",
+    ok: Boolean(entry.result.ok),
+    code: entry.result.code || "",
+    error: entry.result.error || "",
+    deduped: Boolean(entry.result.deduped),
+    loggedAt: entry.loggedAt,
+    file: filename,
+  };
+  const actions = [actionSummary, ...history.filter((item) => item?.actionId !== entry.action.actionId)].slice(0, 50);
+  await writeJsonAtomic(managerActionHistoryPath, {
+    kind: "taskDeckManagerActionHistory",
+    version: 1,
+    updatedAt: entry.loggedAt,
+    actions,
+  });
 }
 
 function managerActionError(code, message, action = null) {
@@ -2238,6 +2387,8 @@ async function refreshManagerReadableFiles() {
     generatedAt,
     paths: {
       managerInboxDir: ".taskdeck/manager-inbox",
+      managerActionsDir: ".taskdeck/manager-actions",
+      managerActionHistoryFile: path.join(".taskdeck", "manager-actions", "history.json"),
       contextFile: path.join(".taskdeck", MANAGER_READABLE_DIRNAME, MANAGER_READABLE_CONTEXT_FILENAME),
       unreadEventsFile: path.join(".taskdeck", MANAGER_READABLE_DIRNAME, MANAGER_READABLE_UNREAD_EVENTS_FILENAME),
     },
@@ -2347,7 +2498,7 @@ function formatManagerNudgeInputForPty() {
       "Report your judgment in this terminal response only.",
       "Do not write TASKDECK_STATUS_FILE.",
       "Do not command workers directly.",
-      "Use taskdeckctl ack only when acknowledging a manager inbox event or task attention state.",
+      "Use taskdeckctl ack, taskdeckctl review, or taskdeckctl close for supported manager writes.",
       "Do not mutate TaskDeck state directly.",
     ].join("\n"),
   );

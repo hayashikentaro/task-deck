@@ -2,7 +2,14 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { createTask, serializeTask } from "@taskdeck/core";
+import {
+  AttentionState,
+  TaskStatus,
+  createTask,
+  markTaskClosed,
+  markTaskReviewed,
+  serializeTask,
+} from "@taskdeck/core";
 import {
   createManagerChildStatusEvent,
   isManagerNotifiableChildState,
@@ -149,6 +156,8 @@ describe("manager readable context helpers", () => {
       generatedAt: "2026-06-12T00:02:00.000Z",
       paths: {
         managerInboxDir: ".taskdeck/manager-inbox",
+        managerActionsDir: ".taskdeck/manager-actions",
+        managerActionHistoryFile: ".taskdeck/manager-actions/history.json",
         contextFile: ".taskdeck/manager-readable/context.md",
         unreadEventsFile: ".taskdeck/manager-readable/unread-events.json",
       },
@@ -158,7 +167,8 @@ describe("manager readable context helpers", () => {
     expect(markdown).toContain("Report your judgment in this terminal response only.");
     expect(markdown).toContain("Do not write TASKDECK_STATUS_FILE.");
     expect(markdown).toContain("Do not command worker sessions directly.");
-    expect(markdown).toContain("Use taskdeckctl ack only when acknowledging a manager inbox event or task attention state.");
+    expect(markdown).toContain("Use taskdeckctl ack, taskdeckctl review, or taskdeckctl close");
+    expect(markdown).toContain(".taskdeck/manager-actions/history.json");
     expect(markdown).toContain("Judgment output: this terminal response only");
     expect(markdown).not.toContain("Your bounded judgment/status: TASKDECK_STATUS_FILE");
     expect(markdown).toContain(".taskdeck/manager-readable/unread-events.json");
@@ -181,6 +191,37 @@ describe("manager task metadata", () => {
     });
 
     expect(serializeTask(task).isManager).toBe(true);
+  });
+
+  it("serializes manager review and close metadata", () => {
+    const task = createTask({
+      title: "Child ready for review",
+      command: "echo ready",
+      cwd: ".",
+    });
+    const reviewed = markTaskReviewed(
+      {
+        ...task,
+        attentionState: AttentionState.REVIEW_READY,
+      },
+      { reviewedAt: "2026-06-12T00:03:00.000Z", reviewedByTaskId: "task_manager" },
+    );
+    const closed = markTaskClosed(reviewed, {
+      closedAt: "2026-06-12T00:04:00.000Z",
+      closedByTaskId: "task_manager",
+    });
+
+    expect(serializeTask(reviewed)).toMatchObject({
+      attentionState: AttentionState.NONE,
+      reviewedAt: "2026-06-12T00:03:00.000Z",
+      reviewedByTaskId: "task_manager",
+    });
+    expect(serializeTask(closed)).toMatchObject({
+      status: TaskStatus.CLOSED,
+      attentionState: AttentionState.NONE,
+      closedAt: "2026-06-12T00:04:00.000Z",
+      closedByTaskId: "task_manager",
+    });
   });
 });
 
