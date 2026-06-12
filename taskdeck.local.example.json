@@ -3,7 +3,7 @@
   "agentProfiles": [
     {
       "id": "codex",
-      "label": "Codex CLI",
+      "label": "Codex",
       "command": "docker start taskdeck-agent-1 >/dev/null && docker exec -it -w /workspace taskdeck-agent-1 sh -lc 'TERM=xterm-256color codex'",
       "description": "Replace taskdeck-agent-1 with your Docker container name and /workspace with its workspace path.",
       "diagnosticContainer": "taskdeck-agent-1",
@@ -11,6 +11,22 @@
       "modelOptions": [
         { "id": "default", "label": "Default" }
       ]
+    },
+    {
+      "id": "claude",
+      "label": "Claude",
+      "command": "docker start taskdeck-agent-1 >/dev/null && docker exec -it -w /workspace taskdeck-agent-1 claude",
+      "description": "Replace taskdeck-agent-1 with your Docker container name and /workspace with its workspace path.",
+      "diagnosticContainer": "taskdeck-agent-1",
+      "diagnosticWorkspace": "/workspace"
+    },
+    {
+      "id": "aider",
+      "label": "Aider",
+      "command": "docker start taskdeck-agent-1 >/dev/null && docker exec -it -w /workspace taskdeck-agent-1 aider",
+      "description": "Replace taskdeck-agent-1 with your Docker container name and /workspace with its workspace path.",
+      "diagnosticContainer": "taskdeck-agent-1",
+      "diagnosticWorkspace": "/workspace"
     },
     {
       "id": "goose",
@@ -21,12 +37,10 @@
       "diagnosticWorkspace": "/workspace"
     },
     {
-      "id": "zsh",
-      "label": "zsh",
-      "command": "docker start taskdeck-agent-1 >/dev/null && docker exec -it -w /workspace taskdeck-agent-1 sh -lc 'if command -v zsh >/dev/null 2>&1; then exec zsh; elif command -v bash >/dev/null 2>&1; then exec bash; else exec sh; fi'",
-      "description": "Replace taskdeck-agent-1 with your Docker container name and /workspace with its workspace path.",
-      "diagnosticContainer": "taskdeck-agent-1",
-      "diagnosticWorkspace": "/workspace"
+      "id": "zsh-host",
+      "label": "zsh - host",
+      "command": "zsh",
+      "description": "Run zsh on the host in the selected project cwd"
     }
   ]
 }
