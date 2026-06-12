@@ -9,7 +9,7 @@ import type { AgentProfile, SavedCodexSession } from "./types";
 
 const codexProfile: AgentProfile = {
   id: "codex",
-  label: "Codex CLI",
+  label: "Codex",
   command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex --dangerously-bypass-approvals-and-sandbox'",
   description: "Run Codex CLI inside the AI agent sandbox container",
 };

@@ -83,7 +83,7 @@ const managerAgentProfileId = "taskdeck-manager";
 const defaultAgentProfiles = [
   {
     id: "codex",
-    label: "Codex CLI",
+    label: "Codex",
     command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex'",
     description: "Run Codex CLI inside the AI agent sandbox container",
     diagnosticContainer: "ai-agent-sandbox-agent-1",
@@ -3714,7 +3714,7 @@ function codexStorageSessionFromLine(line, profile, mounts) {
 
   const provider = "codex";
   const agentProfileId = String(profile.id || "codex");
-  const agentLabel = String(profile.label || "Codex CLI");
+  const agentLabel = String(profile.label || "Codex");
   const commandEnvironment = codexCommandEnvironment({ command: profile.command, agentProfileId });
   const detectedAt = String(event?.payload?.timestamp || timestampFromCodexSessionPath(filePath) || "");
   const containerCwd = String(event?.payload?.cwd || "/workspace");
@@ -3835,7 +3835,7 @@ async function savedCodexSessionFromTask(task) {
   }
 
   const agentProfileId = String(task.agentProfileId || "codex");
-  const agentLabel = String(task.agentLabel || "Codex CLI");
+  const agentLabel = String(task.agentLabel || "Codex");
   const commandEnvironment = codexCommandEnvironment(task);
   const key = `${provider}:${agentProfileId}:${commandEnvironment}:${sessionId}`;
   return {

@@ -138,7 +138,7 @@ export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreate
       agentLabel: selectedAgentIsManager
         ? selectedAgent?.label || "TaskDeck Manager"
         : sessionMode === "saved_codex"
-          ? selectedSavedSession?.agentLabel || "Codex CLI"
+          ? selectedSavedSession?.agentLabel || "Codex"
           : selectedAgent?.label || "Agent",
       agentPermissionLevel: selectedAgentIsCodex ? codexPermissionLevel : undefined,
       agentReasoningEffort:

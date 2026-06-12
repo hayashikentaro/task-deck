@@ -441,7 +441,7 @@ function displayTaskTitle(title: string | undefined) {
 
 function agentOrCommandLabel(command: string) {
   const lowered = command.toLowerCase();
-  if (/\bcodex\b/.test(lowered)) return "Codex CLI";
+  if (/\bcodex\b/.test(lowered)) return "Codex";
   if (/\bgoose\b/.test(lowered)) return "Goose";
   if (/\baider\b/.test(lowered)) return "aider";
   return shortCommand(command);
