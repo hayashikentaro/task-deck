@@ -363,7 +363,7 @@ TaskDeck also generates manager-readable views from unread valid manager events:
 .taskdeck/manager-readable/unread-events.json
 ```
 
-A running `TaskDeck Manager` session receives a short nudge when a new manager event is available. The nudge is not the source of truth; the manager must read the inbox and manager-readable files. For this MVP, the manager writes only its own bounded judgment/status/notes, such as to its own `TASKDECK_STATUS_FILE`, and must not command worker sessions directly.
+A running `TaskDeck Manager` session receives a short nudge when a new manager event is available. The nudge is not the source of truth; the manager must read the inbox and manager-readable files. For this MVP, the manager reports judgment in the terminal response only, must not write `TASKDECK_STATUS_FILE`, and must not command worker sessions directly.
 
 Read unread valid manager inbox events with:
 

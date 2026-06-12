@@ -49,7 +49,7 @@ flowchart TD
 
   Manager -->|read| ReadModel
   Manager -->|read / ack| ManagerInbox
-  Manager -->|status / judgment output| ManagerOutput[Manager status / notes]
+  Manager -->|terminal response only| ManagerOutput[Manager judgment]
 
   Manager -. future write .-> Taskdeckctl[taskdeckctl]
   Taskdeckctl -. local IPC: Unix domain socket .-> Socket[.taskdeck/run/manager-actions.sock]
@@ -116,13 +116,7 @@ It may read:
 - action results returned by TaskDeck after write support exists
 ```
 
-For the immediate read-loop MVP, it may write only its own bounded judgment output:
-
-```text
-- its own status
-- its own notes
-- its own review/judgment artifact
-```
+For the immediate read-loop MVP, it reports judgment in the manager terminal response only. It must not write judgment/status files, including `TASKDECK_STATUS_FILE`.
 
 After the read loop is proven, manager write operations should go through:
 
@@ -176,10 +170,10 @@ worker status
   -> server emits global manager event / global readable context
   -> global manager receives short nudge
   -> global manager reads files
-  -> global manager reports its judgment in its own status/notes
+  -> global manager reports its judgment in the terminal response only
 ```
 
-The read-loop MVP should prove that worker status from any project can flow into global manager inbox/context, be read by the global manager, and produce bounded manager judgment output.
+The read-loop MVP should prove that worker status from any project can flow into global manager inbox/context, be read by the global manager, and produce manager judgment in the terminal response only.
 
 Current read-loop MVP files:
 
@@ -202,7 +196,7 @@ TASKDECK_STATUS_FILE
 
 When a new unread manager event is created, TaskDeck sends only a short nudge to running manager sessions. The nudge is a wake-up signal; the durable source of truth remains the manager inbox and manager-readable files.
 
-For this MVP, the manager reports only by writing its own bounded judgment/status/notes, for example to `TASKDECK_STATUS_FILE`. It must not command workers, call `taskdeckctl`, mutate TaskDeck state directly, or behave as if it is scoped to one selected project.
+For this MVP, the manager reports judgment in the terminal response only. It must not write `TASKDECK_STATUS_FILE`, command workers, call `taskdeckctl`, mutate TaskDeck state directly, or behave as if it is scoped to one selected project.
 
 ### Manager write path
 
@@ -388,8 +382,8 @@ worker in any project writes append-only status
 server emits global manager event / readable context
 global manager receives nudge
 global manager reads files
-global manager reports its judgment in its own status/notes
-UI or logs make the manager judgment visible
+global manager reports its judgment in the terminal response only
+the manager terminal makes the manager judgment visible
 ```
 
 Manual QA outline:
@@ -402,8 +396,9 @@ Manual QA outline:
 5. Confirm `.taskdeck/manager-inbox/*.json` exists.
 6. Confirm `.taskdeck/manager-readable/context.md` and `.taskdeck/manager-readable/unread-events.json` exist.
 7. Confirm the manager terminal receives the short nudge.
-8. Have the manager read the files and write its own bounded judgment to `TASKDECK_STATUS_FILE`.
-9. Confirm no manager-to-worker command is sent.
+8. Have the manager read the files and report judgment in the terminal response only.
+9. Confirm the manager does not write `TASKDECK_STATUS_FILE`.
+10. Confirm no manager-to-worker command is sent.
 ```
 
 ### Phase 7: Define manager write schema and transport

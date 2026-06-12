@@ -1993,8 +1993,12 @@ function formatManagerNudgeInputForPty() {
   return formatAgentInputForPty(
     [
       "New TaskDeck manager event is available.",
-      "Read TASKDECK_MANAGER_CONTEXT_FILE and TASKDECK_MANAGER_UNREAD_EVENTS_FILE, then report your judgment in TASKDECK_STATUS_FILE.",
+      "Read TASKDECK_MANAGER_CONTEXT_FILE and TASKDECK_MANAGER_UNREAD_EVENTS_FILE.",
+      "Report your judgment in this terminal response only.",
+      "Do not write TASKDECK_STATUS_FILE.",
       "Do not command workers directly.",
+      "Do not call taskdeckctl for this MVP.",
+      "Do not mutate TaskDeck state directly.",
     ].join("\n"),
   );
 }

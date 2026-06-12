@@ -6,7 +6,8 @@ export const MANAGER_READABLE_VERSION = 1;
 
 const managerReadableInstructions = [
   "Read the manager inbox and generated readable context before judging.",
-  "For this MVP, write only your own bounded status, notes, or judgment.",
+  "Report your judgment in this terminal response only.",
+  "Do not write TASKDECK_STATUS_FILE.",
   "Do not command worker sessions directly.",
   "Do not call taskdeckctl for this MVP.",
   "Do not mutate TaskDeck state directly.",
@@ -63,7 +64,7 @@ export function buildManagerReadableContext({
   if (paths.managerInboxDir) lines.push(`- Manager inbox: ${paths.managerInboxDir}`);
   if (paths.contextFile) lines.push(`- Context: ${paths.contextFile}`);
   if (paths.unreadEventsFile) lines.push(`- Unread events JSON: ${paths.unreadEventsFile}`);
-  lines.push("- Your bounded judgment/status: TASKDECK_STATUS_FILE");
+  lines.push("- Judgment output: this terminal response only");
 
   lines.push("", `## Unread Manager Events (${document.events.length})`);
   if (document.events.length === 0) {
