@@ -15,9 +15,6 @@ Use file-based request files for Codex parent control operations.
 Currently implemented:
 
 - create child session requests via `scripts/write-child-session-request.mjs`.
-
-Planned in #52:
-
 - send follow-up messages from a parent session to an existing child session via a file-based message request writer.
 
 ### Child to TaskDeck: status files
@@ -30,7 +27,7 @@ This is already file-based and remains the supported child-to-TaskDeck reporting
 
 Stdout marker blocks are not the Codex parent control path.
 
-They may remain available for zsh/manual/debug smoke tests, but docs should not teach them as the normal way to create child sessions or send parent-to-child instructions. The follow-up message marker path is scheduled to be replaced by #52.
+They may remain available for zsh/manual/debug smoke tests, but docs should not teach them as the normal way to create child sessions or send parent-to-child instructions.
 
 ## Create Child Session Request
 
@@ -191,11 +188,87 @@ Parent agents request `workPackageId` and `filesLikelyToChange`, but they do not
 
 ## Parent-To-Child Message Request
 
-Follow-up instructions from a parent session to an existing child session are being moved to file-based transport in #52.
+A Codex parent should send follow-up instructions to an existing child session by running the writer script:
 
-Until #52 is implemented, the old stdout marker path may exist for zsh/manual/debug use, but Codex parent sessions should not use stdout marker blocks as the normal control path.
+```sh
+node scripts/write-child-session-message-request.mjs \
+  --work-package codex-low-standby \
+  --message "Please inspect issue #34 and report whether you need more context. Do not edit files."
+```
 
-This document intentionally does not describe the old marker format in detail. #52 owns the file-based replacement.
+Target one child by either:
+
+- `--work-package <id>` for a `workPackageId` scoped to the validated parent task.
+- `--child-session <taskId>` for an exact child task id owned by the validated parent task.
+
+Defaults:
+
+- `--reason "Parent follow-up instruction."`
+- `--request-id` may be provided for an explicit idempotency key.
+
+The writer reads `TASKDECK_TASK_ID` from the parent task environment and includes it as `parentTaskId` when available.
+
+The writer creates:
+
+```text
+.taskdeck/requests/child-message/<requestId>.request.json
+```
+
+It writes to a `.tmp` file first, then atomically renames to `.request.json`.
+
+The writer may print a short human-readable summary and file path. It must not print `TASKDECK_CHILD_SESSION_MESSAGE_REQUEST` marker blocks.
+
+TaskDeck server polls the request directory, validates request files, resolves the target against child sessions owned by the parent task, sends valid messages through the existing task input path, and writes one result file:
+
+```text
+.taskdeck/requests/child-message/<requestId>.accepted.json
+.taskdeck/requests/child-message/<requestId>.rejected.json
+```
+
+Accepted result shape:
+
+```json
+{
+  "kind": "childSessionMessageRequestResult",
+  "version": 1,
+  "requestId": "message-codex-low-standby-20260608120000-a1b2c3",
+  "state": "accepted",
+  "targetTaskId": "task_child",
+  "processedAt": "2026-06-08T12:00:01.000Z"
+}
+```
+
+Rejected result shape:
+
+```json
+{
+  "kind": "childSessionMessageRequestResult",
+  "version": 1,
+  "requestId": "message-codex-low-standby-20260608120000-a1b2c3",
+  "state": "rejected",
+  "error": "No child matched workPackageId codex-low-standby for this parent.",
+  "processedAt": "2026-06-08T12:00:01.000Z"
+}
+```
+
+The writer creates JSON like this. Parent agents should not hand-write this file.
+
+```json
+{
+  "kind": "childSessionMessageRequest",
+  "version": 1,
+  "requestId": "message-codex-low-standby-20260608120000-a1b2c3",
+  "createdAt": "2026-06-08T12:00:00.000Z",
+  "parentTaskId": "task_parent",
+  "target": {
+    "workPackageId": "codex-low-standby"
+  },
+  "message": "Please inspect issue #34 and report whether you need more context. Do not edit files.",
+  "reason": "Parent follow-up instruction."
+}
+```
+
+The old stdout marker path may exist for zsh/manual/debug use, but Codex parent sessions must use the writer script instead of marker blocks. This document intentionally does not describe the old marker format in detail.
 
 ## Child Status File Report
 

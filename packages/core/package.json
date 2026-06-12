@@ -6,6 +6,7 @@
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js",
-    "./child-session-file-requests": "./src/childSessionFileRequests.js"
+    "./child-session-file-requests": "./src/childSessionFileRequests.js",
+    "./child-session-message-file-requests": "./src/childSessionMessageFileRequests.js"
   }
 }

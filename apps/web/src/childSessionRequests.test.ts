@@ -216,6 +216,13 @@ describe("parseChildSessionMessageRequestsFromText", () => {
     ]);
   });
 
+  it("does not parse message request JSON without explicit stdout markers", () => {
+    const result = parseChildSessionMessageRequestsFromText(JSON.stringify(validMessageRequest()));
+
+    expect(result.errors).toEqual([]);
+    expect(result.requests).toEqual([]);
+  });
+
   it("parses multiple valid child session message request blocks", () => {
     const firstBlock = messageRequestBlock(
       validMessageRequest({ target: { childSessionId: "task_first" }, message: "First message." }),

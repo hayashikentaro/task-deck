@@ -36,6 +36,12 @@ import {
   createChildSessionRequestResult,
   validateChildSessionFileRequest,
 } from "@taskdeck/core/child-session-file-requests";
+import {
+  buildChildSessionMessageDelivery,
+  childSessionMessageFileRequestResultFilenames,
+  createChildSessionMessageRequestResult,
+  validateChildSessionMessageFileRequest,
+} from "@taskdeck/core/child-session-message-file-requests";
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
@@ -51,6 +57,7 @@ const logRoot = path.join(dataRoot, "logs");
 const attachmentRoot = path.join(dataRoot, "attachments");
 const pendingAttachmentRoot = path.join(attachmentRoot, "pending");
 const childSessionRequestRoot = path.join(dataRoot, "requests", "child-session");
+const childSessionMessageRequestRoot = path.join(dataRoot, "requests", "child-message");
 const defaultConfigPath = path.join(repoRoot, "taskdeck.config.json");
 const localConfigPath = path.join(repoRoot, "taskdeck.local.json");
 const envConfigPath = process.env.TASKDECK_CONFIG ? path.resolve(process.env.TASKDECK_CONFIG) : "";
@@ -125,12 +132,14 @@ const imageAttachmentExtensions = new Map([
 const activePtys = new Map();
 const startedChildSessionRequestKeys = new Set();
 const pendingChildSessionStarts = new Map();
+const processedChildSessionMessageRequestIds = new Set();
 const childStatusFileSnapshots = new Map();
 let persistTasksQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
 let persistSessionLabelsQueue = Promise.resolve();
 let childStatusPollInFlight = false;
 let childSessionRequestPollInFlight = false;
+let childSessionMessageRequestPollInFlight = false;
 
 app.use(express.json());
 
@@ -591,30 +600,14 @@ wss.on("connection", (socket) => {
 
     if (message.type === "input") {
       const taskId = String(message.taskId || "").trim();
-      const task = tasks.get(taskId);
-      const activePty = activePtys.get(taskId);
-      if (task?.terminalInputLockedAt) {
-        send(socket, { type: "error", message: "Terminal input is locked for this task." });
-        if (inputDebugEnabled) {
-          console.log(`[TaskDeck input] ignored task=${taskId || "-"} reason=terminal-input-locked`);
+      const inputResult = sendTaskInputToPty(taskId, message.data, message.source || "client");
+      if (!inputResult.ok) {
+        if (inputResult.reason === "terminal-input-locked") {
+          send(socket, { type: "error", message: "Terminal input is locked for this task." });
         }
-        return;
-      }
-      if (activePty && typeof message.data === "string") {
-        logInputDebug(message.taskId, message.data, message.source || "client");
-        updateAgentStateFromTaskDeckEvent(taskId, AgentState.WORKING, {
-          reason: "User input was sent to the PTY.",
-          source: AgentStateSource.TASKDECK_EVENT,
-          confidence: AgentStateConfidence.HIGH,
-          attentionState: AttentionState.NONE,
-          attentionReason: "User input was sent to the task.",
-          attentionSource: AgentStateSource.TASKDECK_EVENT,
-          attentionConfidence: AgentStateConfidence.HIGH,
-        });
-        resetPendingInputPrompt(activePty);
-        writeOrQueuePtyInput(activePty, message.data, message.source || "client");
-      } else if (inputDebugEnabled) {
-        console.log(`[TaskDeck input] ignored task=${message.taskId || "-"} reason=no-active-pty-or-invalid-data`);
+        if (inputDebugEnabled) {
+          console.log(`[TaskDeck input] ignored task=${taskId || "-"} reason=${inputResult.reason}`);
+        }
       }
       return;
     }
@@ -659,6 +652,7 @@ wss.on("connection", (socket) => {
 await initializePersistence();
 await scanChildStatusFiles();
 await scanChildSessionRequestFiles();
+await scanChildSessionMessageRequestFiles();
 await configureWebApp();
 
 server.on("error", (error) => {
@@ -679,6 +673,9 @@ childStatusTimer.unref?.();
 
 const childSessionRequestTimer = setInterval(scanChildSessionRequestFiles, childSessionRequestPollIntervalMs);
 childSessionRequestTimer.unref?.();
+
+const childSessionMessageRequestTimer = setInterval(scanChildSessionMessageRequestFiles, childSessionRequestPollIntervalMs);
+childSessionMessageRequestTimer.unref?.();
 
 function buildUniqueNewSessionTitle(title, sessionMode) {
   const normalizedTitle = String(title || "").trim();
@@ -1174,6 +1171,121 @@ async function writeChildSessionRequestResult(requestId, { state, createdTaskIds
   await fs.rename(tempPath, filePath);
 }
 
+async function scanChildSessionMessageRequestFiles() {
+  if (childSessionMessageRequestPollInFlight) {
+    return;
+  }
+
+  childSessionMessageRequestPollInFlight = true;
+  try {
+    await fs.mkdir(childSessionMessageRequestRoot, { recursive: true });
+    const filenames = await fs.readdir(childSessionMessageRequestRoot);
+    for (const filename of filenames) {
+      if (!filename.endsWith(".request.json") || filename.endsWith(".tmp")) {
+        continue;
+      }
+      await processChildSessionMessageRequestFile(path.join(childSessionMessageRequestRoot, filename));
+    }
+  } catch (error) {
+    console.warn(`TaskDeck child session message request scan failed: ${error.message}`);
+  } finally {
+    childSessionMessageRequestPollInFlight = false;
+  }
+}
+
+async function processChildSessionMessageRequestFile(filePath) {
+  const fallbackRequestId = path.basename(filePath, ".request.json");
+  if (
+    processedChildSessionMessageRequestIds.has(fallbackRequestId) ||
+    await childSessionMessageRequestResultExists(fallbackRequestId)
+  ) {
+    return;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(await fs.readFile(filePath, "utf8"));
+  } catch (error) {
+    processedChildSessionMessageRequestIds.add(fallbackRequestId);
+    await writeChildSessionMessageRequestResult(fallbackRequestId, {
+      state: "rejected",
+      error: `Could not parse request JSON: ${error.message}`,
+    });
+    return;
+  }
+
+  const validation = validateChildSessionMessageFileRequest(parsed);
+  const requestId = validation.ok ? validation.request.requestId : String(parsed?.requestId || fallbackRequestId || "").trim();
+  if (
+    processedChildSessionMessageRequestIds.has(requestId) ||
+    await childSessionMessageRequestResultExists(requestId)
+  ) {
+    return;
+  }
+
+  processedChildSessionMessageRequestIds.add(requestId);
+
+  if (!validation.ok) {
+    await writeChildSessionMessageRequestResult(requestId, {
+      state: "rejected",
+      error: validation.error,
+    });
+    return;
+  }
+
+  const request = validation.request;
+  const buildResult = buildChildSessionMessageDelivery({
+    parentTask: tasks.get(request.parentTaskId),
+    request,
+    tasks,
+    formatInput: formatParentInstructionInputForPty,
+  });
+  if (!buildResult.ok) {
+    await writeChildSessionMessageRequestResult(request.requestId, {
+      state: "rejected",
+      error: buildResult.error,
+    });
+    return;
+  }
+
+  const sendResult = sendTaskInputToPty(buildResult.childTask.id, buildResult.data, "parent-instruction-file");
+  if (!sendResult.ok) {
+    await writeChildSessionMessageRequestResult(request.requestId, {
+      state: "rejected",
+      error: childSessionMessageInputError(buildResult.childTask, sendResult.reason),
+    });
+    return;
+  }
+
+  await writeChildSessionMessageRequestResult(request.requestId, {
+    state: "accepted",
+    targetTaskId: buildResult.childTask.id,
+  });
+}
+
+async function childSessionMessageRequestResultExists(requestId) {
+  const filenames = childSessionMessageFileRequestResultFilenames(requestId);
+  return (await fileExists(path.join(childSessionMessageRequestRoot, filenames.accepted))) ||
+    (await fileExists(path.join(childSessionMessageRequestRoot, filenames.rejected)));
+}
+
+async function writeChildSessionMessageRequestResult(requestId, { state, targetTaskId = "", error = "" }) {
+  const filenames = childSessionMessageFileRequestResultFilenames(requestId);
+  const filename = state === "accepted" ? filenames.accepted : filenames.rejected;
+  const filePath = path.join(childSessionMessageRequestRoot, filename);
+  const tempPath = `${filePath}.tmp`;
+  const result = createChildSessionMessageRequestResult({
+    requestId,
+    state,
+    targetTaskId,
+    error,
+  });
+
+  await fs.mkdir(childSessionMessageRequestRoot, { recursive: true });
+  await fs.writeFile(tempPath, `${JSON.stringify(result, null, 2)}\n`);
+  await fs.rename(tempPath, filePath);
+}
+
 async function fileExists(filePath) {
   try {
     await fs.access(filePath);
@@ -1318,6 +1430,46 @@ function writeOrQueuePtyInput(activePty, data, source) {
 
   flushQueuedPtyInput(activePty);
   activePty.process.write(data);
+}
+
+function sendTaskInputToPty(taskId, data, source = "client") {
+  const normalizedTaskId = String(taskId || "").trim();
+  const task = tasks.get(normalizedTaskId);
+  const activePty = activePtys.get(normalizedTaskId);
+
+  if (task?.terminalInputLockedAt) {
+    return { ok: false, reason: "terminal-input-locked" };
+  }
+  if (!activePty || typeof data !== "string") {
+    return { ok: false, reason: "no-active-pty-or-invalid-data" };
+  }
+
+  logInputDebug(normalizedTaskId, data, source);
+  updateAgentStateFromTaskDeckEvent(normalizedTaskId, AgentState.WORKING, {
+    reason: "User input was sent to the PTY.",
+    source: AgentStateSource.TASKDECK_EVENT,
+    confidence: AgentStateConfidence.HIGH,
+    attentionState: AttentionState.NONE,
+    attentionReason: "User input was sent to the task.",
+    attentionSource: AgentStateSource.TASKDECK_EVENT,
+    attentionConfidence: AgentStateConfidence.HIGH,
+  });
+  resetPendingInputPrompt(activePty);
+  writeOrQueuePtyInput(activePty, data, source);
+  return { ok: true };
+}
+
+function childSessionMessageInputError(childTask, reason) {
+  if (reason === "terminal-input-locked") {
+    return `target child session "${childTask.title || childTask.id}" has terminal input locked.`;
+  }
+  return `target child session "${childTask.title || childTask.id}" is not accepting input.`;
+}
+
+function formatParentInstructionInputForPty(parentTask, message) {
+  const parentLabel = parentTask.title || parentTask.id;
+  const text = normalizeTerminalInput(`Parent instruction from ${parentLabel}:\n${message}`);
+  return `${bracketedPasteStart}${text}${bracketedPasteEnd}${terminalEnter}`;
 }
 
 function scheduleQueuedPtyInputFlush(activePty) {
