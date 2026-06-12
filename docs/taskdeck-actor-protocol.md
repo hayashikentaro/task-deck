@@ -14,24 +14,16 @@ Recommended local layout:
 
 ```text
 ~/Documents/task-deck                 stable/main clone
-~/Documents/task-deck-manager-write   feature clone
+~/Documents/task-deck-manager-actions stable/current manager-action QA clone when needed
 ```
 
-Keep development isolation through separate clone path, branch, and `PORT`.
-
-For current manager write verification:
-
-```text
-branch: feature/manager-write-path
-clone path: /Users/hayashikentarou/Documents/task-deck-manager-write
-port: 3001
-```
+Keep development isolation through separate clone path, branch, and `PORT` when parallel or risky work requires it.
 
 ## Core principle
 
 TaskDeck should separate agent-readable communication from state mutation.
 
-Non-manager AI agents should not directly mutate TaskDeck state and should not send commands directly to other agents. They produce append-only file outputs. The manager reads those outputs and decides what should happen next. The manager also does not directly control worker agents; it calls a constrained TaskDeck command interface, and TaskDeck server performs the actual validated mutation.
+Non-manager AI agents should not directly mutate TaskDeck state and should not send commands directly to other agents. They produce append-only file outputs. The manager reads those outputs and decides what should happen next. The manager also does not directly control worker agents; it calls a constrained TaskDeck command interface, and TaskDeck server performs the actual validated action.
 
 The read loop has been proven first; the current implementation routes the minimum manager write path through `taskdeckctl`.
 
@@ -39,7 +31,7 @@ The read loop has been proven first; the current implementation routes the minim
 Workers write files.
 Manager reads files first.
 Manager calls taskdeckctl for supported writes.
-Server mutates state.
+Server performs the validated action.
 ```
 
 ## Actor diagram
@@ -53,7 +45,7 @@ flowchart TD
   ControlRoot --> ReadModel[Global Manager Readable Context]
   ControlRoot --> Manager[Global Manager Agent]
 
-  Server -->|validated PTY input / process control| Runtime[Runtime / PTY Sessions]
+  Server -->|validated session/process operation| Runtime[Runtime / PTY Sessions]
   Runtime --> ProjectA[Project A Worker Sessions]
   Runtime --> ProjectB[Project B Worker Sessions]
   Runtime --> ProjectC[Project C Worker Sessions]
@@ -82,9 +74,9 @@ flowchart TD
 
   ProjectA -. forbidden .-> ProjectB
   ProjectB -. forbidden .-> ProjectA
-  Manager -. no direct terminal write .-> ProjectA
-  Manager -. no direct terminal write .-> ProjectB
-  Manager -. no direct terminal write .-> ProjectC
+  Manager -. no direct session command .-> ProjectA
+  Manager -. no direct session command .-> ProjectB
+  Manager -. no direct session command .-> ProjectC
 ```
 
 ## Actors
@@ -120,7 +112,7 @@ They must not:
 - write another agent's status
 - send commands directly to another agent
 - call manager-action commands
-- write raw PTY input to another session
+- bypass TaskDeck's supported request/action surfaces
 - smuggle raw commands, env, secrets, or auto-approval fields through request files
 ```
 
@@ -136,7 +128,8 @@ It may read:
 - file change notifications
 - global manager inbox
 - global generated readable views across projects
-- action results returned by TaskDeck after `taskdeckctl` actions
+- generated manager action guidance
+- action results returned by TaskDeck after taskdeckctl actions
 ```
 
 The read-loop MVP used terminal response only for manager judgment. In the current minimum write path, the manager may call `taskdeckctl ack`, `taskdeckctl review`, and `taskdeckctl close` for supported actions. It must not write judgment/status files, including `TASKDECK_STATUS_FILE`.
@@ -147,7 +140,7 @@ Manager write operations go through:
 taskdeckctl
 ```
 
-The manager must not directly mutate TaskDeck state or directly write into worker terminals.
+The manager must not directly mutate TaskDeck state or directly command worker sessions.
 
 It is not a worker inside Project A, Project B, or Project C. Worker sessions remain project-bound; the manager session remains TaskDeck control/document-root-bound.
 
@@ -163,7 +156,7 @@ It is responsible for:
 - projection
 - action execution
 - action logging
-- PTY input delivery
+- session/process coordination
 - UI broadcast
 ```
 
@@ -186,19 +179,7 @@ App/Server
 
 The manager reads durable context from files. A nudge is only a wake-up signal and is not the source of truth.
 
-The read loop is the first behavior to prove with a real manager session:
-
-```text
-worker status
-  -> server emits global manager event / global readable context
-  -> global manager receives short nudge
-  -> global manager reads files
-  -> global manager reports its judgment in the terminal response only
-```
-
-The read-loop MVP should prove that worker status from any project can flow into global manager inbox/context, be read by the global manager, and produce manager judgment in the terminal response only.
-
-Current read-loop MVP files:
+Current manager-readable files:
 
 ```text
 .taskdeck/manager-inbox/<eventId>.json
@@ -217,9 +198,33 @@ TASKDECK_MANAGER_UNREAD_EVENTS_FILE
 TASKDECK_STATUS_FILE
 ```
 
+Future generated manager action guidance should add explicit pointers such as:
+
+```text
+TASKDECK_MANAGER_ACTIONS_FILE
+TASKDECK_MANAGER_CAPABILITIES_FILE
+```
+
 When a new unread manager event is created, TaskDeck sends only a short nudge to running manager sessions. The nudge is a wake-up signal; the durable source of truth remains the manager inbox and manager-readable files.
 
-For the completed read-loop MVP, the manager reported judgment in the terminal response only. In the current minimum write path, it may call `taskdeckctl` for supported manager actions, but it must not write `TASKDECK_STATUS_FILE`, command workers directly, mutate TaskDeck state directly, or behave as if it is scoped to one selected project.
+In the current minimum write path, the manager may call `taskdeckctl` for supported manager actions, but it must not write `TASKDECK_STATUS_FILE`, command workers directly, mutate TaskDeck state directly, or behave as if it is scoped to one selected project.
+
+### Manager action discoverability
+
+A real manager session should not infer supported commands from static docs alone. Static docs can describe design direction, but the running TaskDeck server should expose the exact manager actions that are currently supported.
+
+The manager should read an execution-time action guide before acting. The guide should be generated from the same action registry or allowlist used by the server and `taskdeckctl` help.
+
+Recommended generated files:
+
+```text
+.taskdeck/manager-readable/actions.md
+.taskdeck/manager-readable/capabilities.json
+```
+
+The generated action guide should include only currently supported commands and may include concrete suggested actions for each event using real `eventId` and `taskId` values.
+
+Important rule: do not show a command to the manager unless the server and `taskdeckctl` both support it. If a future action is not implemented end-to-end, it must not appear in generated manager action guidance.
 
 ### Manager write path
 
@@ -231,7 +236,7 @@ Manager
   -> local IPC endpoint
   -> TaskDeck server
   -> validation / dedupe / action log
-  -> acknowledgement mutation
+  -> state update / process coordination
 ```
 
 The preferred local IPC endpoint is a Unix domain socket, not an exposed Web API.
@@ -244,7 +249,7 @@ The server records the active transports in `.taskdeck/run/manager-actions.json`
 
 This avoids opening a network API surface while still avoiding the roundabout manager-action-file path for commands.
 
-Current supported command:
+Current supported commands:
 
 ```sh
 taskdeckctl ack --event <eventId>
@@ -255,7 +260,7 @@ taskdeckctl close --task <taskId>
 
 `taskdeckctl ack --event` writes the manager event `.ack.json` sidecar through the server, refreshes the generated manager-readable files, acknowledges the target task attention state when applicable, logs the manager action under `.taskdeck/manager-actions/`, and broadcasts the updated task snapshot. Repeated `actionId` values are deduped by the server process, and events that already have an ack sidecar return a successful already-acknowledged result.
 
-`taskdeckctl review --task` marks a task as reviewed and clears review-ready attention when applicable. `taskdeckctl close --task` marks a task closed, stops any active PTY process for that task, preserves the task record/logs for history, and removes it from the running task set. Both commands are idempotent when the target task is already reviewed or closed.
+`taskdeckctl review --task` marks a task as reviewed and clears review-ready attention when applicable. `taskdeckctl close --task` marks a task closed, stops any active process for that task, preserves the task record/logs for history, and removes it from the running task set. Both commands are idempotent when the target task is already reviewed or closed.
 
 Every manager action result is written as a per-action JSON file under `.taskdeck/manager-actions/`. A compact recent history is also available at `.taskdeck/manager-actions/history.json`.
 
@@ -292,61 +297,23 @@ Manager
 
 Since the manager does not need UI-level latency but does need reliable command semantics, a local IPC command endpoint gives a cleaner command path while keeping mutation inside the server.
 
-## Future manager write flow
+## Future manager-to-worker messaging
+
+Manager-to-worker messaging is a future action, not part of the currently supported manager command set unless the running server and `taskdeckctl` expose it in the generated action guide.
+
+The future implementation should extend the same structured action/result model and the same `taskdeckctl` boundary. It must not be documented in a way that makes real manager sessions believe it is already supported.
+
+Before future messaging becomes manager-visible, the implementation must include:
 
 ```text
-Manager Agent
-  -> taskdeckctl send-task-input --target-task <taskId> --message <message>
-  -> Unix domain socket
-  -> TaskDeck server action executor
-  -> validate actor / action / target
-  -> write action log
-  -> deliver PTY input to target session
-  -> return result
-```
-
-Example:
-
-```sh
-taskdeckctl send-task-input \
-  --target-task task_child_001 \
-  --message "前回の報告では原因が曖昧です。失敗原因を1つに絞って、根拠を status に出してください。"
-```
-
-## Server-side requirements for future write support
-
-The server must treat manager commands as structured actions, not raw terminal access.
-
-Required safeguards:
-
-```text
-- manager-only capability
-- single manager action executor
-- allowlisted action types
+- taskdeckctl parser/help support
+- server-side action validation and allowlisting
 - actorTaskId validation
 - targetTaskId validation
 - actionId dedupe
-- action log
+- action log/history
 - clear success/failure result
-```
-
-Allowed action types:
-
-```text
-acknowledgeManagerEvent
-markTaskReviewed
-closeTask
-```
-
-Forbidden operations:
-
-```text
-rawTerminalWrite
-rawSql
-arbitraryTaskUpdate
-writeOtherAgentStatus
-deleteLogs
-debugStateMutation
+- generated manager-readable action guidance
 ```
 
 ## Capability boundary
@@ -360,6 +327,7 @@ Manager:
   can see .taskdeck/run/manager-actions.json
   can use the advertised manager action transport
   can execute taskdeckctl
+  can read generated manager action guidance
 
 Worker:
   cannot see manager-actions.json or manager-actions.sock
@@ -421,43 +389,34 @@ global manager reports its judgment in the terminal response only
 the manager terminal makes the manager judgment visible
 ```
 
-Manual QA outline:
-
-```text
-1. Start TaskDeck from the QA clone.
-2. Start a `TaskDeck Manager` session from the TaskDeck control/document root, not from an individual project workspace.
-3. Start a parent/child session or any parent-spawned child capable of writing status.
-4. Have the child write `ready_for_review`, `blocked`, or `failed` to `TASKDECK_STATUS_FILE`.
-5. Confirm `.taskdeck/manager-inbox/*.json` exists.
-6. Confirm `.taskdeck/manager-readable/context.md` and `.taskdeck/manager-readable/unread-events.json` exist.
-7. Confirm the manager terminal receives the short nudge.
-8. Have the manager read the files and report judgment in the terminal response only.
-9. Confirm the manager does not write `TASKDECK_STATUS_FILE`.
-10. Confirm no manager-to-worker command is sent.
-```
-
 ### Phase 7: Define manager write schema and transport
 
-The minimum manager write vertical slice now defines the first manager action schema and server-owned local IPC transports. Future actions should extend the same structured action/result model:
+The minimum manager write vertical slice defines the first manager action schema and server-owned local IPC transports. Future actions should extend the same structured action/result model.
+
+### Phase 8: Implement minimum manager write support
+
+The first implemented manager write operations are acknowledgement, review marking, and task closing.
+
+### Phase 9: Stabilize manager action discoverability and QA
+
+The current phase is to make supported actions obvious to real manager agents and prevent unsupported future commands from being inferred.
+
+Verify or add:
 
 ```text
-taskDeckManagerAction
-taskDeckManagerActionResult
-sendTaskInput
-createChildSession
-requestHumanDecision
+- generated manager-readable actions.md
+- generated manager-readable capabilities.json
+- TASKDECK_MANAGER_ACTIONS_FILE
+- TASKDECK_MANAGER_CAPABILITIES_FILE
+- manager nudge instruction to read the action guide
+- per-event suggested actions where appropriate
+- taskdeckctl help / server allowlist / generated guide consistency
+- real-manager QA for ack, review, and close
 ```
 
-### Phase 8: Implement manager write support
+### Phase 10: Add future manager actions only after discoverability is stable
 
-The first implemented manager write operations are acknowledgement, review marking, and task closing. Future write operations should be added behind the same server-owned action executor and local IPC boundary:
-
-```text
-server-side manager action executor
-Unix socket endpoint
-taskdeckctl manager commands
-write-path QA
-```
+Future actions such as manager-to-worker messaging, child creation, or human decision requests should be added only after the generated action guide and action registry are in place.
 
 ## Non-goals for now
 
@@ -465,10 +424,10 @@ write-path QA
 - SQLite migration
 - tmux reattach
 - remote manager
-- Web API manager write endpoint
+- manager-facing raw Web API action surface
 - direct worker-to-worker communication
-- manager raw PTY access
-- broad manager write operations beyond ack/review/close
+- manager direct session command path
+- broad manager write operations beyond ack/review/close before action discoverability is stable
 ```
 
 ## Design slogan
@@ -476,6 +435,7 @@ write-path QA
 ```text
 Read as text.
 Write through taskdeckctl.
+Expose only supported actions.
 Future writes extend the same command boundary.
-Mutate only through the server.
+Act only through the server.
 ```
