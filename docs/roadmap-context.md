@@ -20,8 +20,9 @@ The current design direction is:
 
 - worker agents read generated context and write append-only status/result/artifact files;
 - manager reads file-based manager inbox events and generated readable views;
-- manager writes through `taskdeckctl`;
-- `taskdeckctl` talks to a local IPC endpoint, preferably a Unix domain socket, rather than an exposed Web API;
+- the immediate priority is to prove the manager read loop with a real manager session before building manager write;
+- once read behavior is proven, manager writes should go through `taskdeckctl`;
+- `taskdeckctl` should talk to a local IPC endpoint, preferably a Unix domain socket, rather than an exposed Web API;
 - TaskDeck server validates, dedupes, logs, executes, and broadcasts every mutation.
 
 Related design doc:
@@ -64,7 +65,8 @@ Related issues:
 - Prefer bounded file, environment, local IPC, and command protocols for machine-readable coordination.
 - Keep worker-to-TaskDeck reporting constrained and append-only where possible.
 - Avoid free-form child-to-parent or worker-to-worker chat.
-- Keep manager write operations behind `taskdeckctl` and server-side validation.
+- Prove manager read behavior before implementing manager write behavior.
+- Keep future manager write operations behind `taskdeckctl` and server-side validation.
 - Avoid exposing manager write as a broad Web API surface.
 - Avoid building UI around unstable configuration concepts.
 - Prefer diagnostics over settings mutation UI.
@@ -74,6 +76,7 @@ Related issues:
 
 - Public HTTP API.
 - Broad manager Web API surface.
+- Manager write implementation before manager read-loop validation.
 - SQLite migration.
 - tmux/session reattach.
 - General workflow queue.
