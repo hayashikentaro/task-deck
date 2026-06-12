@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   CHILD_SESSION_FILE_REQUEST_KIND,
+  createChildSessionFileRequestDraft,
   createChildSessionRequestResult,
   validateChildSessionFileRequest,
 } from "@taskdeck/core/child-session-file-requests";
@@ -46,7 +47,7 @@ describe("file-based child session request writer", () => {
       expect(fileRequest.sessions[0]).toMatchObject({
         title: "Codex low child session",
         agentProfileId: "codex",
-        agentPermissionLevel: "read_only",
+        agentPermissionLevel: "full_access",
         agentReasoningEffort: "low",
         cwd: ".",
         workPackageId: "codex-low-standby",
@@ -76,9 +77,44 @@ describe("file-based child session request writer", () => {
       ),
     ).toThrow(/do not use a container-only \/workspace path/);
   });
+
+  it.each(["read_only", "workspace_write"])("keeps explicit --permission %s", (permission) => {
+    const parsed = parseWriteChildSessionRequestArgs(
+      [
+        "--title",
+        "Explicit permission child session",
+        "--work-package",
+        `explicit-${permission}`,
+        "--permission",
+        permission,
+        "--instruction",
+        "Report ready.",
+        "--request-id",
+        `explicit-${permission}`,
+      ],
+      { TASKDECK_TASK_ID: "task_parent" },
+    );
+    const request = createChildSessionFileRequestDraft(parsed.draft);
+
+    expect(request.sessions[0].agentPermissionLevel).toBe(permission);
+    expect(validateChildSessionFileRequest(request).ok).toBe(true);
+  });
 });
 
 describe("file-based child session request validation", () => {
+  it("defaults draft helper permission to full_access", () => {
+    const request = createChildSessionFileRequestDraft({
+      requestId: "default-permission-test",
+      parentTaskId: "task_parent",
+      title: "Default permission child",
+      workPackageId: "default-permission-test",
+      initialInstruction: "Report ready.",
+    });
+
+    expect(request.sessions[0].agentPermissionLevel).toBe("full_access");
+    expect(validateChildSessionFileRequest(request).ok).toBe(true);
+  });
+
   it("rejects forbidden raw command fields", () => {
     const result = validateChildSessionFileRequest({
       kind: "childSessionRequest",

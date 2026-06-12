@@ -28,7 +28,7 @@ Options:
   --instruction <text>         Required initialInstruction.
   --cwd <path>                 TaskDeck-server-visible cwd. Default: .
   --profile <id>               Agent profile id. Default: codex.
-  --permission <level>         full_access, workspace_write, or read_only. Default: read_only.
+  --permission <level>         full_access, workspace_write, or read_only. Default: full_access.
   --reasoning <effort>         low, medium, high, or xhigh. Default: low.
   --reason <text>              Batch reason.
   --file <path>                Repeatable filesLikelyToChange entry.
@@ -51,7 +51,7 @@ export function parseWriteChildSessionRequestArgs(args, env = process.env) {
     reason: "Create a child session using the file-based TaskDeck request writer.",
     title: "",
     agentProfileId: "codex",
-    agentPermissionLevel: "read_only",
+    agentPermissionLevel: "full_access",
     agentReasoningEffort: "low",
     cwd: ".",
     workPackageId: "",

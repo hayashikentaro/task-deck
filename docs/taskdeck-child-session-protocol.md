@@ -43,7 +43,7 @@ node scripts/write-child-session-request.mjs \
 Defaults:
 
 - `--profile codex`
-- `--permission read_only`
+- `--permission full_access`
 - `--reasoning low`
 - `--cwd .`
 - `--reason "Create a child session using the file-based TaskDeck request writer."`
@@ -110,7 +110,7 @@ The writer creates JSON like this. Parent agents should not hand-write this file
     {
       "title": "Codex low child session",
       "agentProfileId": "codex",
-      "agentPermissionLevel": "read_only",
+      "agentPermissionLevel": "full_access",
       "agentReasoningEffort": "low",
       "cwd": ".",
       "workPackageId": "codex-low-standby",

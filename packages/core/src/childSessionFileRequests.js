@@ -12,7 +12,7 @@ export function createChildSessionFileRequestDraft({
   reason = "Create a child session using the file-based TaskDeck request writer.",
   title,
   agentProfileId = "codex",
-  agentPermissionLevel = "read_only",
+  agentPermissionLevel = "full_access",
   agentReasoningEffort = "low",
   cwd = ".",
   workPackageId,
