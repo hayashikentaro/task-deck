@@ -137,6 +137,23 @@ Follow these boundaries:
 
 Do not add raw Web API manager-write paths, raw terminal-write paths, raw SQL mutation paths, or direct worker-to-worker command paths unless the user explicitly approves a protocol change and the actor protocol document is updated in the same change.
 
+## Branch Discipline
+
+Before editing files, agents must check and record the current branch:
+
+```sh
+git status --short --branch
+git branch --show-current
+```
+
+If the current branch is `main`, stop immediately and report. Do not edit files, commit, or push from `main` unless the user explicitly instructs you to work on `main`.
+
+If the current branch is not `main`, continue working on that same branch. Do not switch branches, create a new branch, rebase, or retarget work unless the user explicitly instructs you to.
+
+When committing and pushing, push back to the same branch that was current at the start of the task.
+
+Preserve user changes already present in the working tree. If the working tree has unrelated changes, do not overwrite them; report them before proceeding.
+
 ## Working Guidelines
 
 - Keep changes scoped to the user's request.
