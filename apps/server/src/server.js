@@ -96,18 +96,20 @@ const defaultAgentProfiles = [
     ],
   },
   {
-    id: managerAgentProfileId,
-    label: "TaskDeck Manager",
-    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex'",
-    description: "Run a dedicated Codex manager session for reading TaskDeck manager inbox and readable context files",
+    id: "claude",
+    label: "Claude",
+    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 claude",
+    description: "Run Claude inside the AI agent sandbox container",
     diagnosticContainer: "ai-agent-sandbox-agent-1",
     diagnosticWorkspace: "/workspace",
-    modelOptions: [
-      { id: "default", label: "Default" },
-      { id: "gpt-5.5", label: "gpt-5.5" },
-      { id: "gpt-5.5-thinking", label: "gpt-5.5 Thinking" },
-      { id: "gpt-5.4-codex", label: "gpt-5.4 Codex" },
-    ],
+  },
+  {
+    id: "aider",
+    label: "Aider",
+    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 aider",
+    description: "Run Aider inside the AI agent sandbox container",
+    diagnosticContainer: "ai-agent-sandbox-agent-1",
+    diagnosticWorkspace: "/workspace",
   },
   {
     id: "goose",
@@ -124,6 +126,26 @@ const defaultAgentProfiles = [
     description: "Plain interactive zsh shell",
     diagnosticContainer: "ai-agent-sandbox-agent-1",
     diagnosticWorkspace: "/workspace",
+  },
+  {
+    id: "zsh-host",
+    label: "zsh - host",
+    command: "zsh",
+    description: "Run zsh on the host in the selected project cwd",
+  },
+  {
+    id: managerAgentProfileId,
+    label: "TaskDeck Manager",
+    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex'",
+    description: "Run a dedicated Codex manager session for reading TaskDeck manager inbox and readable context files",
+    diagnosticContainer: "ai-agent-sandbox-agent-1",
+    diagnosticWorkspace: "/workspace",
+    modelOptions: [
+      { id: "default", label: "Default" },
+      { id: "gpt-5.5", label: "gpt-5.5" },
+      { id: "gpt-5.5-thinking", label: "gpt-5.5 Thinking" },
+      { id: "gpt-5.4-codex", label: "gpt-5.4 Codex" },
+    ],
   },
 ];
 
