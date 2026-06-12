@@ -10,9 +10,12 @@ TaskDeck should separate agent-readable communication from state mutation.
 
 Non-manager AI agents should not directly mutate TaskDeck state and should not send commands directly to other agents. They produce append-only file outputs. The manager reads those outputs and decides what should happen next. The manager also does not directly control worker agents; it calls a constrained TaskDeck command interface, and TaskDeck server performs the actual validated mutation.
 
+The immediate implementation priority is to prove the manager read loop before implementing manager write.
+
 ```text
 Workers write files.
-Manager calls taskdeckctl.
+Manager reads files first.
+Manager later calls taskdeckctl.
 Server mutates state.
 ```
 
@@ -40,10 +43,11 @@ flowchart TD
 
   Manager -->|read| ReadModel
   Manager -->|read / ack| ManagerInbox
+  Manager -->|status / judgment output| ManagerOutput[Manager status / notes]
 
-  Manager -->|taskdeckctl command| Taskdeckctl[taskdeckctl]
-  Taskdeckctl -->|local IPC: Unix domain socket| Socket[.taskdeck/run/manager-actions.sock]
-  Socket -->|structured manager action| Server
+  Manager -. future write .-> Taskdeckctl[taskdeckctl]
+  Taskdeckctl -. local IPC: Unix domain socket .-> Socket[.taskdeck/run/manager-actions.sock]
+  Socket -. structured manager action .-> Server
 
   Server -->|broadcast state update| UI
 
@@ -98,10 +102,18 @@ It may read:
 - file change notifications
 - manager inbox
 - generated readable views
-- action results returned by TaskDeck
+- action results returned by TaskDeck after write support exists
 ```
 
-It may write by calling:
+For the immediate read-loop MVP, it may write only its own bounded judgment output:
+
+```text
+- its own status
+- its own notes
+- its own review/judgment artifact
+```
+
+After the read loop is proven, manager write operations should go through:
 
 ```text
 taskdeckctl
@@ -144,9 +156,21 @@ App/Server
 
 The manager reads durable context from files. A nudge is only a wake-up signal and is not the source of truth.
 
+The read loop is the first behavior to prove with a real manager session:
+
+```text
+worker status
+  -> server emits manager event / readable context
+  -> manager receives short nudge
+  -> manager reads files
+  -> manager reports its judgment in its own status/notes
+```
+
 ### Manager write path
 
-Manager writes go through `taskdeckctl`.
+Manager writes are intentionally later than manager reads.
+
+After the read loop is validated, manager writes should go through `taskdeckctl`.
 
 ```text
 Manager
@@ -198,7 +222,7 @@ Manager
 
 Since the manager does not need UI-level latency but does need reliable command semantics, a local IPC command endpoint gives a cleaner command path while keeping mutation inside the server.
 
-## Preferred manager write flow
+## Future manager write flow
 
 ```text
 Manager Agent
@@ -219,7 +243,7 @@ taskdeckctl send-task-input \
   --message "前回の報告では原因が曖昧です。失敗原因を1つに絞って、根拠を status に出してください。"
 ```
 
-## Server-side requirements
+## Server-side requirements for future write support
 
 The server must treat manager commands as structured actions, not raw terminal access.
 
@@ -277,15 +301,58 @@ Worker:
 
 If running in containers, mount the manager action socket only into the manager environment.
 
+This boundary is for future manager write support. The immediate manager read-loop MVP does not require the socket yet.
+
 ## MVP implementation sequence
 
 ### Phase 1: Document protocol boundary
 
 Add and maintain this actor protocol document. Reference it from `AGENTS.md` so future agents do not collapse worker, manager, and server responsibilities.
 
-### Phase 2: Define manager action schema
+### Phase 2: Validate manager inbox MVP
 
-Create shared schema/types for manager actions and results:
+Use the isolated QA branch/worktree to verify that child status changes emit valid manager inbox events.
+
+### Phase 3: Add a dedicated manager agent profile/session
+
+Introduce a way to run a manager session whose job is to read manager inbox events and generated readable context.
+
+### Phase 4: Add manager-readable context
+
+Generate or expose files the manager can read without scraping UI or PTY transcripts:
+
+```text
+unread manager events
+active tasks
+child status summaries
+relevant task summaries
+```
+
+### Phase 5: Wire short manager nudge
+
+When manager inbox changes, server sends a short nudge to the manager session:
+
+```text
+New manager event is available.
+Read the manager inbox and decide the next action.
+```
+
+### Phase 6: QA the manager read loop
+
+Verify:
+
+```text
+worker writes append-only status
+server emits manager event / readable context
+manager receives nudge
+manager reads files
+manager reports its judgment in its own status/notes
+UI or logs make the manager judgment visible
+```
+
+### Phase 7: Define manager write schema and transport
+
+Only after the read loop is proven, define shared schema/types for manager actions and results:
 
 ```text
 taskDeckManagerAction
@@ -295,63 +362,15 @@ createChildSession
 requestHumanDecision
 ```
 
-### Phase 3: Add server manager action executor
+### Phase 8: Implement manager write support
 
-Implement a single server-side executor:
-
-```text
-executeManagerAction(action)
-  -> validate
-  -> dedupe
-  -> log
-  -> execute
-  -> return result
-```
-
-### Phase 4: Add Unix socket endpoint
-
-Server creates a local manager action socket:
+Implement, in order:
 
 ```text
-.taskdeck/run/manager-actions.sock
-```
-
-The socket accepts structured manager action requests and returns structured results.
-
-### Phase 5: Add taskdeckctl
-
-Add CLI commands that talk to the local socket:
-
-```text
-taskdeckctl send-task-input
-taskdeckctl create-child-session
-taskdeckctl request-human-decision
-taskdeckctl ack-manager-event
-```
-
-### Phase 6: Wire manager nudge
-
-When manager inbox changes, server sends a short nudge to the manager session:
-
-```text
-New manager event is available.
-Read the manager inbox and decide the next action.
-```
-
-### Phase 7: QA
-
-Verify:
-
-```text
-worker writes append-only status
-server emits manager event
-manager reads file
-manager calls taskdeckctl
-server validates action
-server delivers input to target worker
-worker receives instruction
-action result is returned/logged
-UI reflects the result
+server-side manager action executor
+Unix socket endpoint
+taskdeckctl manager commands
+write-path QA
 ```
 
 ## Non-goals for now
@@ -363,12 +382,14 @@ UI reflects the result
 - Web API manager write endpoint
 - direct worker-to-worker communication
 - manager raw PTY access
+- manager write implementation before manager read-loop validation
 ```
 
 ## Design slogan
 
 ```text
 Read as text.
-Write through taskdeckctl.
+Prove manager read before manager write.
+Write through taskdeckctl later.
 Mutate only through the server.
 ```
