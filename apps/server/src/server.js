@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import http from "node:http";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,6 +48,7 @@ import {
   generateManagerChildStatusEventId,
   isManagerNotifiableChildState,
   managerEventFilenames,
+  sanitizeManagerEventId,
   validateManagerEvent,
 } from "@taskdeck/core/manager-inbox";
 import {
@@ -76,6 +78,9 @@ const managerInboxRoot = path.join(dataRoot, "manager-inbox");
 const managerReadableRoot = path.join(dataRoot, MANAGER_READABLE_DIRNAME);
 const managerReadableContextPath = path.join(managerReadableRoot, MANAGER_READABLE_CONTEXT_FILENAME);
 const managerReadableUnreadEventsPath = path.join(managerReadableRoot, MANAGER_READABLE_UNREAD_EVENTS_FILENAME);
+const managerActionRunRoot = path.join(dataRoot, "run");
+const managerActionSocketPath = path.join(managerActionRunRoot, "manager-actions.sock");
+const managerActionLogRoot = path.join(dataRoot, "manager-actions");
 const defaultConfigPath = path.join(repoRoot, "taskdeck.config.json");
 const localConfigPath = path.join(repoRoot, "taskdeck.local.json");
 const envConfigPath = process.env.TASKDECK_CONFIG ? path.resolve(process.env.TASKDECK_CONFIG) : "";
@@ -188,6 +193,7 @@ const activePtys = new Map();
 const startedChildSessionRequestKeys = new Set();
 const pendingChildSessionStarts = new Map();
 const processedChildSessionMessageRequestIds = new Set();
+const processedManagerActionIds = new Set();
 const childStatusFileSnapshots = new Map();
 let persistTasksQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
@@ -712,6 +718,7 @@ await scanChildStatusFiles();
 await scanChildSessionRequestFiles();
 await scanChildSessionMessageRequestFiles();
 await refreshManagerReadableFiles();
+await startManagerActionSocket();
 await configureWebApp();
 
 server.on("error", (error) => {
@@ -1691,6 +1698,7 @@ async function taskDeckEnvironmentForTask(task, command, hostStatusFile) {
           TASKDECK_MANAGER_READABLE_DIR: managerReadablePaths.readableDir,
           TASKDECK_MANAGER_CONTEXT_FILE: managerReadablePaths.contextFile,
           TASKDECK_MANAGER_UNREAD_EVENTS_FILE: managerReadablePaths.unreadEventsFile,
+          TASKDECK_MANAGER_ACTION_SOCKET: managerReadablePaths.actionSocket,
         }
       : {}),
   };
@@ -1704,6 +1712,7 @@ async function managerReadableVisiblePathsForTask(command) {
     readableDir: joinVisiblePath(visibleDataRoot, MANAGER_READABLE_DIRNAME),
     contextFile: joinVisiblePath(visibleDataRoot, MANAGER_READABLE_DIRNAME, MANAGER_READABLE_CONTEXT_FILENAME),
     unreadEventsFile: joinVisiblePath(visibleDataRoot, MANAGER_READABLE_DIRNAME, MANAGER_READABLE_UNREAD_EVENTS_FILENAME),
+    actionSocket: joinVisiblePath(visibleDataRoot, "run", "manager-actions.sock"),
   };
 }
 
@@ -1893,6 +1902,293 @@ async function writeManagerEventFile(event) {
   await fs.mkdir(managerInboxRoot, { recursive: true });
   await fs.writeFile(tempPath, `${JSON.stringify(event, null, 2)}\n`);
   await fs.rename(tempPath, filePath);
+}
+
+async function startManagerActionSocket() {
+  await fs.mkdir(managerActionRunRoot, { recursive: true });
+  await removeStaleManagerActionSocket();
+
+  const actionServer = net.createServer((socket) => {
+    let buffer = "";
+
+    socket.setEncoding("utf8");
+    socket.on("data", (chunk) => {
+      buffer += chunk;
+      const newlineIndex = buffer.indexOf("\n");
+      if (newlineIndex === -1) {
+        return;
+      }
+
+      const rawAction = buffer.slice(0, newlineIndex);
+      buffer = "";
+      handleManagerActionSocketMessage(rawAction)
+        .then((result) => {
+          socket.end(`${JSON.stringify(result)}\n`);
+        })
+        .catch((error) => {
+          socket.end(`${JSON.stringify(managerActionError("internal_error", error.message || "Manager action failed."))}\n`);
+        });
+    });
+
+    socket.on("error", (error) => {
+      console.warn(`TaskDeck manager action socket error: ${error.message}`);
+    });
+  });
+
+  actionServer.on("error", (error) => {
+    console.error(`TaskDeck manager action socket failed at ${managerActionSocketPath}: ${error.message}`);
+  });
+
+  actionServer.listen(managerActionSocketPath, async () => {
+    try {
+      await fs.chmod(managerActionSocketPath, 0o600);
+    } catch (error) {
+      if (error.code !== "EINVAL") {
+        console.warn(`TaskDeck could not restrict manager action socket permissions: ${error.message}`);
+      }
+    }
+    console.log(`TaskDeck manager action socket listening at ${managerActionSocketPath}`);
+  });
+}
+
+async function removeStaleManagerActionSocket() {
+  try {
+    const stat = await fs.lstat(managerActionSocketPath);
+    if (!stat.isSocket()) {
+      console.warn(`TaskDeck manager action path exists and is not a socket: ${managerActionSocketPath}`);
+      return;
+    }
+    await fs.unlink(managerActionSocketPath);
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      throw error;
+    }
+  }
+}
+
+async function handleManagerActionSocketMessage(rawAction) {
+  let parsed;
+  try {
+    parsed = JSON.parse(rawAction);
+  } catch {
+    return managerActionError("invalid_json", "Manager action must be a JSON object.");
+  }
+  return executeManagerAction(parsed);
+}
+
+async function executeManagerAction(action) {
+  const validation = validateManagerAction(action);
+  if (!validation.ok) {
+    return managerActionError("invalid_action", validation.error);
+  }
+
+  const normalizedAction = validation.action;
+  if (processedManagerActionIds.has(normalizedAction.actionId)) {
+    return {
+      ok: true,
+      deduped: true,
+      actionId: normalizedAction.actionId,
+      action: normalizedAction.action,
+      message: "Manager action was already processed.",
+    };
+  }
+
+  let result;
+  if (normalizedAction.action === "ack") {
+    result = await executeManagerAckAction(normalizedAction);
+  } else {
+    result = managerActionError("unsupported_action", "Only ack is supported by this manager action endpoint.");
+  }
+
+  if (result.ok) {
+    processedManagerActionIds.add(normalizedAction.actionId);
+  }
+  await writeManagerActionLog(normalizedAction, result);
+  return result;
+}
+
+function validateManagerAction(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, error: "Manager action must be a JSON object." };
+  }
+
+  const action = String(value.action || value.type || "").trim();
+  if (action !== "ack") {
+    return { ok: false, error: "Manager action must be ack." };
+  }
+
+  const actionId = sanitizeManagerEventId(value.actionId || randomUUID());
+  if (!actionId) {
+    return { ok: false, error: "actionId is required." };
+  }
+
+  const actorTaskId = String(value.actorTaskId || "").trim();
+  if (actorTaskId) {
+    const actorTask = tasks.get(actorTaskId);
+    if (!actorTask) {
+      return { ok: false, error: "actorTaskId does not match a known task." };
+    }
+    if (!isManagerTask(actorTask)) {
+      return { ok: false, error: "actorTaskId must reference a manager task." };
+    }
+  }
+
+  const eventId = sanitizeManagerEventId(value.eventId || value.managerEventId || "");
+  const taskId = String(value.taskId || value.targetTaskId || "").trim();
+  if (!eventId && !taskId) {
+    return { ok: false, error: "ack requires eventId or taskId." };
+  }
+
+  return {
+    ok: true,
+    action: {
+      action,
+      actionId,
+      actorTaskId,
+      eventId,
+      taskId,
+      requestedAt: typeof value.requestedAt === "string" && value.requestedAt.trim() ? value.requestedAt : new Date().toISOString(),
+    },
+  };
+}
+
+async function executeManagerAckAction(action) {
+  const ackedAt = new Date().toISOString();
+  let ackedEvent = null;
+  let taskId = action.taskId;
+  let managerEventAcked = false;
+  let taskAttentionAcknowledged = false;
+  let taskAttentionSkippedReason = "";
+
+  if (action.eventId) {
+    const eventResult = await readManagerInboxEvent(action.eventId);
+    if (!eventResult.ok) {
+      return managerActionError(eventResult.code, eventResult.error, action);
+    }
+    ackedEvent = eventResult.event;
+    taskId = taskId || ackedEvent.childTaskId;
+    managerEventAcked = await writeManagerEventAck(ackedEvent, ackedAt, action);
+  }
+
+  if (taskId) {
+    const taskResult = await acknowledgeTaskAttentionFromManager(taskId, ackedAt, { requireTask: !ackedEvent });
+    if (!taskResult.ok) {
+      return managerActionError(taskResult.code, taskResult.error, action);
+    }
+    taskAttentionAcknowledged = taskResult.acknowledged;
+    taskAttentionSkippedReason = taskResult.skippedReason || "";
+  }
+
+  await refreshManagerReadableFiles();
+  broadcastTasks();
+
+  return {
+    ok: true,
+    actionId: action.actionId,
+    action: action.action,
+    eventId: action.eventId || "",
+    taskId: taskId || "",
+    managerEventAcked,
+    taskAttentionAcknowledged,
+    taskAttentionSkippedReason,
+    event: ackedEvent,
+    tasks: listTasks(),
+    runningTaskId: getPrimaryRunningTaskId(),
+    runningTaskIds: getRunningTaskIds(),
+  };
+}
+
+async function readManagerInboxEvent(eventId) {
+  const filenames = managerEventFilenames(eventId);
+  const eventPath = path.join(managerInboxRoot, filenames.event);
+  const ackPath = path.join(managerInboxRoot, filenames.ack);
+
+  if (await fileExists(ackPath)) {
+    return { ok: false, code: "event_already_acked", error: "Manager event is already acknowledged." };
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(await fs.readFile(eventPath, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return { ok: false, code: "event_not_found", error: "Manager event not found." };
+    }
+    return { ok: false, code: "event_read_failed", error: error.message };
+  }
+
+  const validation = validateManagerEvent(parsed);
+  if (!validation.ok) {
+    return { ok: false, code: "invalid_event", error: validation.error };
+  }
+  if (validation.event.eventId !== eventId) {
+    return { ok: false, code: "invalid_event", error: "Manager event id does not match requested event id." };
+  }
+  return { ok: true, event: validation.event };
+}
+
+async function writeManagerEventAck(event, ackedAt, action) {
+  const filenames = managerEventFilenames(event.eventId);
+  const ackPath = path.join(managerInboxRoot, filenames.ack);
+  const tempPath = `${ackPath}.tmp`;
+  if (await fileExists(ackPath)) {
+    return false;
+  }
+
+  const ack = {
+    kind: "taskDeckManagerEventAck",
+    version: 1,
+    eventId: event.eventId,
+    actionId: action.actionId,
+    actorTaskId: action.actorTaskId,
+    ackedAt,
+  };
+  await fs.writeFile(tempPath, `${JSON.stringify(ack, null, 2)}\n`);
+  await fs.rename(tempPath, ackPath);
+  return true;
+}
+
+async function acknowledgeTaskAttentionFromManager(taskId, acknowledgedAt, { requireTask = true } = {}) {
+  const task = tasks.get(taskId);
+  if (!task) {
+    if (!requireTask) {
+      return { ok: true, acknowledged: false, skippedReason: "task_not_found" };
+    }
+    return { ok: false, code: "task_not_found", error: "Task not found." };
+  }
+  if (task.status !== TaskStatus.RUNNING) {
+    if (!requireTask) {
+      return { ok: true, acknowledged: false, skippedReason: "task_not_running" };
+    }
+    return { ok: false, code: "task_not_running", error: "Only running tasks can acknowledge attention." };
+  }
+  if (!task.attentionState || task.attentionState === AttentionState.NONE) {
+    return { ok: true, acknowledged: false, skippedReason: "task_attention_not_required" };
+  }
+
+  resetPendingInputPrompt(activePtys.get(taskId));
+  setTask(markTaskAttentionAcknowledged(task, acknowledgedAt));
+  await persistTasks();
+  return { ok: true, acknowledged: true };
+}
+
+async function writeManagerActionLog(action, result) {
+  const filename = `${action.requestedAt.replace(/[^0-9]/g, "").slice(0, 14)}-${action.actionId}.json`;
+  const filePath = path.join(managerActionLogRoot, filename);
+  const tempPath = `${filePath}.tmp`;
+  await fs.mkdir(managerActionLogRoot, { recursive: true });
+  await fs.writeFile(tempPath, `${JSON.stringify({ action, result, loggedAt: new Date().toISOString() }, null, 2)}\n`);
+  await fs.rename(tempPath, filePath);
+}
+
+function managerActionError(code, message, action = null) {
+  return {
+    ok: false,
+    code,
+    error: message,
+    ...(action?.actionId ? { actionId: action.actionId } : {}),
+    ...(action?.action ? { action: action.action } : {}),
+  };
 }
 
 async function refreshManagerReadableFiles() {

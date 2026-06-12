@@ -9,7 +9,7 @@ const managerReadableInstructions = [
   "Report your judgment in this terminal response only.",
   "Do not write TASKDECK_STATUS_FILE.",
   "Do not command worker sessions directly.",
-  "Do not call taskdeckctl for this MVP.",
+  "Use taskdeckctl ack only when acknowledging a manager inbox event or task attention state.",
   "Do not mutate TaskDeck state directly.",
 ];
 

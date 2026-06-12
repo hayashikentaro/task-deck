@@ -158,7 +158,7 @@ describe("manager readable context helpers", () => {
     expect(markdown).toContain("Report your judgment in this terminal response only.");
     expect(markdown).toContain("Do not write TASKDECK_STATUS_FILE.");
     expect(markdown).toContain("Do not command worker sessions directly.");
-    expect(markdown).toContain("Do not call taskdeckctl for this MVP.");
+    expect(markdown).toContain("Use taskdeckctl ack only when acknowledging a manager inbox event or task attention state.");
     expect(markdown).toContain("Judgment output: this terminal response only");
     expect(markdown).not.toContain("Your bounded judgment/status: TASKDECK_STATUS_FILE");
     expect(markdown).toContain(".taskdeck/manager-readable/unread-events.json");

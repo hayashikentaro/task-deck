@@ -200,17 +200,15 @@ For this MVP, the manager reports judgment in the terminal response only. It mus
 
 ### Manager write path
 
-Manager writes are intentionally later than manager reads.
-
-After the read loop is validated, manager writes should go through `taskdeckctl`.
+Manager writes go through `taskdeckctl`. The first implemented vertical slice is acknowledgement only.
 
 ```text
 Manager
-  -> taskdeckctl
-  -> local IPC endpoint
+  -> taskdeckctl ack
+  -> local IPC endpoint / Unix domain socket
   -> TaskDeck server
   -> validation / dedupe / action log
-  -> execution
+  -> acknowledgement mutation
 ```
 
 The preferred local IPC endpoint is a Unix domain socket, not an exposed Web API.
@@ -220,6 +218,15 @@ The preferred local IPC endpoint is a Unix domain socket, not an exposed Web API
 ```
 
 This avoids opening a network API surface while still avoiding the roundabout manager-action-file path for commands.
+
+Current supported command:
+
+```sh
+taskdeckctl ack --event <eventId>
+taskdeckctl ack --task <taskId>
+```
+
+`taskdeckctl ack --event` writes the manager event `.ack.json` sidecar through the server, refreshes the generated manager-readable files, acknowledges the target task attention state when applicable, logs the manager action under `.taskdeck/manager-actions/`, and broadcasts the updated task snapshot. Repeated `actionId` values are deduped by the server process.
 
 ### Why not raw Web API as the manager-facing surface
 
