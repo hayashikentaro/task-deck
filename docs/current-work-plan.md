@@ -48,9 +48,9 @@ This phase includes:
 - Worker agents should continue to communicate through append-only files and bounded status/reporting surfaces.
 - Worker sessions are project-bound; the manager session is a global TaskDeck supervisor launched from the TaskDeck control/document root.
 - Manager reads are file-based and global across projects: manager inbox, generated readable views, and file change notifications.
-- Proving that a real manager agent can read and understand the manager inbox is more important than building the write path first.
+- Proving that a real manager agent can read and understand the manager inbox was the required prerequisite before manager writes.
 - Manager writes should not be raw Web API calls, raw terminal writes, or direct edits to TaskDeck state.
-- The intended manager write path remains `taskdeckctl` calling a local IPC endpoint owned by TaskDeck server, but it belongs to the next phase now that the read-only manager MVP is complete.
+- The current manager write path is `taskdeckctl` calling a local IPC endpoint owned by TaskDeck server, limited to ack, review, and close before merge.
 - TaskDeck server remains the only actor that validates, dedupes, logs, executes mutations, and delivers PTY input.
 
 ## Current constraints
@@ -60,7 +60,7 @@ This phase includes:
 - Do not let non-manager agents command other agents directly.
 - Do not let manager agents write directly into worker terminals.
 - Do not launch the manager inside an individual project workspace; launch it from the TaskDeck control/document root.
-- Do not implement manager write before validating manager read behavior with a real manager session.
+- The read-only manager behavior is already validated; keep the current manager write scope limited to ack, review, and close before merging.
 - Do not expose a manager Web API endpoint as the first manager write path.
 - Do not start a SQLite migration as part of the immediate manager control plane work.
 - Do not start tmux/session reattach work as part of the immediate manager control plane work; see #60 for future recovery tracking.
