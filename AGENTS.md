@@ -146,7 +146,7 @@ git status --short --branch
 git branch --show-current
 ```
 
-If the current branch is `main`, stop immediately and report. Do not edit files, commit, or push from `main` unless the user explicitly instructs you to work on `main`.
+`main` is an allowed working branch. For single-threaded, low-risk, or explicitly main-targeted tasks, continue on `main`; do not stop merely because the current branch is `main`.
 
 If the current branch is not `main`, continue working on that same branch. Do not switch branches, create a new branch, rebase, or retarget work unless the user explicitly instructs you to.
 
