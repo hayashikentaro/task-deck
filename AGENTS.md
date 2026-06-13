@@ -42,6 +42,8 @@ Do not edit files outside this repository for TaskDeck work unless the user expl
 Read the relevant docs before changing the matching area:
 
 - Product and agent operating principles: `docs/agents/operating-principles.md`
+- Actor-specific documentation map: `docs/agents/README.md`
+- GPT collaborator role guidance: `docs/agents/roles/gpt-collaborator.md`
 - Current short-term execution order: `docs/current-work-plan.md`
 - TaskDeck actor and manager control-plane boundary: `docs/taskdeck-actor-protocol.md`
 - Dedicated manager role guidance: `docs/agents/roles/taskdeck-manager.md`

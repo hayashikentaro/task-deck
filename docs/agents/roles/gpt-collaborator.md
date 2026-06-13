@@ -15,7 +15,8 @@ The GPT collaborator helps with:
 - writing implementation prompts for Codex or other worker agents;
 - reviewing implementation reports and verification evidence;
 - proposing recurrence-prevention changes;
-- preserving TaskDeck's product principles and actor boundaries.
+- preserving TaskDeck's product principles and actor boundaries;
+- routing actor-specific guidance to the correct role doc instead of expanding `AGENTS.md`.
 
 Do not claim that implementation work is complete unless repository state and verification evidence support that conclusion.
 
