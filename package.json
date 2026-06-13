@@ -16,6 +16,8 @@
     "dev:server": "npm --workspace @taskdeck/server run dev",
     "build": "npm --workspace @taskdeck/web run build",
     "start": "npm --workspace @taskdeck/server run start",
-    "test": "npm --workspace @taskdeck/web run test"
+    "test": "npm --workspace @taskdeck/web run test",
+    "verify:server-startup": "node scripts/verify-server-startup.mjs",
+    "verify:change": "npm run build && npm run verify:server-startup"
   }
 }
