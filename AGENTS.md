@@ -184,7 +184,9 @@ After editing:
 - Run the standard verification commands appropriate for the change.
 - At minimum, run `git diff --check`.
 - Run `node --check apps/server/src/server.js` when server code changed.
+- Run `npm run verify:server-startup` when `apps/server/src/server.js` or server-consumed `@taskdeck/core` exports/imports changed. `node --check` is not sufficient because it does not catch missing runtime imports or top-level `ReferenceError`s.
 - Run `npm run build` when application code changed.
+- Do not report completion if a required verification command fails.
 - If a check cannot be run, report why.
 
 When finished:
@@ -218,22 +220,3 @@ If a task-specific user instruction conflicts with this file, stop and report th
 - Approval prompts may override immediately, but input-prompt fallback should be gated by PTY activity.
 - PTY activity signals should remain in-memory process observations, not persisted task metadata.
 - Agent session metadata is best-effort and should not assume every agent exposes stable ids.
-- `GET /api/agent-sessions` lists saved Codex sessions derived from TaskDeck task metadata.
-- `Resume last` is imprecise; `Resume saved` and the saved session picker should use precise stored resume commands when available.
-- Agent profile config should merge with built-in profiles rather than replace them wholesale.
-
-## Runtime And Generated Files
-
-Do not commit generated/runtime state, logs, dependency directories, or local environment files.
-
-Common examples:
-
-```text
-.taskdeck/
-node_modules/
-apps/web/dist/
-.env
-.DS_Store
-```
-
-If new generated files appear during local runs, add or update `.gitignore` only when appropriate for the repository, and mention it in the final report.
