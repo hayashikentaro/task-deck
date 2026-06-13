@@ -430,6 +430,10 @@ export function validateChildStatusReport(value) {
 }
 
 export function markTaskChildStatusReported(task, report, observedAt = new Date().toISOString()) {
+  if (task.status === TaskStatus.CLOSED) {
+    return task;
+  }
+
   const nextAttentionState = attentionStateForChildReportedState(report.state);
   const hasAttentionFromChildStatus =
     task.attentionStateSource === AgentStateSource.CHILD_STATUS &&
@@ -471,6 +475,10 @@ export function markTaskChildStatusReported(task, report, observedAt = new Date(
 }
 
 export function markTaskChildStatusError(task, error, observedAt = new Date().toISOString()) {
+  if (task.status === TaskStatus.CLOSED) {
+    return task;
+  }
+
   return {
     ...task,
     childStatusError: String(error || "Invalid child status report."),
@@ -483,6 +491,10 @@ export function attentionStateForChildReportedState(state) {
   if (state === ChildReportedState.READY_FOR_REVIEW) return AttentionState.REVIEW_READY;
   if (state === ChildReportedState.FAILED) return AttentionState.FAILED;
   return AttentionState.NONE;
+}
+
+export function isTaskVisibleInNormalList(task) {
+  return task?.status !== TaskStatus.CLOSED;
 }
 
 export function normalizeIdentityColorSlot(identityColorSlot) {

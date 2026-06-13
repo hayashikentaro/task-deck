@@ -17,6 +17,7 @@ import {
   AttentionState,
   TASK_IDENTITY_COLOR_SLOT_COUNT,
   createTask,
+  isTaskVisibleInNormalList,
   markTaskChildStatusError,
   markTaskChildStatusReported,
   markTaskAttentionAcknowledged,
@@ -1862,6 +1863,10 @@ async function scanChildStatusFiles() {
 }
 
 async function scanChildStatusFileForTask(task) {
+  if (task.status === TaskStatus.CLOSED) {
+    return false;
+  }
+
   const statusFilePath = childStatusFilePathForTask(task);
   let fileContents;
 
@@ -1893,6 +1898,9 @@ async function scanChildStatusFileForTask(task) {
 async function updateTaskFromChildStatusResult(taskId, result) {
   const task = tasks.get(taskId);
   if (!task) {
+    return false;
+  }
+  if (task.status === TaskStatus.CLOSED) {
     return false;
   }
 
@@ -4224,7 +4232,7 @@ function setTask(task) {
 }
 
 function listTasks() {
-  return Array.from(tasks.values()).map(serializeTaskForClient).reverse();
+  return Array.from(tasks.values()).filter(isTaskVisibleInNormalList).map(serializeTaskForClient).reverse();
 }
 
 function serializeTaskForClient(task) {
