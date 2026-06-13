@@ -55,10 +55,14 @@ import {
   validateManagerEvent,
 } from "@taskdeck/core/manager-inbox";
 import {
+  MANAGER_READABLE_ACTIONS_FILENAME,
+  MANAGER_READABLE_CAPABILITIES_FILENAME,
   MANAGER_READABLE_CONTEXT_FILENAME,
   MANAGER_READABLE_DIRNAME,
   MANAGER_READABLE_UNREAD_EVENTS_FILENAME,
+  buildManagerActionGuide,
   buildManagerReadableContext,
+  createManagerActionCapabilitiesDocument,
   createManagerReadableEventsDocument,
 } from "@taskdeck/core/manager-readable";
 
