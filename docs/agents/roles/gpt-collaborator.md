@@ -69,6 +69,10 @@ When writing a Codex or worker prompt, include:
 - verification commands;
 - completion report requirements.
 
+When giving the user a Codex handoff, provide one complete copy-ready prompt. Do not provide fragments, outlines, partial diffs, or continuations that require the missing parts to be inferred.
+
+Also include a recommended GPT-5.5 size (`low`, `medium`, `high`, or `xhigh`) with a short reason. Prefer the smallest size that can safely complete the task.
+
 For server startup, server import, or server-consumed `@taskdeck/core` export/import changes, require:
 
 ```sh
