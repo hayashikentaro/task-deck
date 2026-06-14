@@ -78,49 +78,36 @@ Do not add raw Web API manager-write paths, raw terminal-write paths, raw SQL mu
 
 When asked to create TaskDeck child sessions or send parent-to-child instructions, use the writer scripts defined in `docs/taskdeck-child-session-protocol.md`. Do not use platform-native multi-agent/sub-agent tools and do not treat those agents as TaskDeck child sessions.
 
-## Branch And Clone Policy
+## Branch And Worktree Policy
 
-Before editing files, check and record the current branch:
+TaskDeck branch work uses `git worktree`.
+
+Use the main repository as the base development checkout. Create one worktree per branch and purpose for parallel development.
+
+Do not create disposable full clones for TaskDeck branch work. Do not choose between clone and worktree.
+
+Remote GitHub branches are the durable source of truth. A branch task is complete only after intended changes are committed and pushed.
+
+Before editing files, check and record the current branch and working tree state:
 
 ```sh
+pwd
+git remote -v
 git status --short --branch
 git branch --show-current
 ```
 
-`main` is an allowed working branch. For single-threaded, low-risk, or explicitly main-targeted tasks, continue on `main`; do not stop merely because the current branch is `main`.
-
-If the current branch is not `main`, continue working on that same branch. Do not switch branches, create a new branch, rebase, or retarget work unless the user explicitly instructs you to.
+Continue on the current branch or worktree unless explicitly instructed otherwise. `main` is an allowed working branch for single-threaded, low-risk, or explicitly main-targeted tasks.
 
 When committing and pushing, push back to the same branch that was current at the start of the task.
 
 Preserve user changes already present in the working tree. If the working tree has unrelated changes, do not overwrite them; report them before proceeding.
 
-For single-threaded work, prefer working directly on `main` unless the task may leave `main` temporarily broken or hard to use.
-
-Do not use `git worktree` for TaskDeck AI-assisted development. Isolated work must use a full clone of the repository.
-
-Use a separate branch and a separate full clone for:
-
-- parallel work by multiple sessions;
-- long-running work that should not block `main`;
-- risky Runtime/App Flow changes;
-- changes that may require intermediate broken states;
-- experiments that may be discarded.
-
-Recommended local layout:
-
-```text
-~/Documents/task-deck
-~/Documents/task-deck-manager-actions
-```
-
-Keep development isolation through the clone path, branch, and separate `PORT`, not through `git worktree`.
-
 Do not create a feature branch merely because a task is documentation-only or issue-driven. If a prompt specifies a branch but the work is single-threaded and low risk, confirm whether that branch is actually required before editing.
 
 ## Child Session Integration
 
-When working as a child session in an isolated branch/full clone, producing local changes is not enough to complete the task.
+When working as a child session on a branch worktree, producing local changes is not enough to complete the task.
 
 A child session is complete only after it has:
 

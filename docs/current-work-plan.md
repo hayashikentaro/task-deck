@@ -152,8 +152,8 @@ manager acknowledges / reviews / closes as appropriate
 
 - Do not use Codex TUI or terminal transcript output as machine control data.
 - Do not use platform-native multi-agent/sub-agent tools as TaskDeck child sessions.
-- Do not use `git worktree` for TaskDeck AI-assisted development; isolated work must use a full clone.
-- Worktree directories are not self-contained because their `.git` file points back to the parent repository's `.git/worktrees` metadata, which is unsafe across macOS, Docker, `/workspace` paths, copied directories, and AI agents.
+- TaskDeck branch work uses `git worktree`: one worktree, one branch, one purpose.
+- Do not create disposable full clones for TaskDeck branch work.
 - Do not let non-manager agents command other agents directly.
 - Do not launch the manager inside an individual project workspace; launch it from the TaskDeck control/document root.
 - Do not expose a manager Web API endpoint as the manager-facing write path.
@@ -172,18 +172,11 @@ manager acknowledges / reviews / closes as appropriate
 
 - #64 Build manager-mediated main/sub-session implementation loop
 
-## Clone isolation
+## Branch worktree lifecycle
 
-Use full clones for isolated TaskDeck development, not `git worktree`.
+Use the main repository as the base development checkout. Create one worktree per branch and purpose for parallel development.
 
-Recommended local layout:
-
-```text
-~/Documents/task-deck              stable/main clone
-~/Documents/task-deck-loop         current #64 implementation-loop clone when needed
-```
-
-Keep development isolation through separate clone path, branch, and `PORT` when parallel or risky work requires it.
+Remote GitHub branches are the durable source of truth. A branch task is complete only after intended changes are committed and pushed.
 
 ## Update policy
 

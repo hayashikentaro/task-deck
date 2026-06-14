@@ -4,20 +4,15 @@ This document records the current actor boundary and near-term manager control-p
 
 GitHub Issues remain the source of truth for actionable work and completion state. This document is durable design guidance for how TaskDeck actors are allowed to communicate.
 
-## Repository isolation for AI-assisted development
+## Branch worktree lifecycle
 
-Do not use `git worktree` for TaskDeck AI-assisted development. Isolated work must use a full clone.
+TaskDeck branch work uses `git worktree`.
 
-Worktree directories are not self-contained because their `.git` file points back to the parent repository's `.git/worktrees` metadata. That indirection is unsafe across macOS, Docker, `/workspace` paths, copied directories, and AI agents.
+Use the main repository as the base development checkout. Create one worktree per branch and purpose for parallel development.
 
-Recommended local layout:
+Do not create disposable full clones for TaskDeck branch work. Do not choose between clone and worktree.
 
-```text
-~/Documents/task-deck                 stable/main clone
-~/Documents/task-deck-manager-actions stable/current manager-action QA clone when needed
-```
-
-Keep development isolation through separate clone path, branch, and `PORT` when parallel or risky work requires it.
+Remote GitHub branches are the durable source of truth. A branch task is complete only after intended changes are committed and pushed.
 
 ## Core principle
 
@@ -343,7 +338,7 @@ Add and maintain this actor protocol document. Reference it from `AGENTS.md` so 
 
 ### Phase 2: Validate manager inbox MVP
 
-Use an isolated QA branch in a full clone to verify that child status changes emit valid manager inbox events.
+Use a branch worktree to verify that child status changes emit valid manager inbox events.
 
 ### Phase 3: Add a dedicated manager agent profile/session
 

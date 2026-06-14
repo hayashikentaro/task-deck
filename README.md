@@ -76,11 +76,13 @@ For TaskDeck-launched Codex sessions, TaskDeck adds `-c check_for_update_on_star
 
 Agent profiles merge by `id`: built-in defaults load first, then committed config, ignored local config, and finally `TASKDECK_CONFIG`.
 
-## Branch Clone Lifecycle
+## Branch Worktree Lifecycle
 
-For AI-assisted branch work, do not use `git worktree`. Use disposable full clones and treat remote GitHub branches as the durable source of truth.
+TaskDeck branch work uses `git worktree`. Use the main repository as the base development checkout and create one worktree per branch and purpose.
 
-See [Branch clone lifecycle](docs/branch-clone-lifecycle.md) for the standard setup, handoff, recovery, and cleanup workflow.
+Remote GitHub branches are the durable source of truth. A branch task is complete only after intended changes are committed and pushed.
+
+See [Branch worktree lifecycle](docs/branch-worktree-lifecycle.md) for the standard setup, handoff, recovery, and cleanup workflow.
 
 ## Local Data
 
@@ -97,7 +99,7 @@ TaskDeck can launch local or container agent CLIs that may edit files and run co
 - [Architecture map](docs/architecture.md)
 - [Local API reference](docs/api.md)
 - [Actor protocol and manager control plane](docs/taskdeck-actor-protocol.md)
-- [Branch clone lifecycle](docs/branch-clone-lifecycle.md)
+- [Branch worktree lifecycle](docs/branch-worktree-lifecycle.md)
 - [Child session request protocol](docs/taskdeck-child-session-protocol.md)
 - [Current work plan](docs/current-work-plan.md)
 - [Session identity card experiment](docs/issues/0015-session-identity-first-cards.md)

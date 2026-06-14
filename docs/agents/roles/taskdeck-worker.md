@@ -56,4 +56,4 @@ When the assigned work is complete, report:
 - commit and push details when the assignment requires them;
 - blockers or follow-up work.
 
-If working as a child session in an isolated branch or full clone, the task is not complete until the relevant changes are committed, pushed, and the branch name plus latest commit SHA are reported.
+If working as a child session on a branch worktree, the task is not complete until the relevant changes are committed, pushed, and the branch name plus latest commit SHA are reported.
