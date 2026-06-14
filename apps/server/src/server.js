@@ -1665,6 +1665,7 @@ function createActiveCodexAppServer(task, process) {
     accountReady: false,
     loginInProgress: false,
     pendingAuthRetry: null,
+    forcedAccountRefreshAttempted: false,
     tokenUsage: null,
     rateLimits: null,
     pendingInputs: [],
@@ -1847,7 +1848,14 @@ function handleCodexAppServerResponse(activeAppServer, message) {
   activeAppServer.pendingRequests.delete(message.id);
   if (message.error) {
     if (isCodexAppServerAuthError(message.error)) {
-      appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Codex App Server authentication is expired or invalid; starting ChatGPT device login.\n`);
+      preserveCodexAppServerPendingAuthRetry(activeAppServer, pendingRequest);
+      if (!activeAppServer.forcedAccountRefreshAttempted) {
+        activeAppServer.forcedAccountRefreshAttempted = true;
+        appendAndBroadcast(activeAppServer.taskId, "[TaskDeck] Codex App Server authentication is expired or invalid; trying one account refresh.\n");
+        sendCodexAppServerAccountRead(activeAppServer, { refreshToken: true });
+        return;
+      }
+      appendAndBroadcast(activeAppServer.taskId, "[TaskDeck] Codex App Server authentication refresh failed; ChatGPT device login is required.\n");
       handleCodexAppServerAuthRequired(activeAppServer, pendingRequest);
       return;
     }
@@ -1907,14 +1915,7 @@ function handleCodexAppServerResponse(activeAppServer, message) {
 
 function handleCodexAppServerAuthRequired(activeAppServer, pendingRequest) {
   activeAppServer.accountReady = false;
-  if (pendingRequest?.method && pendingRequest.method !== "account/read" && pendingRequest.method !== "account/login/start") {
-    activeAppServer.pendingAuthRetry = {
-      method: pendingRequest.method,
-      params: pendingRequest.params,
-    };
-  } else if (!activeAppServer.pendingAuthRetry) {
-    activeAppServer.pendingAuthRetry = { method: "thread/start" };
-  }
+  preserveCodexAppServerPendingAuthRetry(activeAppServer, pendingRequest);
   updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WAITING_INPUT, {
     reason: "Codex App Server needs ChatGPT device login.",
     source: AgentStateSource.PROCESS,
@@ -1925,6 +1926,17 @@ function handleCodexAppServerAuthRequired(activeAppServer, pendingRequest) {
     attentionConfidence: AgentStateConfidence.HIGH,
   });
   sendCodexAppServerLoginStart(activeAppServer);
+}
+
+function preserveCodexAppServerPendingAuthRetry(activeAppServer, pendingRequest) {
+  if (pendingRequest?.method && pendingRequest.method !== "account/read" && pendingRequest.method !== "account/login/start") {
+    activeAppServer.pendingAuthRetry = {
+      method: pendingRequest.method,
+      params: pendingRequest.params,
+    };
+  } else if (!activeAppServer.pendingAuthRetry) {
+    activeAppServer.pendingAuthRetry = { method: "thread/start" };
+  }
 }
 
 function handleCodexAppServerLoginStartResponse(activeAppServer, result) {
@@ -2024,6 +2036,10 @@ function isCodexAppServerAuthError(error) {
     text.includes("auth expired") ||
     text.includes("token_invalidated") ||
     text.includes("token invalidated") ||
+    text.includes("refresh_token_invalidated") ||
+    text.includes("refresh token invalidated") ||
+    text.includes("your session has ended") ||
+    text.includes("please log in again") ||
     text.includes("401")
   );
 }
