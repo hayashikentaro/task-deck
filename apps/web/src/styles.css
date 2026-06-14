@@ -51,6 +51,8 @@
   --task-terminal-tint-soft: transparent;
   --task-terminal-tint-faint: transparent;
   --task-terminal-border: transparent;
+  --left-rail-width: 238px;
+  --right-rail-width: 238px;
 }
 
 * {
@@ -678,7 +680,7 @@ dd {
 .workspace-grid {
   min-height: 0;
   display: grid;
-  grid-template-columns: 238px minmax(0, 1fr) 238px;
+  grid-template-columns: var(--left-rail-width) minmax(0, 1fr) var(--right-rail-width);
   gap: 14px;
   overflow: hidden;
   padding: 14px 14px 8px;
@@ -1668,15 +1670,6 @@ dd {
     grid-template-columns: repeat(4, minmax(92px, 1fr));
   }
 
-  .workspace-grid {
-    grid-template-columns: 196px minmax(0, 1fr);
-  }
-
-  .right-rail {
-    grid-column: 1 / -1;
-    grid-template-columns: 1fr 1fr;
-  }
-
   .terminal-toolbar {
     align-items: start;
     flex-direction: column;
@@ -1733,7 +1726,7 @@ dd {
 }
 
 .workspace-grid {
-  grid-template-columns: minmax(224px, 0.6fr) minmax(0, 2.3fr) minmax(224px, 0.6fr);
+  grid-template-columns: var(--left-rail-width) minmax(0, 1fr) var(--right-rail-width);
   padding: 14px;
 }
 
@@ -2081,14 +2074,4 @@ dd {
 .confirmation-actions button[data-priority="danger"] {
   border-color: var(--status-failed);
   color: var(--status-failed);
-}
-
-@media (max-width: 1120px) {
-  .workspace-grid {
-    grid-template-columns: minmax(196px, 0.65fr) minmax(0, 1.75fr);
-  }
-
-  .right-rail {
-    grid-column: 1 / -1;
-  }
 }
