@@ -1973,13 +1973,21 @@ function handleCodexAppServerLoginCompleted(activeAppServer, params) {
   const error = String(params?.error || "").trim();
   activeAppServer.loginInProgress = false;
   if (!success) {
-    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Codex App Server login failed${error ? `: ${error}` : "."}\n`);
+    activeAppServer.accountReady = false;
+    const failureReason = error || "ChatGPT device login failed.";
+    appendAndBroadcast(
+      activeAppServer.taskId,
+      [
+        `[TaskDeck] Codex App Server login failed: ${failureReason}`,
+        "[TaskDeck] TaskDeck will not start another device-code login automatically. Restart this task to request a fresh code.",
+      ].join("\n") + "\n"
+    );
     updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WAITING_INPUT, {
       reason: "Codex App Server login failed.",
       source: AgentStateSource.PROCESS,
       confidence: AgentStateConfidence.HIGH,
       attentionState: AttentionState.NEEDS_INPUT,
-      attentionReason: error || "ChatGPT device login failed.",
+      attentionReason: `${failureReason} TaskDeck will not start another device-code login automatically; restart this task to request a fresh code.`,
       attentionSource: AgentStateSource.PROCESS,
       attentionConfidence: AgentStateConfidence.HIGH,
     });
