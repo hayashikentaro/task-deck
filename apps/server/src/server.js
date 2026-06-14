@@ -1663,6 +1663,8 @@ function createActiveCodexAppServer(task, process) {
     accountReady: false,
     loginInProgress: false,
     pendingAuthRetry: null,
+    tokenUsage: null,
+    rateLimits: null,
     pendingInputs: [],
   };
 }
@@ -2050,6 +2052,14 @@ function handleCodexAppServerRequest(activeAppServer, message) {
 
 function handleCodexAppServerNotification(activeAppServer, message) {
   const method = String(message.method || "");
+  if (method === "thread/started") {
+    handleCodexAppServerThreadStarted(activeAppServer, message.params);
+    return;
+  }
+  if (method === "mcpServer/startupStatus/updated") {
+    handleCodexAppServerMcpStatusUpdated(activeAppServer, message.params);
+    return;
+  }
   if (method === "thread/status/changed") {
     updateCodexAppServerStatus(activeAppServer, message.params?.status);
     return;
@@ -2066,17 +2076,25 @@ function handleCodexAppServerNotification(activeAppServer, message) {
     });
     return;
   }
+  if (method === "item/agentMessage/delta") {
+    handleCodexAppServerAgentMessageDelta(activeAppServer, message.params);
+    return;
+  }
+  if (method === "item/completed") {
+    handleCodexAppServerItemCompleted(activeAppServer, message.params);
+    return;
+  }
+  if (method === "thread/tokenUsage/updated") {
+    activeAppServer.tokenUsage = message.params?.tokenUsage ?? null;
+    return;
+  }
+  if (method === "account/rateLimits/updated") {
+    activeAppServer.rateLimits = message.params?.rateLimits ?? null;
+    return;
+  }
   if (method === "turn/completed") {
     activeAppServer.activeTurnId = "";
-    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.THINKING, {
-      reason: "Codex App Server turn completed.",
-      source: AgentStateSource.PROCESS,
-      confidence: AgentStateConfidence.HIGH,
-      attentionState: AttentionState.NONE,
-      attentionReason: "Codex App Server turn completed.",
-      attentionSource: AgentStateSource.PROCESS,
-      attentionConfidence: AgentStateConfidence.HIGH,
-    });
+    updateCodexAppServerReady(activeAppServer, "Codex App Server turn completed.");
     return;
   }
   if (method === "account/login/completed") {
@@ -2100,6 +2118,57 @@ function handleCodexAppServerNotification(activeAppServer, message) {
     return;
   }
   appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Unknown Codex App Server notification: ${method}\n`);
+}
+
+function handleCodexAppServerThreadStarted(activeAppServer, params) {
+  const threadId = String(params?.thread?.id || "").trim();
+  if (threadId && !activeAppServer.threadId) {
+    activeAppServer.threadId = threadId;
+  }
+}
+
+function handleCodexAppServerMcpStatusUpdated(activeAppServer, params) {
+  const name = String(params?.name || "").trim();
+  const status = String(params?.status || "").trim();
+  const error = String(params?.error || "").trim();
+  const details = [
+    name ? `name=${name}` : "",
+    status ? `status=${status}` : "",
+    error ? `error=${error}` : "",
+  ].filter(Boolean).join(" ");
+  appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Codex App Server MCP status updated${details ? `: ${details}` : "."}\n`);
+}
+
+function handleCodexAppServerAgentMessageDelta(activeAppServer, params) {
+  const delta = String(params?.delta || "");
+  if (!delta) {
+    return;
+  }
+  appendAndBroadcast(activeAppServer.taskId, delta);
+}
+
+function handleCodexAppServerItemCompleted(activeAppServer, params) {
+  const item = params?.item;
+  if (item?.type !== "commandExecution") {
+    return;
+  }
+  const output = String(item.aggregatedOutput || "");
+  if (!output) {
+    return;
+  }
+  appendAndBroadcast(activeAppServer.taskId, output.endsWith("\n") ? output : `${output}\n`);
+}
+
+function updateCodexAppServerReady(activeAppServer, reason) {
+  updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.THINKING, {
+    reason,
+    source: AgentStateSource.PROCESS,
+    confidence: AgentStateConfidence.HIGH,
+    attentionState: AttentionState.NONE,
+    attentionReason: reason,
+    attentionSource: AgentStateSource.PROCESS,
+    attentionConfidence: AgentStateConfidence.HIGH,
+  });
 }
 
 function updateCodexAppServerStatus(activeAppServer, status) {
@@ -2142,15 +2211,7 @@ function updateCodexAppServerStatus(activeAppServer, status) {
     return;
   }
   if (statusType === "idle") {
-    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.THINKING, {
-      reason: "Codex App Server thread is idle.",
-      source: AgentStateSource.PROCESS,
-      confidence: AgentStateConfidence.HIGH,
-      attentionState: AttentionState.NONE,
-      attentionReason: "Codex App Server thread is idle.",
-      attentionSource: AgentStateSource.PROCESS,
-      attentionConfidence: AgentStateConfidence.HIGH,
-    });
+    updateCodexAppServerReady(activeAppServer, "Codex App Server thread is idle.");
     return;
   }
   if (statusType === "systemError") {
