@@ -6,16 +6,25 @@ TaskDeck is a local supervision UI for running and monitoring multiple AI agent 
 
 ## Prerequisites
 
-- Node.js and npm
+- Node.js 20 and npm 10, pinned for this repository by Volta (`node` 20.20.2 and `npm` 10.9.8)
 - Docker, if you want to use the committed Codex or Goose container profiles
 - A local workspace where agent commands may safely read, edit, and run files
 
 TaskDeck is intended for local use. Do not expose the server to a LAN or the internet without separate authentication, network controls, and operational protection.
 
+Verify the Node/npm toolchain from a normal host terminal before installing dependencies:
+
+```bash
+node -v
+npm -v
+```
+
+Do not use a TaskDeck-managed zsh task for this check. Those tasks may inherit npm lifecycle environment from `dev-supervisor`, and local tools such as nodenv or `~/.node-version` can pollute the runtime they see.
+
 ## Install
 
 ```bash
-npm install
+npm ci
 ```
 
 ## Run
