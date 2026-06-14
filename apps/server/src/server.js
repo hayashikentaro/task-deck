@@ -1891,10 +1891,7 @@ function handleCodexAppServerResponse(activeAppServer, message) {
     const threadId = String(message.result?.thread?.id || "").trim();
     activeAppServer.threadId = threadId;
     appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Codex App Server thread ready${threadId ? `: ${threadId}` : ""}.\n`);
-    const flushedInput = flushCodexAppServerPendingInputs(activeAppServer);
-    if (!flushedInput) {
-      updateCodexAppServerReady(activeAppServer, "Codex App Server thread is ready.");
-    }
+    flushCodexAppServerPendingInputs(activeAppServer);
     return;
   }
 
@@ -2249,6 +2246,8 @@ function flushCodexAppServerPendingInputs(activeAppServer) {
     pendingInputs.unshift(initialInstruction);
   }
   if (pendingInputs.length === 0) {
+    updateCodexAppServerReady(activeAppServer, "Codex App Server adapter is ready.");
+    appendAndBroadcast(activeAppServer.taskId, "[TaskDeck] Codex App Server adapter is ready; send input to start a turn.\n");
     return false;
   }
   for (const input of pendingInputs) {
