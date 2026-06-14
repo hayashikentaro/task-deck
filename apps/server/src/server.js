@@ -2147,6 +2147,11 @@ function handleCodexAppServerMcpStatusUpdated(activeAppServer, params) {
   const name = String(params?.name || "").trim();
   const status = String(params?.status || "").trim();
   const error = String(params?.error || "").trim();
+  const normalizedStatus = status.toLowerCase();
+  const shouldLog = codexAppServerDebugEnabled || normalizedStatus === "failed" || Boolean(error);
+  if (!shouldLog) {
+    return;
+  }
   const details = [
     name ? `name=${name}` : "",
     status ? `status=${status}` : "",
