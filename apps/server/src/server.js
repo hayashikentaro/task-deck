@@ -182,6 +182,7 @@ const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || "127.0.0.1";
 const shell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "bash");
 const inputDebugEnabled = process.env.TASKDECK_INPUT_DEBUG === "1";
+const codexAppServerDebugEnabled = process.env.TASKDECK_CODEX_APP_SERVER_DEBUG === "1";
 
 const clients = new Set();
 const tasks = new Map();
@@ -1779,7 +1780,9 @@ function sendCodexAppServerRequest(activeAppServer, method, params) {
   activeAppServer.nextRequestId += 1;
   const message = { jsonrpc: "2.0", id, method, params };
   activeAppServer.pendingRequests.set(id, { method, params });
-  appendAndBroadcast(activeAppServer.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`);
+  if (codexAppServerDebugEnabled) {
+    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`);
+  }
   activeAppServer.process.stdin.write(`${JSON.stringify(message)}\n`);
   return id;
 }
@@ -1788,23 +1791,36 @@ function handleCodexAppServerOutput(activeAppServer, data, stream) {
   if (!tasks.has(activeAppServer.taskId)) {
     return;
   }
-  appendLog(activeAppServer.taskId, data);
-  broadcast({ type: "output", taskId: activeAppServer.taskId, data });
 
   const bufferKey = stream === "stderr" ? "stderrBuffer" : "stdoutBuffer";
   activeAppServer[bufferKey] += data;
   const lines = activeAppServer[bufferKey].split(/\r?\n/);
   activeAppServer[bufferKey] = lines.pop() ?? "";
   for (const line of lines) {
-    const trimmedLine = line.trim();
-    if (!trimmedLine || !trimmedLine.startsWith("{")) {
-      continue;
+    handleCodexAppServerOutputLine(activeAppServer, line, stream);
+  }
+}
+
+function handleCodexAppServerOutputLine(activeAppServer, line, stream) {
+  const trimmedLine = line.trim();
+  if (!trimmedLine) {
+    return;
+  }
+
+  if (!trimmedLine.startsWith("{")) {
+    appendAndBroadcast(activeAppServer.taskId, `${line}\n`);
+    return;
+  }
+
+  try {
+    const message = JSON.parse(trimmedLine);
+    if (codexAppServerDebugEnabled) {
+      appendAndBroadcast(activeAppServer.taskId, `[TaskDeck Codex App Server ${stream} JSON] ${trimmedLine}\n`);
     }
-    try {
-      handleCodexAppServerMessage(activeAppServer, JSON.parse(trimmedLine));
-    } catch (error) {
-      appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Could not parse Codex App Server ${stream} JSON: ${error.message}\n`);
-    }
+    handleCodexAppServerMessage(activeAppServer, message);
+  } catch (error) {
+    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Could not parse Codex App Server ${stream} JSON: ${error.message}\n`);
+    appendAndBroadcast(activeAppServer.taskId, `${line}\n`);
   }
 }
 
