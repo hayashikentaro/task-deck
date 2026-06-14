@@ -1634,6 +1634,8 @@ async function startCodexAppServerTask({ task, processCwd, socket }) {
   });
   appServerProcess.on("exit", (exitCode, signal) => {
     const currentTask = tasks.get(task.id);
+    activeAppServer.loginInProgress = false;
+    activeAppServer.loginId = "";
     activeCodexAppServers.delete(task.id);
     if (!currentTask) {
       return;
@@ -1664,6 +1666,7 @@ function createActiveCodexAppServer(task, process) {
     turnActive: false,
     accountReady: false,
     loginInProgress: false,
+    loginId: "",
     pendingAuthRetry: null,
     forcedAccountRefreshAttempted: false,
     tokenUsage: null,
@@ -1948,6 +1951,7 @@ function handleCodexAppServerLoginStartResponse(activeAppServer, result) {
   const verificationUrl = String(result.verificationUrl || "").trim();
   const userCode = String(result.userCode || "").trim();
   const loginId = String(result.loginId || "").trim();
+  activeAppServer.loginId = loginId;
   appendAndBroadcast(
     activeAppServer.taskId,
     [
@@ -1972,6 +1976,7 @@ function handleCodexAppServerLoginCompleted(activeAppServer, params) {
   const success = Boolean(params?.success);
   const error = String(params?.error || "").trim();
   activeAppServer.loginInProgress = false;
+  activeAppServer.loginId = "";
   if (!success) {
     activeAppServer.accountReady = false;
     const failureReason = error || "ChatGPT device login failed.";
@@ -5453,11 +5458,41 @@ function stopActiveCodexAppServer(taskId) {
   if (!activeAppServer) {
     return;
   }
+  cancelCodexAppServerLoginIfNeeded(activeAppServer);
+  activeAppServer.loginInProgress = false;
+  activeAppServer.loginId = "";
   activeCodexAppServers.delete(taskId);
   try {
     activeAppServer.process.kill();
   } catch (error) {
     console.error("TaskDeck could not stop Codex App Server for " + taskId + ": " + error.message);
+  }
+}
+
+function cancelCodexAppServerLoginIfNeeded(activeAppServer) {
+  if (!activeAppServer?.loginInProgress || !activeAppServer.loginId) {
+    return;
+  }
+  if (!activeAppServer.process?.stdin?.writable || activeAppServer.process.stdin.destroyed) {
+    return;
+  }
+  try {
+    const id = activeAppServer.nextRequestId;
+    activeAppServer.nextRequestId += 1;
+    const message = {
+      jsonrpc: "2.0",
+      id,
+      method: "account/login/cancel",
+      params: { loginId: activeAppServer.loginId },
+    };
+    if (codexAppServerDebugEnabled) {
+      appendAndBroadcast(activeAppServer.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`);
+    }
+    activeAppServer.process.stdin.write(`${JSON.stringify(message)}\n`);
+  } catch (error) {
+    if (codexAppServerDebugEnabled) {
+      appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Could not cancel Codex App Server login: ${error.message}\n`);
+    }
   }
 }
 
