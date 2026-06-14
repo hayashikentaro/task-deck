@@ -224,6 +224,9 @@ export function TaskList({
                     <span className="task-title">{taskDisplayName(task)}</span>
                   </span>
                   <span className="task-badge-row">
+                    <span className="task-badge" data-kind="agent-profile" title={agentBadgeTitle(task)}>
+                      {agentBadgeLabel(task)}
+                    </span>
                     <span className="task-badge" data-kind={`supervision-${bucket}`} title={supervisionTitle(task)}>
                       {supervisionBucketLabel(bucket)}
                     </span>
@@ -425,6 +428,19 @@ function childReportedStatusTitle(task: Task) {
   const state = task.childReportedState ? String(task.childReportedState).replace(/_/g, " ") : "unknown";
   const summary = task.childStatusSummary ? `: ${task.childStatusSummary}` : "";
   return `Child reported ${state}${summary}`;
+}
+
+function agentBadgeLabel(task: Task) {
+  const profileId = String(task.agentProfileId || "").trim();
+  if (profileId === "codex-app-server") return "App Server";
+  if (profileId === "zsh-host") return "zsh host";
+  return task.agentLabel || agentOrCommandLabel(task.command);
+}
+
+function agentBadgeTitle(task: Task) {
+  const profileId = String(task.agentProfileId || "").trim();
+  const label = task.agentLabel || agentOrCommandLabel(task.command);
+  return profileId ? `${label} (${profileId})` : label;
 }
 
 function workPackageLabel(workPackageId: string) {

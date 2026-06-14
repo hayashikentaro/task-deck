@@ -14,6 +14,10 @@ User -> TaskDeck UI -> TaskDeck server -> Codex App Server process
 
 It should not require sending raw JSON-RPC through the composer. In normal mode, parseable App Server JSON is hidden from task logs; set `TASKDECK_CODEX_APP_SERVER_DEBUG=1` only when protocol debugging is needed.
 
+## Localhost Caveat
+
+When TaskDeck runs in a container and the browser runs on the host, `localhost` means different things on each side. Open the TaskDeck URL through the host-mapped port, not a container-internal loopback URL. Device-login verification URLs should be opened in the host browser.
+
 ## Manual Smoke
 
 1. Start TaskDeck normally.
@@ -25,6 +29,15 @@ It should not require sending raw JSON-RPC through the composer. In normal mode,
 7. Confirm the task log shows assistant text, command output when commands run, and `Codex App Server turn completed; ready for next input.`
 8. Confirm the composer returns to send-input mode.
 9. Optionally send one second short prompt on the same thread and confirm it completes without another login.
+
+## Successful Smoke Expectations
+
+- One device login is requested at most when no valid ChatGPT session is already available.
+- The first turn is accepted after login or account readiness.
+- Command start events are visible when Codex starts a command.
+- Command output remains visible under the `Codex App Server command output:` labeled block.
+- The turn completes with `Codex App Server turn completed; ready for next input.`
+- A second turn on the same task completes without another device login.
 
 ## Expected Logs
 

@@ -1082,6 +1082,16 @@ dd {
   color: var(--status-muted);
 }
 
+.task-badge[data-kind="agent-profile"] {
+  max-width: 112px;
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--task-card-border) 70%, var(--line));
+  background: color-mix(in srgb, var(--task-card-wash) 42%, var(--surface-raised));
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .task-badge[data-kind^="process-"] {
   border-color: var(--status-muted);
   color: var(--text-primary);

@@ -183,6 +183,8 @@ const host = process.env.HOST || "127.0.0.1";
 const shell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "bash");
 const inputDebugEnabled = process.env.TASKDECK_INPUT_DEBUG === "1";
 const codexAppServerDebugEnabled = process.env.TASKDECK_CODEX_APP_SERVER_DEBUG === "1";
+const codexAppServerAssistantStyleStart = "\u001b[38;2;127;171;159m";
+const codexAppServerAssistantStyleEnd = "\u001b[0m";
 
 const clients = new Set();
 const tasks = new Map();
@@ -2218,7 +2220,11 @@ function handleCodexAppServerAgentMessageDelta(activeAppServer, params) {
   if (!delta) {
     return;
   }
-  appendAndBroadcast(activeAppServer.taskId, delta);
+  appendAndBroadcast(activeAppServer.taskId, formatCodexAppServerAssistantText(delta));
+}
+
+function formatCodexAppServerAssistantText(delta) {
+  return `${codexAppServerAssistantStyleStart}${delta}${codexAppServerAssistantStyleEnd}`;
 }
 
 function appendCodexAppServerStatus(activeAppServer, data) {
