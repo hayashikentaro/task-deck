@@ -1661,6 +1661,7 @@ function createActiveCodexAppServer(task, process) {
     stderrBuffer: "",
     threadId: "",
     activeTurnId: "",
+    turnActive: false,
     accountReady: false,
     loginInProgress: false,
     pendingAuthRetry: null,
@@ -1898,6 +1899,7 @@ function handleCodexAppServerResponse(activeAppServer, message) {
   if (method === "turn/start") {
     const turnId = String(message.result?.turn?.id || "").trim();
     activeAppServer.activeTurnId = turnId;
+    activeAppServer.turnActive = true;
     appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Codex App Server turn accepted${turnId ? `: ${turnId}` : ""}.\n`);
     return;
   }
@@ -2071,7 +2073,11 @@ function handleCodexAppServerNotification(activeAppServer, message) {
     updateCodexAppServerStatus(activeAppServer, message.params?.status);
     return;
   }
+  if (method === "remoteControl/status/changed") {
+    return;
+  }
   if (method === "turn/started") {
+    activeAppServer.turnActive = true;
     updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WORKING, {
       reason: "Codex App Server turn started.",
       source: AgentStateSource.PROCESS,
@@ -2081,6 +2087,10 @@ function handleCodexAppServerNotification(activeAppServer, message) {
       attentionSource: AgentStateSource.PROCESS,
       attentionConfidence: AgentStateConfidence.HIGH,
     });
+    return;
+  }
+  if (method === "item/started") {
+    handleCodexAppServerItemStarted(activeAppServer, message.params);
     return;
   }
   if (method === "item/agentMessage/delta") {
@@ -2101,6 +2111,8 @@ function handleCodexAppServerNotification(activeAppServer, message) {
   }
   if (method === "turn/completed") {
     activeAppServer.activeTurnId = "";
+    activeAppServer.turnActive = false;
+    appendAndBroadcast(activeAppServer.taskId, "[TaskDeck] Codex App Server turn completed; ready for next input.\n");
     updateCodexAppServerReady(activeAppServer, "Codex App Server turn completed.");
     return;
   }
@@ -2151,6 +2163,20 @@ function handleCodexAppServerMcpStatusUpdated(activeAppServer, params) {
   appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Codex App Server MCP status updated${details ? `: ${details}` : "."}\n`);
 }
 
+function handleCodexAppServerItemStarted(activeAppServer, params) {
+  const item = params?.item;
+  const itemType = String(item?.type || "");
+  if (itemType === "reasoning") {
+    updateCodexAppServerWorking(activeAppServer, "Codex App Server started reasoning.");
+    return;
+  }
+  if (itemType === "commandExecution") {
+    updateCodexAppServerWorking(activeAppServer, "Codex App Server started a command.");
+    const command = compactCodexAppServerCommand(String(item.command || ""));
+    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Codex App Server command started${command ? `: ${command}` : "."}\n`);
+  }
+}
+
 function handleCodexAppServerAgentMessageDelta(activeAppServer, params) {
   const delta = String(params?.delta || "");
   if (!delta) {
@@ -2173,6 +2199,18 @@ function handleCodexAppServerItemCompleted(activeAppServer, params) {
 
 function updateCodexAppServerReady(activeAppServer, reason) {
   updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.THINKING, {
+    reason,
+    source: AgentStateSource.PROCESS,
+    confidence: AgentStateConfidence.HIGH,
+    attentionState: AttentionState.NONE,
+    attentionReason: reason,
+    attentionSource: AgentStateSource.PROCESS,
+    attentionConfidence: AgentStateConfidence.HIGH,
+  });
+}
+
+function updateCodexAppServerWorking(activeAppServer, reason) {
+  updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WORKING, {
     reason,
     source: AgentStateSource.PROCESS,
     confidence: AgentStateConfidence.HIGH,
@@ -2211,18 +2249,11 @@ function updateCodexAppServerStatus(activeAppServer, status) {
     return;
   }
   if (statusType === "active") {
-    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WORKING, {
-      reason: "Codex App Server thread is active.",
-      source: AgentStateSource.PROCESS,
-      confidence: AgentStateConfidence.HIGH,
-      attentionState: AttentionState.NONE,
-      attentionReason: "Codex App Server thread is active.",
-      attentionSource: AgentStateSource.PROCESS,
-      attentionConfidence: AgentStateConfidence.HIGH,
-    });
+    updateCodexAppServerWorking(activeAppServer, "Codex App Server thread is active.");
     return;
   }
   if (statusType === "idle") {
+    activeAppServer.turnActive = false;
     updateCodexAppServerReady(activeAppServer, "Codex App Server thread is idle.");
     return;
   }
@@ -2254,6 +2285,10 @@ function flushCodexAppServerPendingInputs(activeAppServer) {
     sendCodexAppServerTurn(activeAppServer, input);
   }
   return true;
+}
+
+function compactCodexAppServerCommand(command) {
+  return command.replace(/\s+/g, " ").trim().slice(0, 160);
 }
 
 function isCodexAppServerApprovalRequest(method) {
