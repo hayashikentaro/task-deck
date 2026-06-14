@@ -27,13 +27,22 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const isTerminalInputLocked = Boolean(task?.terminalInputLockedAt);
+  const isCodexAppServerTask = task?.agentProfileId === "codex-app-server";
+  const needsUserAttention = taskNeedsUserAttention(task);
+  const isCodexAppServerNeedsAttention = Boolean(isCodexAppServerTask && needsUserAttention);
+  const isActiveInstruction = Boolean(task?.agentState === "working" && !needsUserAttention);
+  const isUnsupportedCancelActiveTask = Boolean(isCodexAppServerTask && isActiveInstruction);
   const canInteractWithRunningTask = Boolean(task && task.status === "running" && isConnected);
-  const canSend = canInteractWithRunningTask && !isTerminalInputLocked;
+  const canSend = canInteractWithRunningTask && !isTerminalInputLocked && !isUnsupportedCancelActiveTask && !isCodexAppServerNeedsAttention;
   const hasComposerContent = Boolean(value || selectedImages.length);
   const canSubmit = canSend && hasComposerContent && !isUploadingAttachments;
-  const canCancelCurrentInstruction = Boolean(canInteractWithRunningTask && task?.agentState === "working" && !taskNeedsUserAttention(task));
-  const actionLabel = canCancelCurrentInstruction ? "Cancel current instruction" : "Send input to running task";
-  const modeText = getComposerMode(task, isConnected);
+  const canCancelCurrentInstruction = Boolean(canInteractWithRunningTask && !isCodexAppServerTask && isActiveInstruction);
+  const actionLabel = isUnsupportedCancelActiveTask
+    ? "Task is running"
+    : canCancelCurrentInstruction
+      ? "Cancel current instruction"
+      : "Send input to running task";
+  const modeText = getComposerMode(task, isConnected, { isCodexAppServerNeedsAttention, isUnsupportedCancelActiveTask });
   const inputState = getComposerInputState({ task, isConnected, isUploadingAttachments });
 
   useLayoutEffect(() => {
@@ -331,7 +340,14 @@ function isSlashCommandInput(input: string, hasImageAttachments: boolean) {
   return text.startsWith("/") && !text.includes("\n");
 }
 
-function getComposerMode(task: Task | null, isConnected: boolean) {
+function getComposerMode(
+  task: Task | null,
+  isConnected: boolean,
+  {
+    isCodexAppServerNeedsAttention = false,
+    isUnsupportedCancelActiveTask = false,
+  }: { isCodexAppServerNeedsAttention?: boolean; isUnsupportedCancelActiveTask?: boolean } = {},
+) {
   if (!task) {
     return "No task selected";
   }
@@ -343,6 +359,12 @@ function getComposerMode(task: Task | null, isConnected: boolean) {
   }
   if (task.terminalInputLockedAt) {
     return "Terminal input locked";
+  }
+  if (isCodexAppServerNeedsAttention) {
+    return "Task needs your attention";
+  }
+  if (isUnsupportedCancelActiveTask) {
+    return "Task is running";
   }
   return "Interactive task";
 }
