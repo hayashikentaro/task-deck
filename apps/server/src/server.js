@@ -1890,17 +1890,11 @@ function handleCodexAppServerResponse(activeAppServer, message) {
   if (method === "thread/start") {
     const threadId = String(message.result?.thread?.id || "").trim();
     activeAppServer.threadId = threadId;
-    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WORKING, {
-      reason: "Codex App Server thread is ready.",
-      source: AgentStateSource.PROCESS,
-      confidence: AgentStateConfidence.HIGH,
-      attentionState: AttentionState.NONE,
-      attentionReason: "Codex App Server thread is ready.",
-      attentionSource: AgentStateSource.PROCESS,
-      attentionConfidence: AgentStateConfidence.HIGH,
-    });
     appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Codex App Server thread ready${threadId ? `: ${threadId}` : ""}.\n`);
-    flushCodexAppServerPendingInputs(activeAppServer);
+    const flushedInput = flushCodexAppServerPendingInputs(activeAppServer);
+    if (!flushedInput) {
+      updateCodexAppServerReady(activeAppServer, "Codex App Server thread is ready.");
+    }
     return;
   }
 
@@ -2255,12 +2249,12 @@ function flushCodexAppServerPendingInputs(activeAppServer) {
     pendingInputs.unshift(initialInstruction);
   }
   if (pendingInputs.length === 0) {
-    appendAndBroadcast(activeAppServer.taskId, "[TaskDeck] Codex App Server adapter is ready; send input to start a turn.\n");
-    return;
+    return false;
   }
   for (const input of pendingInputs) {
     sendCodexAppServerTurn(activeAppServer, input);
   }
+  return true;
 }
 
 function isCodexAppServerApprovalRequest(method) {
