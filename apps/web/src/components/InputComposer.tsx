@@ -32,7 +32,7 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
   const hasComposerContent = Boolean(value || selectedImages.length);
   const canSubmit = canSend && hasComposerContent && !isUploadingAttachments;
   const canCancelCurrentInstruction = Boolean(canInteractWithRunningTask && task?.agentState === "working" && !taskNeedsUserAttention(task));
-  const actionLabel = canCancelCurrentInstruction ? "Cancel current instruction" : "Send input to running PTY";
+  const actionLabel = canCancelCurrentInstruction ? "Cancel current instruction" : "Send input to running task";
   const modeText = getComposerMode(task, isConnected);
   const inputState = getComposerInputState({ task, isConnected, isUploadingAttachments });
 
@@ -186,7 +186,7 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
           onCompositionEnd={() => setIsComposing(false)}
           onCompositionStart={() => setIsComposing(true)}
           onKeyDown={handleKeyDown}
-          placeholder={canSend ? "Input to running PTY" : modeText}
+          placeholder={canSend ? "Input to running task" : modeText}
           rows={1}
           spellCheck={false}
           value={value}
@@ -344,7 +344,7 @@ function getComposerMode(task: Task | null, isConnected: boolean) {
   if (task.terminalInputLockedAt) {
     return "Terminal input locked";
   }
-  return "Interactive PTY";
+  return "Interactive task";
 }
 
 function getComposerInputState({
