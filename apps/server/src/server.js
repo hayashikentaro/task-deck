@@ -2130,6 +2130,13 @@ function handleCodexAppServerNotification(activeAppServer, message) {
     handleCodexAppServerItemCompleted(activeAppServer, message.params);
     return;
   }
+  if (
+    method === "item/commandExecution/outputDelta" ||
+    method === "command/exec/outputDelta" ||
+    method === "process/outputDelta"
+  ) {
+    return;
+  }
   if (method === "thread/tokenUsage/updated") {
     activeAppServer.tokenUsage = message.params?.tokenUsage ?? null;
     return;

@@ -1,40 +1,43 @@
-# Codex App Server smoke path
+# Codex App Server Smoke
 
-This note tracks the first TaskDeck-facing App Server smoke path.
+This note records the final manual smoke path for TaskDeck's structured Codex App Server adapter.
 
-Goal:
+Do this smoke once after batching App Server auth, logging, and UI-state changes. Avoid repeated ChatGPT device-code login attempts during development because repeated login flows can cause device-code exchange failures.
+
+## Scope
+
+The smoke checks the user-facing TaskDeck flow:
 
 ```text
 User -> TaskDeck UI -> TaskDeck server -> Codex App Server process
 ```
 
-For the first pass, add a local agent profile that launches Codex App Server in stdio mode and use the existing TaskDeck terminal/composer path to inspect raw protocol output.
+It should not require sending raw JSON-RPC through the composer. In normal mode, parseable App Server JSON is hidden from task logs; set `TASKDECK_CODEX_APP_SERVER_DEBUG=1` only when protocol debugging is needed.
 
-This is intentionally not the final structured adapter. The final design should move JSON-RPC framing and event mapping into `apps/server`.
+## Manual Smoke
 
-## Manual smoke shape
+1. Start TaskDeck normally.
+2. Create one task with the `Codex App Server (experimental)` profile.
+3. If ChatGPT device login is required, complete it once using the verification URL and user code shown in the task log.
+4. Wait for the task log to show that the App Server adapter is ready.
+5. Send one short prompt from the composer.
+6. Confirm the task enters an active/running state while the turn is in progress.
+7. Confirm the task log shows assistant text, command output when commands run, and `Codex App Server turn completed; ready for next input.`
+8. Confirm the composer returns to send-input mode.
+9. Optionally send one second short prompt on the same thread and confirm it completes without another login.
 
-Add a local profile in `taskdeck.local.json` or `TASKDECK_CONFIG` with:
+## Expected Logs
 
-```json
-{
-  "agentProfiles": [
-    {
-      "id": "codex-app-server",
-      "label": "Codex App Server smoke",
-      "command": "codex app-server --stdio",
-      "description": "Experimental Codex App Server profile for protocol smoke testing"
-    }
-  ]
-}
-```
+Normal task logs should be human-readable and should not show raw JSON-RPC. Expected high-level messages include:
 
-Then start that profile from the TaskDeck UI and send one JSON-RPC line at a time through the composer.
+- App Server initialized and account check started.
+- One account refresh attempt only if an auth error occurs.
+- Device login URL, user code, and login id only if login is required.
+- Login completed or failed.
+- Thread ready.
+- Turn accepted.
+- Assistant message text.
+- Aggregated command output.
+- Turn completed and ready for next input.
 
-First probe:
-
-```json
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
-```
-
-Use the raw response to confirm the current protocol shape before implementing the structured adapter.
+If device-code login fails, TaskDeck should not automatically request another code. Restart the task to request a fresh code.
