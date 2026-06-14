@@ -43,6 +43,11 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
       ? "Cancel current instruction"
       : "Send input to running task";
   const modeText = getComposerMode(task, isConnected, { isCodexAppServerNeedsAttention, isUnsupportedCancelActiveTask });
+  const inputPlaceholder = canSend
+    ? isCodexAppServerTask
+      ? "Send input to Codex task"
+      : "Input to running task"
+    : modeText;
   const inputState = getComposerInputState({ task, isConnected, isUploadingAttachments });
 
   useLayoutEffect(() => {
@@ -195,7 +200,7 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
           onCompositionEnd={() => setIsComposing(false)}
           onCompositionStart={() => setIsComposing(true)}
           onKeyDown={handleKeyDown}
-          placeholder={canSend ? "Input to running task" : modeText}
+          placeholder={inputPlaceholder}
           rows={1}
           spellCheck={false}
           value={value}

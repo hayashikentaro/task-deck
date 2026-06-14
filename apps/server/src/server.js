@@ -1824,7 +1824,7 @@ function handleCodexAppServerOutputLine(activeAppServer, line, stream) {
     }
     handleCodexAppServerMessage(activeAppServer, message);
   } catch (error) {
-    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Could not parse Codex App Server ${stream} JSON: ${error.message}\n`);
+    appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Could not parse Codex App Server ${stream} JSON: ${error.message}\n`);
     appendAndBroadcast(activeAppServer.taskId, `${line}\n`);
   }
 }
@@ -1842,7 +1842,7 @@ function handleCodexAppServerMessage(activeAppServer, message) {
     handleCodexAppServerNotification(activeAppServer, message);
     return;
   }
-  appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Unknown Codex App Server message: ${JSON.stringify(message)}\n`);
+  appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Unknown Codex App Server message: ${JSON.stringify(message)}\n`);
 }
 
 function handleCodexAppServerResponse(activeAppServer, message) {
@@ -1854,15 +1854,15 @@ function handleCodexAppServerResponse(activeAppServer, message) {
       preserveCodexAppServerPendingAuthRetry(activeAppServer, pendingRequest);
       if (!activeAppServer.forcedAccountRefreshAttempted) {
         activeAppServer.forcedAccountRefreshAttempted = true;
-        appendAndBroadcast(activeAppServer.taskId, "[TaskDeck] Codex App Server authentication is expired or invalid; trying one account refresh.\n");
+        appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server authentication is expired or invalid; trying one account refresh.\n");
         sendCodexAppServerAccountRead(activeAppServer, { refreshToken: true });
         return;
       }
-      appendAndBroadcast(activeAppServer.taskId, "[TaskDeck] Codex App Server authentication refresh failed; ChatGPT device login is required.\n");
+      appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server authentication refresh failed; ChatGPT device login is required.\n");
       handleCodexAppServerAuthRequired(activeAppServer, pendingRequest);
       return;
     }
-    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Codex App Server ${method || "request"} error: ${JSON.stringify(message.error)}\n`);
+    appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server ${method || "request"} error: ${JSON.stringify(message.error)}\n`);
     updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.FAILED, {
       reason: "Codex App Server request failed.",
       source: AgentStateSource.PROCESS,
@@ -1876,20 +1876,20 @@ function handleCodexAppServerResponse(activeAppServer, message) {
   }
 
   if (method === "initialize") {
-    appendAndBroadcast(activeAppServer.taskId, "[TaskDeck] Codex App Server initialized; checking account.\n");
+    appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server initialized; checking account.\n");
     sendCodexAppServerAccountRead(activeAppServer);
     return;
   }
 
   if (method === "account/read") {
     if (codexAppServerAccountRequiresLogin(message.result)) {
-      appendAndBroadcast(activeAppServer.taskId, "[TaskDeck] Codex App Server account requires ChatGPT login.\n");
+      appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server account requires ChatGPT login.\n");
       handleCodexAppServerAuthRequired(activeAppServer, { method: "thread/start" });
       return;
     }
     activeAppServer.accountReady = true;
     activeAppServer.loginInProgress = false;
-    appendAndBroadcast(activeAppServer.taskId, "[TaskDeck] Codex App Server account is ready; starting thread.\n");
+    appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server account is ready; starting thread.\n");
     resumeCodexAppServerAfterLogin(activeAppServer);
     return;
   }
@@ -1902,7 +1902,7 @@ function handleCodexAppServerResponse(activeAppServer, message) {
   if (method === "thread/start") {
     const threadId = String(message.result?.thread?.id || "").trim();
     activeAppServer.threadId = threadId;
-    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Codex App Server thread ready${threadId ? `: ${threadId}` : ""}.\n`);
+    appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server thread ready${threadId ? `: ${threadId}` : ""}.\n`);
     flushCodexAppServerPendingInputs(activeAppServer);
     return;
   }
@@ -1911,7 +1911,7 @@ function handleCodexAppServerResponse(activeAppServer, message) {
     const turnId = String(message.result?.turn?.id || "").trim();
     activeAppServer.activeTurnId = turnId;
     activeAppServer.turnActive = true;
-    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Codex App Server turn accepted${turnId ? `: ${turnId}` : ""}.\n`);
+    appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server turn accepted${turnId ? `: ${turnId}` : ""}.\n`);
     return;
   }
 }
@@ -1944,7 +1944,7 @@ function preserveCodexAppServerPendingAuthRetry(activeAppServer, pendingRequest)
 
 function handleCodexAppServerLoginStartResponse(activeAppServer, result) {
   if (result?.type !== "chatgptDeviceCode") {
-    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Codex App Server login started: ${JSON.stringify(result)}\n`);
+    appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server login started: ${JSON.stringify(result)}\n`);
     return;
   }
 
@@ -1952,8 +1952,8 @@ function handleCodexAppServerLoginStartResponse(activeAppServer, result) {
   const userCode = String(result.userCode || "").trim();
   const loginId = String(result.loginId || "").trim();
   activeAppServer.loginId = loginId;
-  appendAndBroadcast(
-    activeAppServer.taskId,
+  appendCodexAppServerStatus(
+    activeAppServer,
     [
       "[TaskDeck] ChatGPT device login required.",
       verificationUrl ? `[TaskDeck] Verification URL: ${verificationUrl}` : "",
@@ -1980,8 +1980,8 @@ function handleCodexAppServerLoginCompleted(activeAppServer, params) {
   if (!success) {
     activeAppServer.accountReady = false;
     const failureReason = error || "ChatGPT device login failed.";
-    appendAndBroadcast(
-      activeAppServer.taskId,
+    appendCodexAppServerStatus(
+      activeAppServer,
       [
         `[TaskDeck] Codex App Server login failed: ${failureReason}`,
         "[TaskDeck] TaskDeck will not start another device-code login automatically. Restart this task to request a fresh code.",
@@ -1999,17 +1999,17 @@ function handleCodexAppServerLoginCompleted(activeAppServer, params) {
     return;
   }
 
-  appendAndBroadcast(activeAppServer.taskId, "[TaskDeck] Codex App Server login completed; resuming.\n");
+  appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server login completed; resuming.\n");
   activeAppServer.accountReady = true;
   resumeCodexAppServerAfterLogin(activeAppServer);
 }
 
 function handleCodexAppServerAccountUpdated(activeAppServer) {
   if (activeAppServer.accountReady && !activeAppServer.pendingAuthRetry) {
-    appendAndBroadcast(activeAppServer.taskId, "[TaskDeck] Codex App Server account updated.\n");
+    appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server account updated.\n");
     return;
   }
-  appendAndBroadcast(activeAppServer.taskId, "[TaskDeck] Codex App Server account updated; resuming.\n");
+  appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server account updated; resuming.\n");
   activeAppServer.loginInProgress = false;
   activeAppServer.accountReady = true;
   resumeCodexAppServerAfterLogin(activeAppServer);
@@ -2069,7 +2069,7 @@ function handleCodexAppServerRequest(activeAppServer, message) {
       attentionSource: AgentStateSource.PROCESS,
       attentionConfidence: AgentStateConfidence.HIGH,
     });
-    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Codex App Server approval request is waiting for user handling: ${method}\n`);
+    appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server approval request is waiting for user handling: ${method}\n`);
     return;
   }
   if (isCodexAppServerUserInputRequest(method)) {
@@ -2082,10 +2082,10 @@ function handleCodexAppServerRequest(activeAppServer, message) {
       attentionSource: AgentStateSource.PROCESS,
       attentionConfidence: AgentStateConfidence.HIGH,
     });
-    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Codex App Server user-input request is waiting for user handling: ${method}\n`);
+    appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server user-input request is waiting for user handling: ${method}\n`);
     return;
   }
-  appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Unknown Codex App Server request: ${method}\n`);
+  appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Unknown Codex App Server request: ${method}\n`);
 }
 
 function handleCodexAppServerNotification(activeAppServer, message) {
@@ -2148,7 +2148,7 @@ function handleCodexAppServerNotification(activeAppServer, message) {
   if (method === "turn/completed") {
     activeAppServer.activeTurnId = "";
     activeAppServer.turnActive = false;
-    appendAndBroadcast(activeAppServer.taskId, "[TaskDeck] Codex App Server turn completed; ready for next input.\n");
+    appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server turn completed; ready for next input.\n");
     updateCodexAppServerReady(activeAppServer, "Codex App Server turn completed.");
     return;
   }
@@ -2172,7 +2172,7 @@ function handleCodexAppServerNotification(activeAppServer, message) {
     });
     return;
   }
-  appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Unknown Codex App Server notification: ${method}\n`);
+  appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Unknown Codex App Server notification: ${method}\n`);
 }
 
 function handleCodexAppServerThreadStarted(activeAppServer, params) {
@@ -2196,7 +2196,7 @@ function handleCodexAppServerMcpStatusUpdated(activeAppServer, params) {
     status ? `status=${status}` : "",
     error ? `error=${error}` : "",
   ].filter(Boolean).join(" ");
-  appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Codex App Server MCP status updated${details ? `: ${details}` : "."}\n`);
+  appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server MCP status updated${details ? `: ${details}` : "."}\n`);
 }
 
 function handleCodexAppServerItemStarted(activeAppServer, params) {
@@ -2209,7 +2209,7 @@ function handleCodexAppServerItemStarted(activeAppServer, params) {
   if (itemType === "commandExecution") {
     updateCodexAppServerWorking(activeAppServer, "Codex App Server started a command.");
     const command = compactCodexAppServerCommand(String(item.command || ""));
-    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Codex App Server command started${command ? `: ${command}` : "."}\n`);
+    appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server command started${command ? `: ${command}` : "."}\n`);
   }
 }
 
@@ -2221,6 +2221,25 @@ function handleCodexAppServerAgentMessageDelta(activeAppServer, params) {
   appendAndBroadcast(activeAppServer.taskId, delta);
 }
 
+function appendCodexAppServerStatus(activeAppServer, data) {
+  const taskId = activeAppServer.taskId;
+  const currentLog = logs.get(taskId) || "";
+  const prefix = currentLog && !currentLog.endsWith("\n") ? "\n" : "";
+  const suffix = data.endsWith("\n") ? "" : "\n";
+  appendAndBroadcast(taskId, `${prefix}${data}${suffix}`);
+}
+
+function appendCodexAppServerCommandOutput(activeAppServer, output) {
+  const normalizedOutput = String(output || "").trimEnd();
+  if (!normalizedOutput) {
+    return;
+  }
+  appendCodexAppServerStatus(
+    activeAppServer,
+    `[TaskDeck] Codex App Server command output:\n${normalizedOutput}\n`
+  );
+}
+
 function handleCodexAppServerItemCompleted(activeAppServer, params) {
   const item = params?.item;
   if (item?.type !== "commandExecution") {
@@ -2230,7 +2249,7 @@ function handleCodexAppServerItemCompleted(activeAppServer, params) {
   if (!output) {
     return;
   }
-  appendAndBroadcast(activeAppServer.taskId, output.endsWith("\n") ? output : `${output}\n`);
+  appendCodexAppServerCommandOutput(activeAppServer, output);
 }
 
 function updateCodexAppServerReady(activeAppServer, reason) {
@@ -2314,7 +2333,7 @@ function flushCodexAppServerPendingInputs(activeAppServer) {
   }
   if (pendingInputs.length === 0) {
     updateCodexAppServerReady(activeAppServer, "Codex App Server adapter is ready.");
-    appendAndBroadcast(activeAppServer.taskId, "[TaskDeck] Codex App Server adapter is ready; send input to start a turn.\n");
+    appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server adapter is ready; send input to start a turn.\n");
     return false;
   }
   for (const input of pendingInputs) {
@@ -5498,7 +5517,7 @@ function cancelCodexAppServerLoginIfNeeded(activeAppServer) {
     activeAppServer.process.stdin.write(`${JSON.stringify(message)}\n`);
   } catch (error) {
     if (codexAppServerDebugEnabled) {
-      appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Could not cancel Codex App Server login: ${error.message}\n`);
+      appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Could not cancel Codex App Server login: ${error.message}\n`);
     }
   }
 }
