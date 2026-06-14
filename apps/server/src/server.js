@@ -99,6 +99,7 @@ const localConfigPath = path.join(repoRoot, "taskdeck.local.json");
 const envConfigPath = process.env.TASKDECK_CONFIG ? path.resolve(process.env.TASKDECK_CONFIG) : "";
 const managerAgentProfileId = "taskdeck-manager";
 const codexAppServerAgentProfileId = "codex-app-server";
+const codexAppServerCommandOverride = String(process.env.TASKDECK_CODEX_APP_SERVER_COMMAND || "").trim();
 const defaultAgentProfiles = [
   {
     id: "codex",
@@ -117,7 +118,7 @@ const defaultAgentProfiles = [
   {
     id: codexAppServerAgentProfileId,
     label: "Codex App Server (experimental)",
-    command: "codex app-server --listen stdio://",
+    command: codexAppServerCommandOverride || "codex app-server --listen stdio://",
     description: "Experimental server-side Codex App Server adapter",
   },
   {
@@ -1594,7 +1595,8 @@ function sendTaskInput(taskId, data, source = "client") {
 }
 
 async function startCodexAppServerTask({ task, processCwd, socket }) {
-  const appServerProcess = spawn("codex", ["app-server", "--listen", "stdio://"], {
+  const launchCommand = codexAppServerLaunchCommand();
+  const appServerProcess = spawn(launchCommand.command, launchCommand.args, {
     cwd: processCwd,
     env: {
       ...process.env,
@@ -1652,6 +1654,19 @@ async function startCodexAppServerTask({ task, processCwd, socket }) {
 
   sendCodexAppServerInitialize(activeAppServer);
   return { ok: true, taskId: task.id };
+}
+
+function codexAppServerLaunchCommand() {
+  if (codexAppServerCommandOverride) {
+    return {
+      command: shell,
+      args: ["-lc", codexAppServerCommandOverride],
+    };
+  }
+  return {
+    command: "codex",
+    args: ["app-server", "--listen", "stdio://"],
+  };
 }
 
 function createActiveCodexAppServer(task, process) {

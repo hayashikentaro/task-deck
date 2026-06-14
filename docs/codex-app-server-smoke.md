@@ -30,6 +30,27 @@ When TaskDeck runs in a container and the browser runs on the host, `localhost` 
 8. Confirm the composer returns to send-input mode.
 9. Optionally send one second short prompt on the same thread and confirm it completes without another login.
 
+## No-Auth Fake Smoke
+
+Use the fake stdio App Server when you need to verify TaskDeck's App Server UI without running a real ChatGPT device login flow:
+
+```bash
+TASKDECK_CODEX_APP_SERVER_COMMAND="node \"$PWD/scripts/fake-codex-app-server.js\"" npm run dev
+```
+
+Then create a task with the `Codex App Server (experimental)` profile and send one short prompt. The fake server returns an authenticated account from `account/read`, so no device login should appear.
+
+Verify the UI and log path:
+
+- The task card shows the `App Server` agent badge.
+- The composer placeholder reaches `Send input to Codex task` before sending.
+- The task log shows `Codex App Server turn accepted`.
+- The task log shows `Codex App Server command started`.
+- The task log keeps the existing `[TaskDeck] Codex App Server command output:` block and includes the fake command output.
+- The task log shows one `[Assistant]` label for the fake assistant response, not one label per small delta.
+- The task log shows `Codex App Server turn completed; ready for next input.`
+- After completion, the composer returns to ready send-input behavior.
+
 ## Successful Smoke Expectations
 
 - One device login is requested at most when no valid ChatGPT session is already available.
