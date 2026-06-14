@@ -1666,6 +1666,7 @@ function createActiveCodexAppServer(task, process) {
     threadId: "",
     activeTurnId: "",
     turnActive: false,
+    assistantMessageOpen: false,
     accountReady: false,
     loginInProgress: false,
     loginId: "",
@@ -1913,6 +1914,7 @@ function handleCodexAppServerResponse(activeAppServer, message) {
     const turnId = String(message.result?.turn?.id || "").trim();
     activeAppServer.activeTurnId = turnId;
     activeAppServer.turnActive = true;
+    activeAppServer.assistantMessageOpen = false;
     appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server turn accepted${turnId ? `: ${turnId}` : ""}.\n`);
     return;
   }
@@ -2109,6 +2111,7 @@ function handleCodexAppServerNotification(activeAppServer, message) {
   }
   if (method === "turn/started") {
     activeAppServer.turnActive = true;
+    activeAppServer.assistantMessageOpen = false;
     updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WORKING, {
       reason: "Codex App Server turn started.",
       source: AgentStateSource.PROCESS,
@@ -2150,6 +2153,7 @@ function handleCodexAppServerNotification(activeAppServer, message) {
   if (method === "turn/completed") {
     activeAppServer.activeTurnId = "";
     activeAppServer.turnActive = false;
+    activeAppServer.assistantMessageOpen = false;
     appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server turn completed; ready for next input.\n");
     updateCodexAppServerReady(activeAppServer, "Codex App Server turn completed.");
     return;
@@ -2220,14 +2224,21 @@ function handleCodexAppServerAgentMessageDelta(activeAppServer, params) {
   if (!delta) {
     return;
   }
-  appendAndBroadcast(activeAppServer.taskId, formatCodexAppServerAssistantText(delta));
+  appendAndBroadcast(activeAppServer.taskId, formatCodexAppServerAssistantText(activeAppServer, delta));
 }
 
-function formatCodexAppServerAssistantText(delta) {
-  return `${codexAppServerAssistantStyleStart}${delta}${codexAppServerAssistantStyleEnd}`;
+function formatCodexAppServerAssistantText(activeAppServer, delta) {
+  if (activeAppServer.assistantMessageOpen) {
+    return `${codexAppServerAssistantStyleStart}${delta}${codexAppServerAssistantStyleEnd}`;
+  }
+  activeAppServer.assistantMessageOpen = true;
+  const currentLog = logs.get(activeAppServer.taskId) || "";
+  const prefix = currentLog && !currentLog.endsWith("\n") ? "\n" : "";
+  return `${prefix}[Assistant]\n${codexAppServerAssistantStyleStart}${delta}${codexAppServerAssistantStyleEnd}`;
 }
 
 function appendCodexAppServerStatus(activeAppServer, data) {
+  activeAppServer.assistantMessageOpen = false;
   const taskId = activeAppServer.taskId;
   const currentLog = logs.get(taskId) || "";
   const prefix = currentLog && !currentLog.endsWith("\n") ? "\n" : "";
