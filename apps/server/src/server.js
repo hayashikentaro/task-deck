@@ -1728,9 +1728,9 @@ function sendCodexAppServerInitialize(activeAppServer) {
   });
 }
 
-function sendCodexAppServerAccountRead(activeAppServer) {
+function sendCodexAppServerAccountRead(activeAppServer, { refreshToken = false } = {}) {
   sendCodexAppServerRequest(activeAppServer, "account/read", {
-    refreshToken: true,
+    refreshToken,
   });
 }
 
