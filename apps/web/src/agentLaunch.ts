@@ -22,6 +22,9 @@ export function isTaskDeckManagerProfile(profile: AgentProfile | null | undefine
 }
 
 export function isCodexProfile(profile: AgentProfile) {
+  if (profile.id === "codex-app-server") {
+    return false;
+  }
   return (
     profile.id.includes("codex") ||
     profile.label.toLowerCase().includes("codex") ||

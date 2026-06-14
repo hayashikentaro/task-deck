@@ -1,5 +1,5 @@
 import express from "express";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import http from "node:http";
@@ -98,6 +98,7 @@ const defaultConfigPath = path.join(repoRoot, "taskdeck.config.json");
 const localConfigPath = path.join(repoRoot, "taskdeck.local.json");
 const envConfigPath = process.env.TASKDECK_CONFIG ? path.resolve(process.env.TASKDECK_CONFIG) : "";
 const managerAgentProfileId = "taskdeck-manager";
+const codexAppServerAgentProfileId = "codex-app-server";
 const defaultAgentProfiles = [
   {
     id: "codex",
@@ -112,6 +113,12 @@ const defaultAgentProfiles = [
       { id: "gpt-5.5-thinking", label: "gpt-5.5 Thinking" },
       { id: "gpt-5.4-codex", label: "gpt-5.4 Codex" },
     ],
+  },
+  {
+    id: codexAppServerAgentProfileId,
+    label: "Codex App Server (experimental)",
+    command: "codex app-server --listen stdio://",
+    description: "Experimental server-side Codex App Server adapter",
   },
   {
     id: "claude",
@@ -203,6 +210,7 @@ const imageAttachmentExtensions = new Map([
   ["image/webp", ".webp"],
 ]);
 const activePtys = new Map();
+const activeCodexAppServers = new Map();
 const startedChildSessionRequestKeys = new Set();
 const pendingChildSessionStarts = new Map();
 const processedChildSessionMessageRequestIds = new Set();
@@ -682,7 +690,7 @@ wss.on("connection", (socket) => {
 
     if (message.type === "input") {
       const taskId = String(message.taskId || "").trim();
-      const inputResult = sendTaskInputToPty(taskId, message.data, message.source || "client");
+      const inputResult = sendTaskInput(taskId, message.data, message.source || "client");
       if (!inputResult.ok) {
         if (inputResult.reason === "terminal-input-locked") {
           send(socket, { type: "error", message: "Terminal input is locked for this task." });
@@ -1030,6 +1038,10 @@ async function startTaskNow({
     cwd: task.cwd,
   });
   writeTaskLog(task.id, "");
+
+  if (isCodexAppServerTask(task)) {
+    return startCodexAppServerTask({ task, processCwd, socket });
+  }
 
   try {
     const terminalProcess = pty.spawn(shell, ["-lc", commandForProcess], {
@@ -1568,6 +1580,439 @@ function sendTaskInputToPty(taskId, data, source = "client") {
   resetPendingInputPrompt(activePty);
   writeOrQueuePtyInput(activePty, data, source);
   return { ok: true };
+}
+
+function sendTaskInput(taskId, data, source = "client") {
+  const normalizedTaskId = String(taskId || "").trim();
+  if (activeCodexAppServers.has(normalizedTaskId)) {
+    return sendTaskInputToCodexAppServer(normalizedTaskId, data, source);
+  }
+  return sendTaskInputToPty(normalizedTaskId, data, source);
+}
+
+async function startCodexAppServerTask({ task, processCwd, socket }) {
+  const appServerProcess = spawn("codex", ["app-server", "--listen", "stdio://"], {
+    cwd: processCwd,
+    env: {
+      ...process.env,
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const activeAppServer = createActiveCodexAppServer(task, appServerProcess);
+  activeCodexAppServers.set(task.id, activeAppServer);
+
+  updateAgentStateFromTaskDeckEvent(task.id, AgentState.THINKING, {
+    reason: "Codex App Server process started; initializing protocol.",
+    source: AgentStateSource.TASKDECK_EVENT,
+    confidence: AgentStateConfidence.MEDIUM,
+    attentionState: AttentionState.NONE,
+    attentionReason: "Codex App Server task has started.",
+    attentionSource: AgentStateSource.TASKDECK_EVENT,
+    attentionConfidence: AgentStateConfidence.HIGH,
+  });
+  send(socket, { type: "started", taskId: task.id });
+  appendAndBroadcast(task.id, "[TaskDeck] Starting Codex App Server adapter.\n");
+
+  appServerProcess.stdout.on("data", (chunk) => {
+    handleCodexAppServerOutput(activeAppServer, chunk.toString(), "stdout");
+  });
+  appServerProcess.stderr.on("data", (chunk) => {
+    handleCodexAppServerOutput(activeAppServer, chunk.toString(), "stderr");
+  });
+  appServerProcess.on("error", (error) => {
+    appendAndBroadcast(task.id, `[TaskDeck] Codex App Server process error: ${error.message}\n`);
+    updateAgentStateFromTaskDeckEvent(task.id, AgentState.FAILED, {
+      reason: "Codex App Server process emitted an error.",
+      source: AgentStateSource.PROCESS,
+      confidence: AgentStateConfidence.HIGH,
+      attentionState: AttentionState.FAILED,
+      attentionReason: "Codex App Server process emitted an error.",
+      attentionSource: AgentStateSource.PROCESS,
+      attentionConfidence: AgentStateConfidence.HIGH,
+    });
+  });
+  appServerProcess.on("exit", (exitCode, signal) => {
+    const currentTask = tasks.get(task.id);
+    activeCodexAppServers.delete(task.id);
+    if (!currentTask) {
+      return;
+    }
+    if (currentTask.status === TaskStatus.CLOSED) {
+      broadcastTasks();
+      return;
+    }
+    setTask(markTaskExited(currentTask, { exitCode, signal }));
+    broadcastTasks();
+  });
+
+  sendCodexAppServerInitialize(activeAppServer);
+  return { ok: true, taskId: task.id };
+}
+
+function createActiveCodexAppServer(task, process) {
+  return {
+    taskId: task.id,
+    process,
+    createdAt: Date.now(),
+    nextRequestId: 1,
+    pendingRequests: new Map(),
+    stdoutBuffer: "",
+    stderrBuffer: "",
+    threadId: "",
+    activeTurnId: "",
+    pendingInputs: [],
+  };
+}
+
+function sendTaskInputToCodexAppServer(taskId, data, source = "client") {
+  const task = tasks.get(taskId);
+  const activeAppServer = activeCodexAppServers.get(taskId);
+  if (task?.terminalInputLockedAt) {
+    return { ok: false, reason: "terminal-input-locked" };
+  }
+  if (!activeAppServer || typeof data !== "string") {
+    return { ok: false, reason: "no-active-app-server-or-invalid-data" };
+  }
+
+  const text = normalizeCodexAppServerInput(data);
+  if (!text) {
+    return { ok: false, reason: "empty-input" };
+  }
+
+  logInputDebug(taskId, data, source);
+  updateAgentStateFromTaskDeckEvent(taskId, AgentState.WORKING, {
+    reason: "User input was sent to Codex App Server.",
+    source: AgentStateSource.TASKDECK_EVENT,
+    confidence: AgentStateConfidence.HIGH,
+    attentionState: AttentionState.NONE,
+    attentionReason: "User input was sent to Codex App Server.",
+    attentionSource: AgentStateSource.TASKDECK_EVENT,
+    attentionConfidence: AgentStateConfidence.HIGH,
+  });
+
+  if (!activeAppServer.threadId) {
+    activeAppServer.pendingInputs.push(text);
+    appendAndBroadcast(taskId, "[TaskDeck] Queued input until Codex App Server thread is ready.\n");
+    return { ok: true };
+  }
+
+  sendCodexAppServerTurn(activeAppServer, text);
+  return { ok: true };
+}
+
+function normalizeCodexAppServerInput(data) {
+  return String(data || "")
+    .replaceAll(bracketedPasteStart, "")
+    .replaceAll(bracketedPasteEnd, "")
+    .replace(/\r/g, "\n")
+    .trim();
+}
+
+function sendCodexAppServerInitialize(activeAppServer) {
+  sendCodexAppServerRequest(activeAppServer, "initialize", {
+    clientInfo: {
+      name: "taskdeck",
+      title: "TaskDeck",
+      version: "0.1.0",
+    },
+    capabilities: {
+      experimentalApi: true,
+    },
+  });
+}
+
+function sendCodexAppServerThreadStart(activeAppServer) {
+  const task = tasks.get(activeAppServer.taskId);
+  if (!task) {
+    return;
+  }
+  sendCodexAppServerRequest(activeAppServer, "thread/start", {
+    cwd: task.cwd,
+    ephemeral: true,
+  });
+}
+
+function sendCodexAppServerTurn(activeAppServer, text) {
+  if (!activeAppServer.threadId) {
+    activeAppServer.pendingInputs.push(text);
+    return;
+  }
+  sendCodexAppServerRequest(activeAppServer, "turn/start", {
+    threadId: activeAppServer.threadId,
+    input: [
+      {
+        type: "text",
+        text,
+      },
+    ],
+  });
+}
+
+function sendCodexAppServerRequest(activeAppServer, method, params) {
+  const id = activeAppServer.nextRequestId;
+  activeAppServer.nextRequestId += 1;
+  const message = { jsonrpc: "2.0", id, method, params };
+  activeAppServer.pendingRequests.set(id, method);
+  appendAndBroadcast(activeAppServer.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`);
+  activeAppServer.process.stdin.write(`${JSON.stringify(message)}\n`);
+  return id;
+}
+
+function handleCodexAppServerOutput(activeAppServer, data, stream) {
+  if (!tasks.has(activeAppServer.taskId)) {
+    return;
+  }
+  appendLog(activeAppServer.taskId, data);
+  broadcast({ type: "output", taskId: activeAppServer.taskId, data });
+
+  const bufferKey = stream === "stderr" ? "stderrBuffer" : "stdoutBuffer";
+  activeAppServer[bufferKey] += data;
+  const lines = activeAppServer[bufferKey].split(/\r?\n/);
+  activeAppServer[bufferKey] = lines.pop() ?? "";
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine || !trimmedLine.startsWith("{")) {
+      continue;
+    }
+    try {
+      handleCodexAppServerMessage(activeAppServer, JSON.parse(trimmedLine));
+    } catch (error) {
+      appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Could not parse Codex App Server ${stream} JSON: ${error.message}\n`);
+    }
+  }
+}
+
+function handleCodexAppServerMessage(activeAppServer, message) {
+  if (message.id !== undefined && (message.result !== undefined || message.error !== undefined)) {
+    handleCodexAppServerResponse(activeAppServer, message);
+    return;
+  }
+  if (message.id !== undefined && message.method) {
+    handleCodexAppServerRequest(activeAppServer, message);
+    return;
+  }
+  if (message.method) {
+    handleCodexAppServerNotification(activeAppServer, message);
+    return;
+  }
+  appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Unknown Codex App Server message: ${JSON.stringify(message)}\n`);
+}
+
+function handleCodexAppServerResponse(activeAppServer, message) {
+  const method = activeAppServer.pendingRequests.get(message.id);
+  activeAppServer.pendingRequests.delete(message.id);
+  if (message.error) {
+    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Codex App Server ${method || "request"} error: ${JSON.stringify(message.error)}\n`);
+    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.FAILED, {
+      reason: "Codex App Server request failed.",
+      source: AgentStateSource.PROCESS,
+      confidence: AgentStateConfidence.HIGH,
+      attentionState: AttentionState.FAILED,
+      attentionReason: "Codex App Server request failed.",
+      attentionSource: AgentStateSource.PROCESS,
+      attentionConfidence: AgentStateConfidence.HIGH,
+    });
+    return;
+  }
+
+  if (method === "initialize") {
+    appendAndBroadcast(activeAppServer.taskId, "[TaskDeck] Codex App Server initialized; starting thread.\n");
+    sendCodexAppServerThreadStart(activeAppServer);
+    return;
+  }
+
+  if (method === "thread/start") {
+    const threadId = String(message.result?.thread?.id || "").trim();
+    activeAppServer.threadId = threadId;
+    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WORKING, {
+      reason: "Codex App Server thread is ready.",
+      source: AgentStateSource.PROCESS,
+      confidence: AgentStateConfidence.HIGH,
+      attentionState: AttentionState.NONE,
+      attentionReason: "Codex App Server thread is ready.",
+      attentionSource: AgentStateSource.PROCESS,
+      attentionConfidence: AgentStateConfidence.HIGH,
+    });
+    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Codex App Server thread ready${threadId ? `: ${threadId}` : ""}.\n`);
+    flushCodexAppServerPendingInputs(activeAppServer);
+    return;
+  }
+
+  if (method === "turn/start") {
+    const turnId = String(message.result?.turn?.id || "").trim();
+    activeAppServer.activeTurnId = turnId;
+    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Codex App Server turn accepted${turnId ? `: ${turnId}` : ""}.\n`);
+    return;
+  }
+}
+
+function handleCodexAppServerRequest(activeAppServer, message) {
+  const method = String(message.method || "");
+  if (isCodexAppServerApprovalRequest(method)) {
+    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WAITING_APPROVAL, {
+      reason: "Codex App Server requested approval.",
+      source: AgentStateSource.PROCESS,
+      confidence: AgentStateConfidence.HIGH,
+      attentionState: AttentionState.NEEDS_APPROVAL,
+      attentionReason: "Codex App Server requested approval.",
+      attentionSource: AgentStateSource.PROCESS,
+      attentionConfidence: AgentStateConfidence.HIGH,
+    });
+    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Codex App Server approval request is waiting for user handling: ${method}\n`);
+    return;
+  }
+  if (isCodexAppServerUserInputRequest(method)) {
+    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WAITING_INPUT, {
+      reason: "Codex App Server requested user input.",
+      source: AgentStateSource.PROCESS,
+      confidence: AgentStateConfidence.HIGH,
+      attentionState: AttentionState.NEEDS_INPUT,
+      attentionReason: "Codex App Server requested user input.",
+      attentionSource: AgentStateSource.PROCESS,
+      attentionConfidence: AgentStateConfidence.HIGH,
+    });
+    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Codex App Server user-input request is waiting for user handling: ${method}\n`);
+    return;
+  }
+  appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Unknown Codex App Server request: ${method}\n`);
+}
+
+function handleCodexAppServerNotification(activeAppServer, message) {
+  const method = String(message.method || "");
+  if (method === "thread/status/changed") {
+    updateCodexAppServerStatus(activeAppServer, message.params?.status);
+    return;
+  }
+  if (method === "turn/started") {
+    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WORKING, {
+      reason: "Codex App Server turn started.",
+      source: AgentStateSource.PROCESS,
+      confidence: AgentStateConfidence.HIGH,
+      attentionState: AttentionState.NONE,
+      attentionReason: "Codex App Server turn started.",
+      attentionSource: AgentStateSource.PROCESS,
+      attentionConfidence: AgentStateConfidence.HIGH,
+    });
+    return;
+  }
+  if (method === "turn/completed") {
+    activeAppServer.activeTurnId = "";
+    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.THINKING, {
+      reason: "Codex App Server turn completed.",
+      source: AgentStateSource.PROCESS,
+      confidence: AgentStateConfidence.HIGH,
+      attentionState: AttentionState.NONE,
+      attentionReason: "Codex App Server turn completed.",
+      attentionSource: AgentStateSource.PROCESS,
+      attentionConfidence: AgentStateConfidence.HIGH,
+    });
+    return;
+  }
+  if (method === "error") {
+    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.FAILED, {
+      reason: "Codex App Server emitted an error notification.",
+      source: AgentStateSource.PROCESS,
+      confidence: AgentStateConfidence.HIGH,
+      attentionState: AttentionState.FAILED,
+      attentionReason: "Codex App Server emitted an error notification.",
+      attentionSource: AgentStateSource.PROCESS,
+      attentionConfidence: AgentStateConfidence.HIGH,
+    });
+    return;
+  }
+  appendAndBroadcast(activeAppServer.taskId, `[TaskDeck] Unknown Codex App Server notification: ${method}\n`);
+}
+
+function updateCodexAppServerStatus(activeAppServer, status) {
+  const statusType = String(status?.type || "");
+  const activeFlags = Array.isArray(status?.activeFlags) ? status.activeFlags.map(String) : [];
+  if (activeFlags.includes("waitingOnApproval")) {
+    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WAITING_APPROVAL, {
+      reason: "Codex App Server is waiting on approval.",
+      source: AgentStateSource.PROCESS,
+      confidence: AgentStateConfidence.HIGH,
+      attentionState: AttentionState.NEEDS_APPROVAL,
+      attentionReason: "Codex App Server is waiting on approval.",
+      attentionSource: AgentStateSource.PROCESS,
+      attentionConfidence: AgentStateConfidence.HIGH,
+    });
+    return;
+  }
+  if (activeFlags.includes("waitingOnUserInput")) {
+    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WAITING_INPUT, {
+      reason: "Codex App Server is waiting on user input.",
+      source: AgentStateSource.PROCESS,
+      confidence: AgentStateConfidence.HIGH,
+      attentionState: AttentionState.NEEDS_INPUT,
+      attentionReason: "Codex App Server is waiting on user input.",
+      attentionSource: AgentStateSource.PROCESS,
+      attentionConfidence: AgentStateConfidence.HIGH,
+    });
+    return;
+  }
+  if (statusType === "active") {
+    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WORKING, {
+      reason: "Codex App Server thread is active.",
+      source: AgentStateSource.PROCESS,
+      confidence: AgentStateConfidence.HIGH,
+      attentionState: AttentionState.NONE,
+      attentionReason: "Codex App Server thread is active.",
+      attentionSource: AgentStateSource.PROCESS,
+      attentionConfidence: AgentStateConfidence.HIGH,
+    });
+    return;
+  }
+  if (statusType === "idle") {
+    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.THINKING, {
+      reason: "Codex App Server thread is idle.",
+      source: AgentStateSource.PROCESS,
+      confidence: AgentStateConfidence.HIGH,
+      attentionState: AttentionState.NONE,
+      attentionReason: "Codex App Server thread is idle.",
+      attentionSource: AgentStateSource.PROCESS,
+      attentionConfidence: AgentStateConfidence.HIGH,
+    });
+    return;
+  }
+  if (statusType === "systemError") {
+    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.FAILED, {
+      reason: "Codex App Server thread reported a system error.",
+      source: AgentStateSource.PROCESS,
+      confidence: AgentStateConfidence.HIGH,
+      attentionState: AttentionState.FAILED,
+      attentionReason: "Codex App Server thread reported a system error.",
+      attentionSource: AgentStateSource.PROCESS,
+      attentionConfidence: AgentStateConfidence.HIGH,
+    });
+  }
+}
+
+function flushCodexAppServerPendingInputs(activeAppServer) {
+  const initialInstruction = String(tasks.get(activeAppServer.taskId)?.initialInstruction || "").trim();
+  const pendingInputs = activeAppServer.pendingInputs.splice(0);
+  if (initialInstruction) {
+    pendingInputs.unshift(initialInstruction);
+  }
+  if (pendingInputs.length === 0) {
+    appendAndBroadcast(activeAppServer.taskId, "[TaskDeck] Codex App Server adapter is ready; send input to start a turn.\n");
+    return;
+  }
+  for (const input of pendingInputs) {
+    sendCodexAppServerTurn(activeAppServer, input);
+  }
+}
+
+function isCodexAppServerApprovalRequest(method) {
+  return method.includes("requestApproval") || method === "applyPatchApproval" || method === "execCommandApproval";
+}
+
+function isCodexAppServerUserInputRequest(method) {
+  return method.includes("requestUserInput") || method.includes("elicitation/request");
+}
+
+function appendAndBroadcast(taskId, data) {
+  appendLog(taskId, data);
+  broadcast({ type: "output", taskId, data });
 }
 
 function childSessionMessageInputError(childTask, reason) {
@@ -2658,6 +3103,14 @@ function isManagerTask(task) {
 
 function isManagerAgentProfileId(agentProfileId) {
   return String(agentProfileId || "").trim() === managerAgentProfileId;
+}
+
+function isCodexAppServerAgentProfileId(agentProfileId) {
+  return String(agentProfileId || "").trim() === codexAppServerAgentProfileId;
+}
+
+function isCodexAppServerTask(task) {
+  return isCodexAppServerAgentProfileId(task?.agentProfileId);
 }
 
 function managerChildStatusEventDedupeKey(task) {
@@ -4633,7 +5086,10 @@ function broadcastTasks() {
 }
 
 function getRunningTaskIds() {
-  return Array.from(activePtys.keys()).reverse();
+  return Array.from(new Set([
+    ...Array.from(activePtys.keys()).reverse(),
+    ...Array.from(activeCodexAppServers.keys()).reverse(),
+  ]));
 }
 
 function getPrimaryRunningTaskId() {
@@ -4657,6 +5113,7 @@ async function clearTask(taskId) {
 async function stopTaskProcesses(taskId) {
   const task = tasks.get(taskId);
   stopActivePty(taskId);
+  stopActiveCodexAppServer(taskId);
 
   if (!task) {
     return;
@@ -4675,6 +5132,19 @@ function stopActivePty(taskId) {
     activePty.process.kill();
   } catch (error) {
     console.error("TaskDeck could not stop PTY for " + taskId + ": " + error.message);
+  }
+}
+
+function stopActiveCodexAppServer(taskId) {
+  const activeAppServer = activeCodexAppServers.get(taskId);
+  if (!activeAppServer) {
+    return;
+  }
+  activeCodexAppServers.delete(taskId);
+  try {
+    activeAppServer.process.kill();
+  } catch (error) {
+    console.error("TaskDeck could not stop Codex App Server for " + taskId + ": " + error.message);
   }
 }
 
