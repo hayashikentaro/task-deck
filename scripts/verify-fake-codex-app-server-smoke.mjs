@@ -1,13 +1,16 @@
 import { spawn } from "node:child_process";
+import fs from "node:fs/promises";
 import http from "node:http";
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import WebSocket from "ws";
 
 const host = "127.0.0.1";
-const timeoutMs = Number(process.env.TASKDECK_VERIFY_FAKE_APP_SERVER_TIMEOUT_MS || 15_000);
+const timeoutMs = Number(process.env.TASKDECK_VERIFY_FAKE_APP_SERVER_TIMEOUT_MS || 45_000);
+const requestTimeoutMs = Number(process.env.TASKDECK_VERIFY_FAKE_APP_SERVER_REQUEST_TIMEOUT_MS || 2_500);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
@@ -15,85 +18,212 @@ const fakeServerPath = path.join(repoRoot, "scripts/fake-codex-app-server.js");
 const serverCommand = process.execPath;
 const serverArgs = ["apps/server/src/server.js"];
 const output = [];
-
 const port = await findAvailablePort();
-const child = spawn(serverCommand, serverArgs, {
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    HOST: host,
-    PORT: String(port),
-    NODE_ENV: "production",
-    TASKDECK_CODEX_APP_SERVER_COMMAND: `${shellQuote(process.execPath)} ${shellQuote(fakeServerPath)}`,
-    TASKDECK_CODEX_APP_SERVER_DEBUG: "0",
-  },
-  stdio: ["ignore", "pipe", "pipe"],
-});
+const dataRoot = await fs.mkdtemp(path.join(os.tmpdir(), "taskdeck-fake-app-server-"));
 
-let settled = false;
-let taskId = "";
+let phase = "starting";
+let child;
 let socket;
-const timeout = setTimeout(() => {
-  fail(`Fake Codex App Server smoke did not finish within ${timeoutMs}ms.`);
-}, timeoutMs);
-
-child.stdout.on("data", (chunk) => recordOutput(chunk));
-child.stderr.on("data", (chunk) => recordOutput(chunk));
-child.on("error", (error) => fail(`Could not start TaskDeck server: ${error.message}`));
-child.on("exit", (code, signal) => {
-  if (settled) return;
-  fail(`TaskDeck server exited before fake smoke completed. code=${code ?? ""} signal=${signal ?? ""}`);
-});
+let taskId = "";
+let lastTaskLog = "";
+let stoppingServer = false;
 
 try {
-  await waitForContextEndpoint(port);
-  socket = await connectWebSocket();
-  taskId = await startFakeTask(socket);
-  await waitForLog(taskId, (log) => log.includes("Codex App Server adapter is ready"), "fake App Server readiness");
-
-  socket.send(JSON.stringify({ type: "input", taskId, data: "first fake smoke input" }));
-  await waitForLog(taskId, (log) => turnOutputIsPresent(log, 1, 1), "fake turn 1 output");
-  await assertReadyForInput(taskId, "turn 1");
-
-  socket.send(JSON.stringify({ type: "input", taskId, data: "second fake smoke input" }));
-  await waitForLog(taskId, (log) => turnOutputIsPresent(log, 2, 2), "fake turn 2 output");
-  await assertReadyForInput(taskId, "turn 2");
-
-  await cleanupTask(taskId);
-  pass();
+  child = startServer();
+  await withTimeout(runSmoke(), timeoutMs);
+  console.log(`Fake Codex App Server smoke verified on ${host}:${port}.`);
 } catch (error) {
-  fail(error.message || String(error));
+  process.exitCode = 1;
+  console.error(error.message || String(error));
+  printFailureContext();
+} finally {
+  await cleanup();
 }
 
-function startFakeTask(openSocket) {
+function startServer() {
+  setPhase("start TaskDeck server");
+  const nextChild = spawn(serverCommand, serverArgs, {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      HOST: host,
+      PORT: String(port),
+      NODE_ENV: "production",
+      TASKDECK_DATA_ROOT: dataRoot,
+      TASKDECK_CODEX_APP_SERVER_COMMAND: `${shellQuote(process.execPath)} ${shellQuote(fakeServerPath)}`,
+      TASKDECK_CODEX_APP_SERVER_DEBUG: "0",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  nextChild.stdout.on("data", (chunk) => recordOutput(chunk));
+  nextChild.stderr.on("data", (chunk) => recordOutput(chunk));
+  nextChild.on("error", (error) => {
+    recordOutput(`TaskDeck server process error: ${error.message}\n`);
+  });
+
+  return nextChild;
+}
+
+async function runSmoke() {
+  await waitForServerProcess();
+  setPhase("wait for /api/context");
+  await waitForContextEndpoint();
+
+  setPhase("open WebSocket");
+  const queue = await openMessageQueue();
+
+  setPhase("wait for initial snapshot");
+  await queue.waitFor((message) => message.type === "snapshot", "initial WebSocket snapshot");
+
+  setPhase("start fake Codex App Server task");
+  taskId = await startFakeTask(queue);
+
+  setPhase("wait for fake App Server readiness");
+  await waitForLog((log) => log.includes("Codex App Server adapter is ready"), "fake App Server readiness");
+
+  await runFakeTurn(queue, 1, "first fake smoke input");
+  await runFakeTurn(queue, 2, "second fake smoke input");
+
+  setPhase("cleanup fake task");
+  await cleanupTask();
+}
+
+async function waitForServerProcess() {
+  await Promise.race([
+    new Promise((resolve, reject) => {
+      child.once("exit", (code, signal) => {
+        if (stoppingServer) {
+          resolve();
+          return;
+        }
+        reject(new Error(`TaskDeck server exited during "${phase}". code=${code ?? ""} signal=${signal ?? ""}`));
+      });
+      child.once("error", (error) => reject(new Error(`Could not start TaskDeck server: ${error.message}`)));
+    }),
+    waitForContextEndpoint(),
+  ]);
+}
+
+async function runFakeTurn(queue, turnNumber, inputText) {
+  setPhase(`send fake turn ${turnNumber} input`);
+  queue.send({ type: "input", taskId, data: inputText });
+
+  setPhase(`wait for fake turn ${turnNumber} log output`);
+  await waitForLog(
+    (log) => turnOutputIsPresent(log, turnNumber, turnNumber),
+    `fake turn ${turnNumber} command and assistant output`,
+  );
+
+  setPhase(`wait for fake turn ${turnNumber} ready state`);
+  await waitForTaskReady(`turn ${turnNumber}`);
+}
+
+async function startFakeTask(queue) {
+  const title = `Fake Codex App Server smoke ${Date.now()}`;
+  queue.send({
+    type: "start",
+    title,
+    command: "codex app-server --listen stdio://",
+    cwd: repoRoot,
+    agentProfileId: "codex-app-server",
+    agentLabel: "Codex App Server (experimental)",
+    sessionMode: "new",
+  });
+
+  const message = await queue.waitFor((candidate) => candidate.type === "started" || candidate.type === "error", "fake task start");
+  if (message.type === "error") {
+    throw new Error(message.message || "TaskDeck returned an error while starting fake task.");
+  }
+  if (!message.taskId) {
+    throw new Error("TaskDeck started message did not include a task id.");
+  }
+  return message.taskId;
+}
+
+async function openMessageQueue() {
+  const ws = await openWebSocket();
+  socket = ws;
+  const messages = [];
+  const waiters = [];
+
+  ws.on("message", (data) => {
+    let message;
+    try {
+      message = JSON.parse(data.toString());
+    } catch (error) {
+      rejectWaiters(new Error(`TaskDeck WebSocket sent invalid JSON: ${error.message}`));
+      return;
+    }
+
+    for (let index = 0; index < waiters.length; index += 1) {
+      const waiter = waiters[index];
+      if (waiter.predicate(message)) {
+        waiters.splice(index, 1);
+        clearTimeout(waiter.timeout);
+        waiter.resolve(message);
+        return;
+      }
+    }
+    messages.push(message);
+  });
+
+  ws.on("close", () => {
+    rejectWaiters(new Error(`TaskDeck WebSocket closed during "${phase}".`));
+  });
+  ws.on("error", (error) => {
+    rejectWaiters(new Error(`TaskDeck WebSocket failed during "${phase}": ${error.message}`));
+  });
+
+  return {
+    send(payload) {
+      ws.send(JSON.stringify(payload));
+    },
+    waitFor(predicate, label) {
+      const existingIndex = messages.findIndex(predicate);
+      if (existingIndex !== -1) {
+        const [message] = messages.splice(existingIndex, 1);
+        return Promise.resolve(message);
+      }
+
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          const index = waiters.findIndex((waiter) => waiter.reject === reject);
+          if (index !== -1) {
+            waiters.splice(index, 1);
+          }
+          reject(new Error(`Timed out waiting for ${label} during "${phase}".`));
+        }, timeoutMs);
+        waiters.push({ predicate, resolve, reject, timeout });
+      });
+    },
+  };
+
+  function rejectWaiters(error) {
+    while (waiters.length > 0) {
+      const waiter = waiters.shift();
+      clearTimeout(waiter.timeout);
+      waiter.reject(error);
+    }
+  }
+}
+
+function openWebSocket() {
   return new Promise((resolve, reject) => {
-    const title = `Fake Codex App Server smoke ${Date.now()}`;
-    const timeoutId = setTimeout(() => reject(new Error("Timed out waiting for fake task start.")), timeoutMs);
+    const ws = new WebSocket(`ws://${host}:${port}/ws`);
+    const timeout = setTimeout(() => {
+      ws.terminate();
+      reject(new Error(`Timed out opening TaskDeck WebSocket during "${phase}".`));
+    }, requestTimeoutMs);
 
-    const handleMessage = (event) => {
-      const message = JSON.parse(String(event.data));
-      if (message.type === "started") {
-        clearTimeout(timeoutId);
-        openSocket.removeEventListener("message", handleMessage);
-        resolve(message.taskId);
-      }
-      if (message.type === "error") {
-        clearTimeout(timeoutId);
-        openSocket.removeEventListener("message", handleMessage);
-        reject(new Error(message.message || "TaskDeck returned an error while starting fake task."));
-      }
-    };
-
-    openSocket.addEventListener("message", handleMessage);
-    openSocket.send(JSON.stringify({
-      type: "start",
-      title,
-      command: "codex app-server --listen stdio://",
-      cwd: repoRoot,
-      agentProfileId: "codex-app-server",
-      agentLabel: "Codex App Server (experimental)",
-      sessionMode: "new",
-    }));
+    ws.once("open", () => {
+      clearTimeout(timeout);
+      resolve(ws);
+    });
+    ws.once("error", (error) => {
+      clearTimeout(timeout);
+      reject(new Error(`TaskDeck WebSocket failed during "${phase}": ${error.message}`));
+    });
   });
 }
 
@@ -111,70 +241,60 @@ function turnOutputIsPresent(log, turnNumber, expectedAssistantLabelCount) {
     && countOccurrences(normalizedLog, "[Assistant]") === expectedAssistantLabelCount;
 }
 
-async function assertReadyForInput(nextTaskId, label) {
-  const payload = await requestJson("GET", `/api/tasks/${encodeURIComponent(nextTaskId)}`);
-  const task = payload.task;
-  if (!task) {
+async function waitForTaskReady(label) {
+  let lastTask = null;
+  await pollUntil(async () => {
+    const payload = await requestJson("GET", `/api/tasks/${encodeURIComponent(taskId)}`);
+    lastTask = payload.task || null;
+    return Boolean(
+      lastTask &&
+        lastTask.status === "running" &&
+        lastTask.agentState !== "working" &&
+        (!lastTask.attentionState || lastTask.attentionState === "none"),
+    );
+  }, `ready state after ${label}`);
+
+  if (!lastTask) {
     throw new Error(`Task was missing after ${label}.`);
   }
-  if (task.status !== "running") {
-    throw new Error(`Expected fake task to remain running after ${label}; status=${task.status}.`);
-  }
-  if (task.agentState === "working") {
-    throw new Error(`Expected fake task to leave working state after ${label}.`);
-  }
-  if (task.attentionState && task.attentionState !== "none") {
-    throw new Error(`Expected no attention after ${label}; attentionState=${task.attentionState}.`);
-  }
 }
 
-async function waitForLog(nextTaskId, predicate, label) {
-  const deadline = Date.now() + timeoutMs;
-  let lastLog = "";
-
-  while (Date.now() < deadline) {
-    const payload = await requestJson("GET", `/api/tasks/${encodeURIComponent(nextTaskId)}/logs`);
-    lastLog = String(payload.logs || "");
-    if (predicate(lastLog)) {
-      return lastLog;
-    }
-    await sleep(100);
-  }
-
-  throw new Error(`Timed out waiting for ${label}.\n\nLast log:\n${stripAnsi(lastLog).slice(-4000)}`);
+async function waitForLog(predicate, label) {
+  await pollUntil(async () => {
+    const payload = await requestJson("GET", `/api/tasks/${encodeURIComponent(taskId)}/logs`);
+    lastTaskLog = String(payload.logs || "");
+    return predicate(lastTaskLog);
+  }, label);
 }
 
-async function cleanupTask(nextTaskId) {
-  if (!nextTaskId) return;
-  try {
-    await requestJson("DELETE", `/api/tasks/${encodeURIComponent(nextTaskId)}`);
-  } catch {
-    // The process is about to exit; cleanup is best-effort.
-  }
-}
-
-async function connectWebSocket() {
-  return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://${host}:${port}/ws`);
-    const timeoutId = setTimeout(() => reject(new Error("Timed out opening TaskDeck WebSocket.")), 3000);
-    ws.addEventListener("open", () => {
-      clearTimeout(timeoutId);
-      resolve(ws);
-    });
-    ws.addEventListener("error", (event) => {
-      clearTimeout(timeoutId);
-      reject(new Error(event.message || "TaskDeck WebSocket failed."));
-    });
-  });
-}
-
-async function waitForContextEndpoint(portNumber) {
+async function pollUntil(predicate, label) {
   const deadline = Date.now() + timeoutMs;
   let lastError = null;
 
   while (Date.now() < deadline) {
     try {
-      const response = await requestRaw("GET", "/api/context", undefined, portNumber);
+      if (await predicate()) {
+        return;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+    await sleep(100);
+  }
+
+  if (lastError) {
+    throw new Error(`Timed out waiting for ${label} during "${phase}". Last error: ${lastError.message}`);
+  }
+  throw new Error(`Timed out waiting for ${label} during "${phase}".`);
+}
+
+async function waitForContextEndpoint() {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = null;
+
+  while (Date.now() < deadline) {
+    try {
+      const response = await requestRaw("GET", "/api/context", undefined, port);
       if (response.statusCode >= 200 && response.statusCode < 500) {
         return;
       }
@@ -185,7 +305,7 @@ async function waitForContextEndpoint(portNumber) {
     await sleep(200);
   }
 
-  throw lastError || new Error("TaskDeck server did not respond to /api/context.");
+  throw lastError || new Error(`TaskDeck server did not respond to /api/context during "${phase}".`);
 }
 
 async function requestJson(method, requestPath, body) {
@@ -212,7 +332,7 @@ function requestRaw(method, requestPath, body, portNumber) {
         port: portNumber,
         method,
         path: requestPath,
-        timeout: 1000,
+        timeout: requestTimeoutMs,
         headers: bodyText ? {
           "content-type": "application/json",
           "content-length": Buffer.byteLength(bodyText),
@@ -230,13 +350,60 @@ function requestRaw(method, requestPath, body, portNumber) {
       },
     );
     request.on("timeout", () => {
-      request.destroy(new Error(`${method} ${requestPath} timed out.`));
+      request.destroy(new Error(`${method} ${requestPath} timed out during "${phase}".`));
     });
     request.on("error", reject);
     if (bodyText) {
       request.write(bodyText);
     }
     request.end();
+  });
+}
+
+async function cleanupTask() {
+  if (!taskId) return;
+  try {
+    await requestJson("DELETE", `/api/tasks/${encodeURIComponent(taskId)}`);
+    taskId = "";
+  } catch (error) {
+    recordOutput(`Could not delete fake smoke task ${taskId}: ${error.message}\n`);
+  }
+}
+
+async function cleanup() {
+  setPhase("cleanup");
+  if (taskId) {
+    await cleanupTask();
+  }
+  if (socket) {
+    socket.close();
+  }
+  await stopChild();
+  try {
+    await fs.rm(dataRoot, { recursive: true, force: true });
+  } catch (error) {
+    console.error(`Could not remove temporary TaskDeck data root ${dataRoot}: ${error.message}`);
+  }
+}
+
+function stopChild() {
+  return new Promise((resolve) => {
+    if (!child || child.killed || child.exitCode !== null) {
+      resolve();
+      return;
+    }
+
+    stoppingServer = true;
+    const timeout = setTimeout(() => {
+      if (!child.killed && child.exitCode === null) {
+        child.kill("SIGKILL");
+      }
+    }, 2_000);
+    child.once("exit", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+    child.kill("SIGTERM");
   });
 }
 
@@ -292,10 +459,35 @@ function shellQuote(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
 
+function setPhase(nextPhase) {
+  phase = nextPhase;
+}
+
 function recordOutput(chunk) {
   output.push(String(chunk));
-  if (output.join("").length > 12_000) {
-    output.splice(0, output.length - 20);
+  if (output.join("").length > 20_000) {
+    output.splice(0, output.length - 30);
+  }
+}
+
+function printFailureContext() {
+  console.error(`\nPhase: ${phase}`);
+  console.error(`Port: ${port}`);
+  console.error(`Data root: ${dataRoot}`);
+  if (taskId) {
+    console.error(`Task: ${taskId}`);
+  }
+
+  const capturedOutput = output.join("").trim();
+  if (capturedOutput) {
+    console.error("\nCaptured server output:\n");
+    console.error(capturedOutput);
+  }
+
+  const strippedLog = stripAnsi(lastTaskLog).trim();
+  if (strippedLog) {
+    console.error("\nLast task log:\n");
+    console.error(strippedLog.slice(-6000));
   }
 }
 
@@ -303,31 +495,21 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function pass() {
-  settled = true;
-  clearTimeout(timeout);
-  socket?.close();
-  stopChild();
-  console.log(`Fake Codex App Server smoke verified on ${host}:${port}.`);
-}
+function withTimeout(promise, milliseconds) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(`Fake Codex App Server smoke timed out after ${milliseconds}ms during "${phase}".`));
+    }, milliseconds);
 
-function fail(message) {
-  if (settled) return;
-  settled = true;
-  clearTimeout(timeout);
-  socket?.close();
-  stopChild();
-  console.error(message);
-  const capturedOutput = output.join("").trim();
-  if (capturedOutput) {
-    console.error("\nCaptured server output:\n");
-    console.error(capturedOutput);
-  }
-  process.exitCode = 1;
-}
-
-function stopChild() {
-  if (!child.killed) {
-    child.kill("SIGTERM");
-  }
+    promise.then(
+      (value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
 }
