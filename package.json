@@ -25,7 +25,6 @@
     "build": "npm --workspace @taskdeck/web run build",
     "start": "npm --workspace @taskdeck/server run start",
     "test": "npm --workspace @taskdeck/web run test",
-    "verify:fake-app-server-smoke": "node scripts/verify-fake-codex-app-server-smoke.mjs",
     "verify:server-startup": "node scripts/verify-server-startup.mjs",
     "verify:change": "npm run build && npm run verify:server-startup"
   }
