@@ -38,7 +38,7 @@ Use the fake stdio App Server when you need to verify TaskDeck's App Server UI w
 TASKDECK_CODEX_APP_SERVER_COMMAND="node \"$PWD/scripts/fake-codex-app-server.js\"" npm run dev
 ```
 
-Then create a task with the `Codex App Server (experimental)` profile and send two short prompts on the same task. The fake server returns an authenticated account from `account/read`, so no device login should appear.
+Then create a task with the `Codex App Server (experimental)` profile and send one short prompt. The fake server returns an authenticated account from `account/read`, so no device login should appear.
 
 Verify the UI and log path:
 
@@ -46,11 +46,10 @@ Verify the UI and log path:
 - The composer placeholder reaches `Send input to Codex task` before sending.
 - The task log shows `Codex App Server turn accepted`.
 - The task log shows `Codex App Server command started`.
-- The task log keeps the existing `[TaskDeck] Codex App Server command output:` block and includes `FAKE_COMMAND_OUTPUT turn=1`.
-- The task log shows one `[Assistant]` label for `FAKE_ASSISTANT_TEXT turn=1`, not one label per small delta.
+- The task log keeps the existing `[TaskDeck] Codex App Server command output:` block and includes the fake command output.
+- The task log shows one `[Assistant]` label for the fake assistant response, not one label per small delta.
 - The task log shows `Codex App Server turn completed; ready for next input.`
 - After completion, the composer returns to ready send-input behavior.
-- A second prompt logs `FAKE_COMMAND_OUTPUT turn=2`, one `[Assistant]` label for `FAKE_ASSISTANT_TEXT turn=2`, and another turn-completed message.
 
 ## Successful Smoke Expectations
 

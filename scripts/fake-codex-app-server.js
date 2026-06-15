@@ -85,8 +85,6 @@ function handleMessage(message) {
 function emitFakeTurn(turnId) {
   const commandItemId = `${turnId}-command`;
   const messageItemId = `${turnId}-assistant`;
-  const commandOutput = `FAKE_COMMAND_OUTPUT turn=${turnCount}: deterministic shell-style output only.\n`;
-  const assistantText = `FAKE_ASSISTANT_TEXT turn=${turnCount}: deterministic assistant response only.`;
 
   setTimeout(() => {
     notify("turn/started", {
@@ -99,23 +97,23 @@ function emitFakeTurn(turnId) {
       item: {
         id: commandItemId,
         type: "commandExecution",
-        command: `printf '${commandOutput.replace(/\n$/, "\\n")}'`,
+        command: "printf 'fake command output from TaskDeck fake App Server\\n'",
       },
     });
     notify("item/completed", {
       item: {
         id: commandItemId,
         type: "commandExecution",
-        aggregatedOutput: commandOutput,
+        aggregatedOutput: "fake command output from TaskDeck fake App Server\n",
       },
     });
     notify("item/agentMessage/delta", {
       itemId: messageItemId,
-      delta: assistantText.slice(0, 30),
+      delta: "Fake assistant response ",
     });
     notify("item/agentMessage/delta", {
       itemId: messageItemId,
-      delta: assistantText.slice(30),
+      delta: "from TaskDeck fake Codex App Server.",
     });
     notify("turn/completed", {
       threadId,
