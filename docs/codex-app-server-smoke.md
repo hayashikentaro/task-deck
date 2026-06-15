@@ -51,6 +51,7 @@ Normal task logs should be human-readable and should not show raw JSON-RPC. Expe
 - One account refresh attempt only if an auth error occurs.
 - Device login URL, user code, and login id only if login is required.
 - Login completed or failed.
+- If an invalid or revoked token appears after login, TaskDeck should mark the task as needing input and should not report the adapter as ready.
 - Thread ready.
 - Turn accepted.
 - Assistant message text.
@@ -58,3 +59,5 @@ Normal task logs should be human-readable and should not show raw JSON-RPC. Expe
 - Turn completed and ready for next input.
 
 If device-code login fails, TaskDeck should not automatically request another code. Restart the task to request a fresh code.
+
+If device-code login completes but the App Server later reports `token_revoked`, `refresh_token_invalidated`, or `401 Unauthorized`, fix Codex login in the environment that launches the `codex-app-server` profile, or point that profile at the host environment with the valid login, then restart the task.

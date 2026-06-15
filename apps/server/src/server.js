@@ -1692,8 +1692,10 @@ function createActiveCodexAppServer(task, process, launchCommand) {
     turnActive: false,
     assistantMessageOpen: false,
     accountReady: false,
+    authFailureDetected: false,
     loginInProgress: false,
     loginId: "",
+    loginCompletedAt: 0,
     pendingAuthRetry: null,
     forcedAccountRefreshAttempted: false,
     tokenUsage: null,
@@ -1715,6 +1717,13 @@ function sendTaskInputToCodexAppServer(taskId, data, source = "client") {
   const text = normalizeCodexAppServerInput(data);
   if (!text) {
     return { ok: false, reason: "empty-input" };
+  }
+  if (activeAppServer.authFailureDetected) {
+    handleCodexAppServerAuthFailureDiagnostic(
+      activeAppServer,
+      "User input was blocked because Codex App Server authentication has already failed."
+    );
+    return { ok: false, reason: "codex-app-server-auth-failed" };
   }
 
   logInputDebug(taskId, data, source);
@@ -1879,6 +1888,7 @@ function handleCodexAppServerOutputLine(activeAppServer, line, stream) {
 
   if (!trimmedLine.startsWith("{")) {
     appendAndBroadcast(activeAppServer.taskId, `${line}\n`);
+    handleCodexAppServerTextDiagnostic(activeAppServer, line);
     return;
   }
 
@@ -1891,6 +1901,7 @@ function handleCodexAppServerOutputLine(activeAppServer, line, stream) {
   } catch (error) {
     appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Could not parse Codex App Server ${stream} JSON: ${error.message}\n`);
     appendAndBroadcast(activeAppServer.taskId, `${line}\n`);
+    handleCodexAppServerTextDiagnostic(activeAppServer, line);
   }
 }
 
@@ -1917,6 +1928,20 @@ function handleCodexAppServerResponse(activeAppServer, message) {
   if (message.error) {
     if (isCodexAppServerAuthError(message.error)) {
       preserveCodexAppServerPendingAuthRetry(activeAppServer, pendingRequest);
+      if (activeAppServer.authFailureDetected) {
+        handleCodexAppServerAuthFailureDiagnostic(
+          activeAppServer,
+          `Codex App Server ${method || "request"} returned an auth error after authentication had already failed.`
+        );
+        return;
+      }
+      if (activeAppServer.loginCompletedAt && activeAppServer.forcedAccountRefreshAttempted) {
+        handleCodexAppServerAuthFailureDiagnostic(
+          activeAppServer,
+          `Codex App Server ${method || "request"} still returned an auth error after device login and account refresh.`
+        );
+        return;
+      }
       if (!activeAppServer.forcedAccountRefreshAttempted) {
         activeAppServer.forcedAccountRefreshAttempted = true;
         appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server authentication is expired or invalid; trying one account refresh.\n");
@@ -1948,6 +1973,13 @@ function handleCodexAppServerResponse(activeAppServer, message) {
 
   if (method === "account/read") {
     if (codexAppServerAccountRequiresLogin(message.result)) {
+      if (activeAppServer.loginCompletedAt) {
+        handleCodexAppServerAuthFailureDiagnostic(
+          activeAppServer,
+          "Codex App Server account still requires OpenAI authentication after device login completed."
+        );
+        return;
+      }
       appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server account requires ChatGPT login.\n");
       handleCodexAppServerAuthRequired(activeAppServer, { method: "thread/start" });
       return;
@@ -1983,6 +2015,13 @@ function handleCodexAppServerResponse(activeAppServer, message) {
 }
 
 function handleCodexAppServerAuthRequired(activeAppServer, pendingRequest) {
+  if (activeAppServer.loginCompletedAt) {
+    handleCodexAppServerAuthFailureDiagnostic(
+      activeAppServer,
+      "Codex App Server requested ChatGPT login again after a device login had already completed."
+    );
+    return;
+  }
   activeAppServer.accountReady = false;
   preserveCodexAppServerPendingAuthRetry(activeAppServer, pendingRequest);
   updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WAITING_INPUT, {
@@ -2067,10 +2106,14 @@ function handleCodexAppServerLoginCompleted(activeAppServer, params) {
 
   appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server login completed; resuming.\n");
   activeAppServer.accountReady = true;
+  activeAppServer.loginCompletedAt = Date.now();
   resumeCodexAppServerAfterLogin(activeAppServer);
 }
 
 function handleCodexAppServerAccountUpdated(activeAppServer) {
+  if (activeAppServer.authFailureDetected) {
+    return;
+  }
   if (activeAppServer.accountReady && !activeAppServer.pendingAuthRetry) {
     appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server account updated.\n");
     return;
@@ -2110,17 +2153,67 @@ function codexAppServerAccountRequiresLogin(result) {
 }
 
 function isCodexAppServerAuthError(error) {
-  const text = JSON.stringify(error || {}).toLowerCase();
+  const text = (typeof error === "string" ? error : JSON.stringify(error || {})).toLowerCase();
   return (
     text.includes("auth expired") ||
+    text.includes("token_revoked") ||
     text.includes("token_invalidated") ||
     text.includes("token invalidated") ||
+    text.includes("invalidated oauth token") ||
     text.includes("refresh_token_invalidated") ||
     text.includes("refresh token invalidated") ||
     text.includes("your session has ended") ||
     text.includes("please log in again") ||
+    text.includes("unauthorized") ||
     text.includes("401")
   );
+}
+
+function handleCodexAppServerTextDiagnostic(activeAppServer, text) {
+  if (!isCodexAppServerAuthError(text)) {
+    return;
+  }
+  if (!shouldReportCodexAppServerAuthFailure(activeAppServer)) {
+    return;
+  }
+  handleCodexAppServerAuthFailureDiagnostic(activeAppServer, text);
+}
+
+function shouldReportCodexAppServerAuthFailure(activeAppServer) {
+  return Boolean(
+    activeAppServer.authFailureDetected ||
+    activeAppServer.loginCompletedAt ||
+    activeAppServer.accountReady ||
+    activeAppServer.threadId
+  );
+}
+
+function handleCodexAppServerAuthFailureDiagnostic(activeAppServer, _detail) {
+  if (activeAppServer.authFailureDetected) {
+    return;
+  }
+  activeAppServer.authFailureDetected = true;
+  activeAppServer.accountReady = false;
+  activeAppServer.loginInProgress = false;
+  activeAppServer.loginId = "";
+  activeAppServer.pendingAuthRetry = null;
+  appendCodexAppServerStatus(
+    activeAppServer,
+    [
+      "[TaskDeck] Codex App Server authentication failed after login.",
+      "[TaskDeck] The current App Server environment still has an invalid or revoked ChatGPT token.",
+      "[TaskDeck] Fix Codex login in the App Server environment, or point the codex-app-server profile at the host environment that already has a valid login, then restart this task.",
+    ].join("\n") + "\n"
+  );
+  updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WAITING_INPUT, {
+    reason: "Codex App Server authentication failed after login.",
+    source: AgentStateSource.PROCESS,
+    confidence: AgentStateConfidence.HIGH,
+    attentionState: AttentionState.NEEDS_INPUT,
+    attentionReason: "Codex App Server token is invalid or revoked. Fix Codex login in the App Server environment, then restart this task.",
+    attentionSource: AgentStateSource.PROCESS,
+    attentionConfidence: AgentStateConfidence.HIGH,
+  });
 }
 
 function handleCodexAppServerRequest(activeAppServer, message) {
@@ -2432,6 +2525,10 @@ function handleCodexAppServerNotification(activeAppServer, message) {
     return;
   }
   if (method === "error") {
+    if (isCodexAppServerAuthError(message.params) && shouldReportCodexAppServerAuthFailure(activeAppServer)) {
+      handleCodexAppServerAuthFailureDiagnostic(activeAppServer, message.params);
+      return;
+    }
     updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.FAILED, {
       reason: "Codex App Server emitted an error notification.",
       source: AgentStateSource.PROCESS,
@@ -2480,6 +2577,13 @@ function handleCodexAppServerMcpStatusUpdated(activeAppServer, params) {
     error ? `error=${error}` : "",
   ].filter(Boolean).join(" ");
   appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server MCP status updated${details ? `: ${details}` : "."}\n`);
+  if (
+    (normalizedStatus === "failed" || error) &&
+    isCodexAppServerAuthError(details) &&
+    shouldReportCodexAppServerAuthFailure(activeAppServer)
+  ) {
+    handleCodexAppServerAuthFailureDiagnostic(activeAppServer, details);
+  }
 }
 
 function handleCodexAppServerItemStarted(activeAppServer, params) {
@@ -2547,6 +2651,9 @@ function handleCodexAppServerItemCompleted(activeAppServer, params) {
 }
 
 function updateCodexAppServerReady(activeAppServer, reason) {
+  if (activeAppServer.authFailureDetected) {
+    return;
+  }
   updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.THINKING, {
     reason,
     source: AgentStateSource.PROCESS,
@@ -2559,6 +2666,9 @@ function updateCodexAppServerReady(activeAppServer, reason) {
 }
 
 function updateCodexAppServerWorking(activeAppServer, reason) {
+  if (activeAppServer.authFailureDetected) {
+    return;
+  }
   updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WORKING, {
     reason,
     source: AgentStateSource.PROCESS,
@@ -2620,6 +2730,9 @@ function updateCodexAppServerStatus(activeAppServer, status) {
 }
 
 function flushCodexAppServerPendingInputs(activeAppServer) {
+  if (activeAppServer.authFailureDetected) {
+    return false;
+  }
   const initialInstruction = String(tasks.get(activeAppServer.taskId)?.initialInstruction || "").trim();
   const pendingInputs = activeAppServer.pendingInputs.splice(0);
   if (initialInstruction) {
