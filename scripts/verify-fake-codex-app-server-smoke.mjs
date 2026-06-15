@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import WebSocket from "ws";
 
 const host = "127.0.0.1";
-const timeoutMs = Number(process.env.TASKDECK_VERIFY_FAKE_APP_SERVER_TIMEOUT_MS || 45_000);
+const timeoutMs = Number(process.env.TASKDECK_VERIFY_FAKE_APP_SERVER_TIMEOUT_MS || 60_000);
 const requestTimeoutMs = Number(process.env.TASKDECK_VERIFY_FAKE_APP_SERVER_REQUEST_TIMEOUT_MS || 2_500);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,15 +20,18 @@ const serverArgs = ["apps/server/src/server.js"];
 const output = [];
 const port = await findAvailablePort();
 const dataRoot = await fs.mkdtemp(path.join(os.tmpdir(), "taskdeck-fake-app-server-"));
+const taskCwd = path.join(dataRoot, "project");
 
 let phase = "starting";
 let child;
 let socket;
 let taskId = "";
 let lastTaskLog = "";
+let lastTaskSnapshot = null;
 let stoppingServer = false;
 
 try {
+  await fs.mkdir(taskCwd, { recursive: true });
   child = startServer();
   await withTimeout(runSmoke(), timeoutMs);
   console.log(`Fake Codex App Server smoke verified on ${host}:${port}.`);
@@ -50,6 +53,8 @@ function startServer() {
       PORT: String(port),
       NODE_ENV: "production",
       TASKDECK_DATA_ROOT: dataRoot,
+      TASKDECK_PROJECT_ROOT: taskCwd,
+      TASKDECK_PROJECT_ROOTS: taskCwd,
       TASKDECK_CODEX_APP_SERVER_COMMAND: `${shellQuote(process.execPath)} ${shellQuote(fakeServerPath)}`,
       TASKDECK_CODEX_APP_SERVER_DEBUG: "0",
     },
@@ -67,6 +72,7 @@ function startServer() {
 
 async function runSmoke() {
   await waitForServerProcess();
+
   setPhase("wait for /api/context");
   await waitForContextEndpoint();
 
@@ -125,7 +131,7 @@ async function startFakeTask(queue) {
     type: "start",
     title,
     command: "codex app-server --listen stdio://",
-    cwd: repoRoot,
+    cwd: taskCwd,
     agentProfileId: "codex-app-server",
     agentLabel: "Codex App Server (experimental)",
     sessionMode: "new",
@@ -242,26 +248,25 @@ function turnOutputIsPresent(log, turnNumber, expectedAssistantLabelCount) {
 }
 
 async function waitForTaskReady(label) {
-  let lastTask = null;
   await pollUntil(async () => {
     const payload = await requestJson("GET", `/api/tasks/${encodeURIComponent(taskId)}`);
-    lastTask = payload.task || null;
+    lastTaskSnapshot = payload.task || null;
     return Boolean(
-      lastTask &&
-        lastTask.status === "running" &&
-        lastTask.agentState !== "working" &&
-        (!lastTask.attentionState || lastTask.attentionState === "none"),
+      lastTaskSnapshot &&
+        lastTaskSnapshot.status === "running" &&
+        lastTaskSnapshot.agentState !== "working" &&
+        (!lastTaskSnapshot.attentionState || lastTaskSnapshot.attentionState === "none"),
     );
   }, `ready state after ${label}`);
 
-  if (!lastTask) {
+  if (!lastTaskSnapshot) {
     throw new Error(`Task was missing after ${label}.`);
   }
 }
 
 async function waitForLog(predicate, label) {
   await pollUntil(async () => {
-    const payload = await requestJson("GET", `/api/tasks/${encodeURIComponent(taskId)}/logs`);
+    const payload = await requestJson("GET", `/api/tasks/${encodeURIComponent(taskId)}/logs?tail=12000`);
     lastTaskLog = String(payload.logs || "");
     return predicate(lastTaskLog);
   }, label);
@@ -408,7 +413,7 @@ function stopChild() {
 }
 
 async function findAvailablePort() {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
     const candidate = 43_000 + Math.floor(Math.random() * 10_000);
     if (await portIsAvailable(candidate)) {
       return candidate;
@@ -474,8 +479,14 @@ function printFailureContext() {
   console.error(`\nPhase: ${phase}`);
   console.error(`Port: ${port}`);
   console.error(`Data root: ${dataRoot}`);
+  console.error(`Task cwd: ${taskCwd}`);
   if (taskId) {
     console.error(`Task: ${taskId}`);
+  }
+
+  if (lastTaskSnapshot) {
+    console.error("\nLast task snapshot:\n");
+    console.error(JSON.stringify(lastTaskSnapshot, null, 2));
   }
 
   const capturedOutput = output.join("").trim();
