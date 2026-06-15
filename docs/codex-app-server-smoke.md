@@ -38,7 +38,7 @@ Use the fake stdio App Server when you need to verify TaskDeck's App Server UI w
 TASKDECK_CODEX_APP_SERVER_COMMAND="node \"$PWD/scripts/fake-codex-app-server.js\"" npm run dev
 ```
 
-The automated regression check starts TaskDeck with an isolated temporary data root, drives the same fake path through TaskDeck's WebSocket input path, and asserts the task log source used by the UI:
+The automated regression check drives the same fake path through TaskDeck's WebSocket input path and asserts the task log source used by the UI:
 
 ```bash
 npm run verify:fake-app-server-smoke
