@@ -171,6 +171,7 @@ export function TaskList({
         {visibleTasks.map((task) => {
           const isSelected = task.id === selectedTaskId;
           const bucket = supervisionBucket(task);
+          const stateBadge = taskStateBadge(task);
           const isEditingTitle = editingTaskId === task.id;
           const isTerminalInputLocked = Boolean(task.terminalInputLockedAt);
           const terminalInputLockLabel = isTerminalInputLocked ? "Unlock terminal input" : "Lock terminal input";
@@ -226,6 +227,9 @@ export function TaskList({
                   <span className="task-badge-row">
                     <span className="task-badge" data-kind="agent-profile" title={agentBadgeTitle(task)}>
                       {agentBadgeLabel(task)}
+                    </span>
+                    <span className="task-badge" data-kind={stateBadge.kind} title={stateBadge.title}>
+                      {stateBadge.label}
                     </span>
                     <span className="task-badge" data-kind={`supervision-${bucket}`} title={supervisionTitle(task)}>
                       {supervisionBucketLabel(bucket)}
@@ -352,6 +356,39 @@ function filterLabel(filter: TaskFilter) {
   if (filter === "needs_you") return "Needs you";
   if (filter === "not_now") return "Not now";
   return "All";
+}
+
+function taskStateBadge(task: Task) {
+  const nextAttentionState = attentionState(task);
+  if (task.status === "running" && nextAttentionState !== "none") {
+    const label = readableStateLabel(nextAttentionState);
+    return {
+      kind: `attention-${nextAttentionState}`,
+      label,
+      title: task.attentionStateReason ? `${label}: ${task.attentionStateReason}` : `Attention state: ${label}`,
+    };
+  }
+
+  if (task.status !== "running") {
+    const label = readableStateLabel(task.status);
+    const exit = task.exitCode === null ? "" : ` exit ${task.exitCode}`;
+    return {
+      kind: `process-${task.status}`,
+      label,
+      title: `Process status: ${label}${exit}`,
+    };
+  }
+
+  const label = readableStateLabel(task.agentState);
+  return {
+    kind: `agent-${task.agentState}`,
+    label,
+    title: task.agentStateReason ? `${label}: ${task.agentStateReason}` : `Agent state: ${label}`,
+  };
+}
+
+function readableStateLabel(value: string) {
+  return value.replace(/_/g, " ");
 }
 
 function taskTone(task: Task, runningTaskIds: Set<string>) {

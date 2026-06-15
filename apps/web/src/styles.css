@@ -1097,6 +1097,22 @@ dd {
   color: var(--text-primary);
 }
 
+.task-badge[data-kind="process-succeeded"] {
+  border-color: var(--status-done);
+  color: var(--status-done);
+}
+
+.task-badge[data-kind="process-failed"] {
+  border-color: var(--status-failed);
+  color: var(--status-failed);
+}
+
+.task-badge[data-kind="process-interrupted"],
+.task-badge[data-kind="process-closed"] {
+  border-color: var(--status-stopped);
+  color: var(--status-stopped);
+}
+
 .task-badge[data-kind="supervision-needs_you"] {
   border-color: var(--status-needs-input);
   color: var(--status-needs-input);
