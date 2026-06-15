@@ -3,6 +3,7 @@ import readline from "node:readline";
 
 let turnCount = 0;
 const threadId = "fake-taskdeck-thread";
+const fakeTurnEventDelayMs = 15;
 
 const input = readline.createInterface({
   input: process.stdin,
@@ -67,12 +68,13 @@ function handleMessage(message) {
   if (method === "turn/start") {
     turnCount += 1;
     const turnId = `fake-taskdeck-turn-${turnCount}`;
+    const turnNumber = turnCount;
     respond(id, {
       turn: {
         id: turnId,
       },
     });
-    emitFakeTurn(turnId);
+    emitFakeTurn(turnId, turnNumber);
     return;
   }
 
@@ -82,19 +84,21 @@ function handleMessage(message) {
   });
 }
 
-function emitFakeTurn(turnId) {
+function emitFakeTurn(turnId, turnNumber) {
   const commandItemId = `${turnId}-command`;
   const messageItemId = `${turnId}-assistant`;
-  const commandOutput = `FAKE_COMMAND_OUTPUT turn=${turnCount}: deterministic shell-style output only.\n`;
-  const assistantText = `FAKE_ASSISTANT_TEXT turn=${turnCount}: deterministic assistant response only.`;
+  const commandOutput = `FAKE_COMMAND_OUTPUT turn=${turnNumber}: deterministic shell-style output only.\n`;
+  const assistantText = `FAKE_ASSISTANT_TEXT turn=${turnNumber}: deterministic assistant response only.`;
 
-  setTimeout(() => {
+  scheduleTurnEvent(1, () => {
     notify("turn/started", {
       threadId,
       turn: {
         id: turnId,
       },
     });
+  });
+  scheduleTurnEvent(2, () => {
     notify("item/started", {
       item: {
         id: commandItemId,
@@ -102,6 +106,8 @@ function emitFakeTurn(turnId) {
         command: `printf '${commandOutput.replace(/\n$/, "\\n")}'`,
       },
     });
+  });
+  scheduleTurnEvent(3, () => {
     notify("item/completed", {
       item: {
         id: commandItemId,
@@ -109,21 +115,31 @@ function emitFakeTurn(turnId) {
         aggregatedOutput: commandOutput,
       },
     });
+  });
+  scheduleTurnEvent(4, () => {
     notify("item/agentMessage/delta", {
       itemId: messageItemId,
       delta: assistantText.slice(0, 30),
     });
+  });
+  scheduleTurnEvent(5, () => {
     notify("item/agentMessage/delta", {
       itemId: messageItemId,
       delta: assistantText.slice(30),
     });
+  });
+  scheduleTurnEvent(6, () => {
     notify("turn/completed", {
       threadId,
       turn: {
         id: turnId,
       },
     });
-  }, 20);
+  });
+}
+
+function scheduleTurnEvent(index, callback) {
+  setTimeout(callback, fakeTurnEventDelayMs * index);
 }
 
 function respond(id, result, error) {
