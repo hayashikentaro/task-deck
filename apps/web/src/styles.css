@@ -1499,6 +1499,51 @@ dd {
   align-items: end;
 }
 
+.codex-app-server-request-bar {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--status-needs-approval) 44%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-input) 82%, var(--status-needs-approval));
+}
+
+.codex-app-server-request-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.codex-app-server-request-copy strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-app-server-request-copy span {
+  min-width: 0;
+  color: var(--text-secondary);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-app-server-request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .input-composer textarea {
   min-height: 42px;
   max-height: 140px;
@@ -1717,6 +1762,14 @@ dd {
 
   .terminal-controls {
     flex-wrap: wrap;
+  }
+
+  .codex-app-server-request-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .codex-app-server-request-actions {
+    justify-content: start;
   }
 
   .terminal-controls .td-icon-button,

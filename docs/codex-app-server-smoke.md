@@ -18,6 +18,10 @@ It should not require sending raw JSON-RPC through the composer. In normal mode,
 
 When TaskDeck runs in a container and the browser runs on the host, `localhost` means different things on each side. Open the TaskDeck URL through the host-mapped port, not a container-internal loopback URL. Device-login verification URLs should be opened in the host browser.
 
+## Launch Environment
+
+TaskDeck launches the App Server through the configured `codex-app-server` agent profile command and communicates over stdio. If host and container Codex installs use different `CODEX_HOME` auth state, override that profile in `taskdeck.local.json` so the App Server runs in the same environment that owns the intended ChatGPT login.
+
 ## Manual Smoke
 
 1. Start TaskDeck normally.

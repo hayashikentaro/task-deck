@@ -705,6 +705,17 @@ wss.on("connection", (socket) => {
       return;
     }
 
+    if (message.type === "codex-app-server-request") {
+      const taskId = String(message.taskId || "").trim();
+      const requestId = normalizeCodexAppServerRequestId(message.requestId);
+      const action = String(message.action || "").trim();
+      const result = resolveCodexAppServerRequest(taskId, requestId, action);
+      if (!result.ok) {
+        send(socket, { type: "error", message: result.error || "Unable to resolve Codex App Server request." });
+      }
+      return;
+    }
+
     if (message.type === "resize") {
       const activePty = activePtys.get(message.taskId);
       if (activePty) {
@@ -1043,7 +1054,7 @@ async function startTaskNow({
   writeTaskLog(task.id, "");
 
   if (isCodexAppServerTask(task)) {
-    return startCodexAppServerTask({ task, processCwd, socket });
+    return startCodexAppServerTask({ task, commandForProcess, processCwd, socket, taskDeckEnv });
   }
 
   try {
@@ -1593,15 +1604,25 @@ function sendTaskInput(taskId, data, source = "client") {
   return sendTaskInputToPty(normalizedTaskId, data, source);
 }
 
-async function startCodexAppServerTask({ task, processCwd, socket }) {
-  const appServerProcess = spawn("codex", ["app-server", "--listen", "stdio://"], {
+async function startCodexAppServerTask({ task, commandForProcess, processCwd, socket, taskDeckEnv }) {
+  const launchCommand = String(commandForProcess || task.command || "").trim();
+  if (!launchCommand) {
+    appendLog(task.id, "\r\n[TaskDeck] Failed to start Codex App Server: empty launch command.\r\n");
+    setTask(markTaskExited(tasks.get(task.id), { exitCode: 1, signal: null }));
+    broadcast({ type: "output", taskId: task.id, data: logs.get(task.id) });
+    broadcastTasks();
+    return { ok: true, taskId: task.id };
+  }
+
+  const appServerProcess = spawn(shell, ["-lc", launchCommand], {
     cwd: processCwd,
     env: {
       ...process.env,
+      ...taskDeckEnv,
     },
     stdio: ["pipe", "pipe", "pipe"],
   });
-  const activeAppServer = createActiveCodexAppServer(task, appServerProcess);
+  const activeAppServer = createActiveCodexAppServer(task, appServerProcess, launchCommand);
   activeCodexAppServers.set(task.id, activeAppServer);
 
   updateAgentStateFromTaskDeckEvent(task.id, AgentState.THINKING, {
@@ -1654,13 +1675,16 @@ async function startCodexAppServerTask({ task, processCwd, socket }) {
   return { ok: true, taskId: task.id };
 }
 
-function createActiveCodexAppServer(task, process) {
+function createActiveCodexAppServer(task, process, launchCommand) {
   return {
     taskId: task.id,
     process,
+    launchCommand,
     createdAt: Date.now(),
     nextRequestId: 1,
     pendingRequests: new Map(),
+    pendingServerRequests: new Map(),
+    currentServerRequestId: null,
     stdoutBuffer: "",
     stderrBuffer: "",
     threadId: "",
@@ -1761,10 +1785,25 @@ function sendCodexAppServerThreadStart(activeAppServer) {
     sendCodexAppServerAccountRead(activeAppServer);
     return;
   }
-  sendCodexAppServerRequest(activeAppServer, "thread/start", {
-    cwd: task.cwd,
-    ephemeral: true,
-  });
+  taskVisibleHostPath(task.command, task.cwd)
+    .then((cwd) => {
+      sendCodexAppServerRequest(activeAppServer, "thread/start", {
+        cwd,
+        ephemeral: true,
+      });
+    })
+    .catch((error) => {
+      appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Could not resolve Codex App Server cwd: ${error.message}\n`);
+      updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.FAILED, {
+        reason: "Codex App Server cwd mapping failed.",
+        source: AgentStateSource.TASKDECK_EVENT,
+        confidence: AgentStateConfidence.HIGH,
+        attentionState: AttentionState.FAILED,
+        attentionReason: "Codex App Server cwd mapping failed.",
+        attentionSource: AgentStateSource.TASKDECK_EVENT,
+        attentionConfidence: AgentStateConfidence.HIGH,
+      });
+    });
 }
 
 function sendCodexAppServerTurn(activeAppServer, text) {
@@ -1793,6 +1832,29 @@ function sendCodexAppServerRequest(activeAppServer, method, params) {
   }
   activeAppServer.process.stdin.write(`${JSON.stringify(message)}\n`);
   return id;
+}
+
+function sendCodexAppServerResponse(activeAppServer, id, result) {
+  const message = { jsonrpc: "2.0", id, result };
+  if (codexAppServerDebugEnabled) {
+    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`);
+  }
+  activeAppServer.process.stdin.write(`${JSON.stringify(message)}\n`);
+}
+
+function sendCodexAppServerRequestError(activeAppServer, id, messageText, code = -32603) {
+  const message = {
+    jsonrpc: "2.0",
+    id,
+    error: {
+      code,
+      message: messageText,
+    },
+  };
+  if (codexAppServerDebugEnabled) {
+    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`);
+  }
+  activeAppServer.process.stdin.write(`${JSON.stringify(message)}\n`);
 }
 
 function handleCodexAppServerOutput(activeAppServer, data, stream) {
@@ -2064,6 +2126,7 @@ function isCodexAppServerAuthError(error) {
 function handleCodexAppServerRequest(activeAppServer, message) {
   const method = String(message.method || "");
   if (isCodexAppServerApprovalRequest(method)) {
+    rememberCodexAppServerRequest(activeAppServer, message, "approval");
     updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WAITING_APPROVAL, {
       reason: "Codex App Server requested approval.",
       source: AgentStateSource.PROCESS,
@@ -2077,6 +2140,7 @@ function handleCodexAppServerRequest(activeAppServer, message) {
     return;
   }
   if (isCodexAppServerUserInputRequest(method)) {
+    rememberCodexAppServerRequest(activeAppServer, message, codexAppServerRequestKind(method));
     updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WAITING_INPUT, {
       reason: "Codex App Server requested user input.",
       source: AgentStateSource.PROCESS,
@@ -2089,7 +2153,204 @@ function handleCodexAppServerRequest(activeAppServer, message) {
     appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server user-input request is waiting for user handling: ${method}\n`);
     return;
   }
+  if (message.id !== undefined) {
+    sendCodexAppServerRequestError(activeAppServer, message.id, `Unsupported Codex App Server request: ${method}`, -32601);
+  }
   appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Unknown Codex App Server request: ${method}\n`);
+}
+
+function rememberCodexAppServerRequest(activeAppServer, message, kind) {
+  activeAppServer.pendingServerRequests.set(message.id, {
+    id: message.id,
+    kind,
+    method: String(message.method || ""),
+    params: message.params ?? {},
+    createdAt: Date.now(),
+  });
+  activeAppServer.currentServerRequestId = message.id;
+}
+
+function normalizeCodexAppServerRequestId(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  const text = String(value ?? "").trim();
+  return text ? text : null;
+}
+
+function codexAppServerRequestKind(method) {
+  if (method === "mcpServer/elicitation/request") {
+    return "elicitation";
+  }
+  if (method === "item/tool/requestUserInput") {
+    return "user_input";
+  }
+  return "user_input";
+}
+
+function resolveCodexAppServerRequest(taskId, requestId, action) {
+  const activeAppServer = activeCodexAppServers.get(taskId);
+  if (!activeAppServer) {
+    return { ok: false, error: "No active Codex App Server task is available." };
+  }
+  if (requestId === null) {
+    return { ok: false, error: "Codex App Server request id is invalid." };
+  }
+  const pendingRequest = activeAppServer.pendingServerRequests.get(requestId);
+  if (!pendingRequest) {
+    return { ok: false, error: "Codex App Server request is no longer pending." };
+  }
+
+  const result = codexAppServerRequestResolution(pendingRequest, action);
+  if (!result.ok) {
+    return result;
+  }
+
+  sendCodexAppServerResponse(activeAppServer, requestId, result.result);
+  clearCodexAppServerPendingRequest(activeAppServer, requestId);
+  appendCodexAppServerStatus(
+    activeAppServer,
+    `[TaskDeck] Codex App Server request ${requestId} resolved: ${codexAppServerActionLabel(action)}.\n`,
+  );
+  updateAgentStateFromTaskDeckEvent(taskId, AgentState.WORKING, {
+    reason: "Codex App Server request was resolved.",
+    source: AgentStateSource.TASKDECK_EVENT,
+    confidence: AgentStateConfidence.HIGH,
+    attentionState: AttentionState.NONE,
+    attentionReason: "Codex App Server request was resolved.",
+    attentionSource: AgentStateSource.TASKDECK_EVENT,
+    attentionConfidence: AgentStateConfidence.HIGH,
+  });
+  return { ok: true };
+}
+
+function codexAppServerRequestResolution(pendingRequest, action) {
+  const normalizedAction = String(action || "").trim();
+  const method = pendingRequest.method;
+
+  if (method === "item/commandExecution/requestApproval") {
+    return codexAppServerDecisionResolution(pendingRequest, normalizedAction, "command");
+  }
+  if (method === "item/fileChange/requestApproval") {
+    return codexAppServerDecisionResolution(pendingRequest, normalizedAction, "file");
+  }
+  if (method === "applyPatchApproval" || method === "execCommandApproval") {
+    return codexAppServerLegacyApprovalResolution(normalizedAction);
+  }
+  if (method === "item/permissions/requestApproval") {
+    return codexAppServerPermissionsResolution(pendingRequest, normalizedAction);
+  }
+  if (method === "mcpServer/elicitation/request") {
+    return codexAppServerElicitationResolution(normalizedAction);
+  }
+  if (method === "item/tool/requestUserInput") {
+    if (normalizedAction !== "cancel") {
+      return { ok: false, error: "This Codex App Server input request can only be canceled in TaskDeck." };
+    }
+    return { ok: true, result: { answers: {} } };
+  }
+
+  return { ok: false, error: `Unsupported Codex App Server request: ${method}` };
+}
+
+function codexAppServerDecisionResolution(pendingRequest, action, decisionType) {
+  const decision = codexAppServerDecisionForAction(pendingRequest, action, decisionType);
+  if (!decision) {
+    return { ok: false, error: "Unsupported Codex App Server approval action." };
+  }
+  return { ok: true, result: { decision } };
+}
+
+function codexAppServerDecisionForAction(pendingRequest, action, decisionType) {
+  const availableDecisions = Array.isArray(pendingRequest.params?.availableDecisions)
+    ? pendingRequest.params.availableDecisions.filter((decision) => typeof decision === "string")
+    : [];
+  const candidates =
+    action === "approve"
+      ? ["accept", "acceptForSession"]
+      : action === "decline"
+        ? ["decline"]
+        : action === "cancel"
+          ? ["cancel"]
+          : [];
+  if (availableDecisions.length > 0) {
+    return candidates.find((candidate) => availableDecisions.includes(candidate)) || "";
+  }
+  if (decisionType === "file" && action === "approve") return "accept";
+  if (decisionType === "command" && action === "approve") return "accept";
+  if (action === "decline") return "decline";
+  if (action === "cancel") return "cancel";
+  return "";
+}
+
+function codexAppServerLegacyApprovalResolution(action) {
+  if (action === "approve") {
+    return { ok: true, result: { decision: "approved" } };
+  }
+  if (action === "decline") {
+    return { ok: true, result: { decision: "denied" } };
+  }
+  if (action === "cancel") {
+    return { ok: true, result: { decision: "abort" } };
+  }
+  return { ok: false, error: "Unsupported Codex App Server approval action." };
+}
+
+function codexAppServerPermissionsResolution(pendingRequest, action) {
+  if (action === "approve") {
+    return {
+      ok: true,
+      result: {
+        permissions: grantedCodexAppServerPermissions(pendingRequest.params?.permissions),
+        scope: "turn",
+        strictAutoReview: false,
+      },
+    };
+  }
+  if (action === "decline" || action === "cancel") {
+    return { ok: true, result: { permissions: {}, scope: "turn", strictAutoReview: false } };
+  }
+  return { ok: false, error: "Unsupported Codex App Server permission action." };
+}
+
+function grantedCodexAppServerPermissions(permissions) {
+  const grantedPermissions = {};
+  if (permissions?.network) {
+    grantedPermissions.network = permissions.network;
+  }
+  if (permissions?.fileSystem) {
+    grantedPermissions.fileSystem = permissions.fileSystem;
+  }
+  return grantedPermissions;
+}
+
+function codexAppServerElicitationResolution(action) {
+  if (action === "decline") {
+    return { ok: true, result: { action: "decline", content: null, _meta: null } };
+  }
+  if (action === "cancel") {
+    return { ok: true, result: { action: "cancel", content: null, _meta: null } };
+  }
+  return { ok: false, error: "This Codex App Server elicitation can only be declined or canceled in TaskDeck." };
+}
+
+function clearCodexAppServerPendingRequest(activeAppServer, requestId) {
+  activeAppServer.pendingServerRequests.delete(requestId);
+  if (activeAppServer.currentServerRequestId === requestId) {
+    activeAppServer.currentServerRequestId = newestCodexAppServerPendingRequestId(activeAppServer);
+  }
+}
+
+function newestCodexAppServerPendingRequestId(activeAppServer) {
+  const requestIds = Array.from(activeAppServer.pendingServerRequests.keys());
+  return requestIds.length > 0 ? requestIds[requestIds.length - 1] : null;
+}
+
+function codexAppServerActionLabel(action) {
+  if (action === "approve") return "approved";
+  if (action === "decline") return "declined";
+  if (action === "cancel") return "canceled";
+  return String(action || "resolved");
 }
 
 function handleCodexAppServerNotification(activeAppServer, message) {
@@ -2107,6 +2368,10 @@ function handleCodexAppServerNotification(activeAppServer, message) {
     return;
   }
   if (method === "remoteControl/status/changed") {
+    return;
+  }
+  if (method === "serverRequest/resolved") {
+    handleCodexAppServerRequestResolved(activeAppServer, message.params);
     return;
   }
   if (method === "turn/started") {
@@ -2179,6 +2444,18 @@ function handleCodexAppServerNotification(activeAppServer, message) {
     return;
   }
   appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Unknown Codex App Server notification: ${method}\n`);
+}
+
+function handleCodexAppServerRequestResolved(activeAppServer, params) {
+  const requestId = normalizeCodexAppServerRequestId(params?.requestId);
+  if (requestId === null) {
+    return;
+  }
+  if (!activeAppServer.pendingServerRequests.has(requestId)) {
+    return;
+  }
+  clearCodexAppServerPendingRequest(activeAppServer, requestId);
+  broadcastTasks();
 }
 
 function handleCodexAppServerThreadStarted(activeAppServer, params) {
@@ -5061,7 +5338,100 @@ function serializeTaskForClient(task) {
   return {
     ...serializedTask,
     sessionLabel: taskSessionLabel(task),
+    codexAppServerRequest: codexAppServerRequestForClient(task.id),
   };
+}
+
+function codexAppServerRequestForClient(taskId) {
+  const activeAppServer = activeCodexAppServers.get(taskId);
+  if (!activeAppServer || activeAppServer.currentServerRequestId === null) {
+    return null;
+  }
+  const pendingRequest = activeAppServer.pendingServerRequests.get(activeAppServer.currentServerRequestId);
+  if (!pendingRequest) {
+    return null;
+  }
+  const summary = codexAppServerRequestSummary(pendingRequest);
+  return {
+    id: pendingRequest.id,
+    method: pendingRequest.method,
+    kind: pendingRequest.kind,
+    title: summary.title,
+    detail: summary.detail,
+    canApprove: codexAppServerRequestCanApprove(pendingRequest),
+    canDecline: codexAppServerRequestCanDecline(pendingRequest),
+    canCancel: true,
+  };
+}
+
+function codexAppServerRequestSummary(pendingRequest) {
+  const method = pendingRequest.method;
+  const params = pendingRequest.params || {};
+  if (method === "item/commandExecution/requestApproval") {
+    const command = compactCodexAppServerCommand(String(params.command || ""));
+    return {
+      title: "Command approval requested",
+      detail: command || String(params.reason || "").trim(),
+    };
+  }
+  if (method === "execCommandApproval") {
+    const command = Array.isArray(params.command) ? params.command.join(" ") : "";
+    return {
+      title: "Command approval requested",
+      detail: compactCodexAppServerCommand(command) || String(params.reason || "").trim(),
+    };
+  }
+  if (method === "item/fileChange/requestApproval" || method === "applyPatchApproval") {
+    return {
+      title: "File change approval requested",
+      detail: String(params.reason || params.grantRoot || "").trim(),
+    };
+  }
+  if (method === "item/permissions/requestApproval") {
+    return {
+      title: "Permission approval requested",
+      detail: String(params.reason || params.cwd || "").trim(),
+    };
+  }
+  if (method === "item/tool/requestUserInput") {
+    const questions = Array.isArray(params.questions) ? params.questions : [];
+    const firstQuestion = questions[0];
+    return {
+      title: "Input requested",
+      detail: String(firstQuestion?.question || firstQuestion?.header || "").trim(),
+    };
+  }
+  if (method === "mcpServer/elicitation/request") {
+    return {
+      title: "MCP input requested",
+      detail: String(params.message || params.url || params.serverName || "").trim(),
+    };
+  }
+  return {
+    title: "Codex App Server request",
+    detail: method,
+  };
+}
+
+function codexAppServerRequestCanApprove(pendingRequest) {
+  return (
+    pendingRequest.method === "item/commandExecution/requestApproval" ||
+    pendingRequest.method === "item/fileChange/requestApproval" ||
+    pendingRequest.method === "item/permissions/requestApproval" ||
+    pendingRequest.method === "applyPatchApproval" ||
+    pendingRequest.method === "execCommandApproval"
+  );
+}
+
+function codexAppServerRequestCanDecline(pendingRequest) {
+  return (
+    pendingRequest.method === "item/commandExecution/requestApproval" ||
+    pendingRequest.method === "item/fileChange/requestApproval" ||
+    pendingRequest.method === "item/permissions/requestApproval" ||
+    pendingRequest.method === "mcpServer/elicitation/request" ||
+    pendingRequest.method === "applyPatchApproval" ||
+    pendingRequest.method === "execCommandApproval"
+  );
 }
 
 async function listSavedCodexSessions() {

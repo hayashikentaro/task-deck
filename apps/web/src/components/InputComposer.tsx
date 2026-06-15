@@ -1,4 +1,5 @@
 import { ChangeEvent, FormEvent, KeyboardEvent, useLayoutEffect, useRef, useState } from "react";
+import { Button } from "./ui/Button";
 import type { PendingTaskAttachment, Task } from "../types";
 
 type InputComposerProps = {
@@ -28,6 +29,7 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const isTerminalInputLocked = Boolean(task?.terminalInputLockedAt);
   const isCodexAppServerTask = task?.agentProfileId === "codex-app-server";
+  const codexAppServerRequest = task?.codexAppServerRequest ?? null;
   const needsUserAttention = taskNeedsUserAttention(task);
   const isCodexAppServerNeedsAttention = Boolean(isCodexAppServerTask && needsUserAttention);
   const isActiveInstruction = Boolean(task?.agentState === "working" && !needsUserAttention);
@@ -37,6 +39,7 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
   const hasComposerContent = Boolean(value || selectedImages.length);
   const canSubmit = canSend && hasComposerContent && !isUploadingAttachments;
   const canCancelCurrentInstruction = Boolean(canInteractWithRunningTask && !isCodexAppServerTask && isActiveInstruction);
+  const canResolveCodexAppServerRequest = Boolean(canInteractWithRunningTask && codexAppServerRequest);
   const actionLabel = isUnsupportedCancelActiveTask
     ? "Task is running"
     : canCancelCurrentInstruction
@@ -116,6 +119,18 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
     send({ type: "interrupt", taskId: task.id });
   };
 
+  const resolveCodexAppServerRequest = (action: "approve" | "decline" | "cancel") => {
+    if (!task || !codexAppServerRequest || !canResolveCodexAppServerRequest) {
+      return;
+    }
+    send({
+      type: "codex-app-server-request",
+      taskId: task.id,
+      requestId: codexAppServerRequest.id,
+      action,
+    });
+  };
+
   const sendValue = async () => {
     if (!canSend || !hasComposerContent || isUploadingAttachments) {
       return;
@@ -149,6 +164,49 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
 
   return (
     <form className="input-composer" data-input-state={inputState} onSubmit={handleSubmit}>
+      {codexAppServerRequest ? (
+        <div className="codex-app-server-request-bar">
+          <div className="codex-app-server-request-copy">
+            <strong>{codexAppServerRequest.title}</strong>
+            {codexAppServerRequest.detail ? <span title={codexAppServerRequest.detail}>{codexAppServerRequest.detail}</span> : null}
+          </div>
+          <div className="codex-app-server-request-actions">
+            {codexAppServerRequest.canApprove ? (
+              <Button
+                disabled={!canResolveCodexAppServerRequest}
+                onClick={() => resolveCodexAppServerRequest("approve")}
+                size="sm"
+                type="button"
+                variant="panel"
+              >
+                Approve
+              </Button>
+            ) : null}
+            {codexAppServerRequest.canDecline ? (
+              <Button
+                disabled={!canResolveCodexAppServerRequest}
+                onClick={() => resolveCodexAppServerRequest("decline")}
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
+                Decline
+              </Button>
+            ) : null}
+            {codexAppServerRequest.canCancel ? (
+              <Button
+                disabled={!canResolveCodexAppServerRequest}
+                onClick={() => resolveCodexAppServerRequest("cancel")}
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
+                Cancel
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       {selectedImages.length > 0 ? (
         <div className="attachment-chip-list input-attachment-chip-list" aria-label="Selected image attachments">
           {selectedImages.map((image) => (

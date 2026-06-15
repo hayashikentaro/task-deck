@@ -42,6 +42,17 @@ export type PendingTaskAttachment = TaskAttachment & {
   pending?: boolean;
 };
 
+export type CodexAppServerRequest = {
+  id: string | number;
+  method: string;
+  kind: "approval" | "user_input" | "elicitation";
+  title: string;
+  detail?: string;
+  canApprove: boolean;
+  canDecline: boolean;
+  canCancel: boolean;
+};
+
 export type Task = {
   id: string;
   title: string;
@@ -97,6 +108,7 @@ export type Task = {
   signal: number | string | null;
   initialInstruction?: string;
   attachments?: TaskAttachment[];
+  codexAppServerRequest?: CodexAppServerRequest | null;
 };
 
 export type SavedCodexSession = {
