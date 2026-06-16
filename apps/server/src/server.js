@@ -5794,6 +5794,10 @@ function logPathForTask(taskId) {
 }
 
 async function configureWebApp() {
+  app.use("/api", (_request, response) => {
+    response.status(404).json({ error: "API route not found." });
+  });
+
   if (process.env.NODE_ENV === "production") {
     app.use(express.static(webDist));
     app.get("*", (_request, response) => {
@@ -5802,9 +5806,14 @@ async function configureWebApp() {
     return;
   }
 
-  const { createServer } = await import("vite");
+  const [{ createServer }, { default: react }] = await Promise.all([
+    import("vite"),
+    import("@vitejs/plugin-react"),
+  ]);
   const vite = await createServer({
+    configFile: false,
     root: webRoot,
+    plugins: [react()],
     server: {
       middlewareMode: true,
       hmr: { server },
