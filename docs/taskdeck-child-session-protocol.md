@@ -56,6 +56,7 @@ Defaults:
 - `--file` may be repeated for `filesLikelyToChange`.
 
 The writer reads `TASKDECK_TASK_ID` from the parent task environment and includes it as `parentTaskId` when available.
+When `TASKDECK_CHILD_SESSION_REQUEST_DIR` is present, the writer writes the request file to that directory. TaskDeck sets this environment variable for launched tasks so App Server sessions write to the same request directory that the server polls, including container-mapped paths.
 
 The writer creates:
 
@@ -211,6 +212,7 @@ Defaults:
 - `--request-id` may be provided for an explicit idempotency key.
 
 The writer reads `TASKDECK_TASK_ID` from the parent task environment and includes it as `parentTaskId` when available.
+When `TASKDECK_CHILD_SESSION_MESSAGE_REQUEST_DIR` is present, the writer writes the message request file to that directory. TaskDeck sets this environment variable for launched tasks so App Server sessions write to the same message request directory that the server polls, including container-mapped paths.
 
 The writer creates:
 
@@ -284,6 +286,8 @@ TaskDeck provides these environment variables to launched task processes, includ
 - `TASKDECK_PARENT_TASK_ID`: parent task id when the task was spawned from a parent request.
 - `TASKDECK_WORK_PACKAGE_ID`: work package id when available.
 - `TASKDECK_STATUS_FILE`: absolute path where the child should write its latest status report.
+- `TASKDECK_CHILD_SESSION_REQUEST_DIR`: absolute path where a parent should write child session request files through `scripts/write-child-session-request.mjs`.
+- `TASKDECK_CHILD_SESSION_MESSAGE_REQUEST_DIR`: absolute path where a parent should write child message request files through `scripts/write-child-session-message-request.mjs`.
 
 Child sessions should not infer the status path. They should write the exact file indicated by `TASKDECK_STATUS_FILE`.
 

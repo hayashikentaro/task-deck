@@ -10,6 +10,7 @@ import {
   validateChildSessionMessageFileRequest,
 } from "@taskdeck/core/child-session-message-file-requests";
 import {
+  childSessionMessageRequestDirectory,
   parseWriteChildSessionMessageRequestArgs,
   writeChildSessionMessageRequestFile,
 } from "../../../scripts/write-child-session-message-request.mjs";
@@ -69,6 +70,14 @@ describe("file-based child session message request writer", () => {
         TASKDECK_TASK_ID: "task_parent",
       }),
     ).toThrow(/--message/);
+  });
+
+  it("uses the TaskDeck-provided message request directory when present", () => {
+    expect(
+      childSessionMessageRequestDirectory({
+        TASKDECK_CHILD_SESSION_MESSAGE_REQUEST_DIR: "/tmp/taskdeck-child-message-requests",
+      }),
+    ).toBe("/tmp/taskdeck-child-message-requests");
   });
 });
 

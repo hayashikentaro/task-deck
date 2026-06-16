@@ -9,6 +9,7 @@ import {
   validateChildSessionFileRequest,
 } from "@taskdeck/core/child-session-file-requests";
 import {
+  childSessionRequestDirectory,
   parseWriteChildSessionRequestArgs,
   writeChildSessionRequestFile,
 } from "../../../scripts/write-child-session-request.mjs";
@@ -87,6 +88,12 @@ describe("file-based child session request writer", () => {
 
     expect(request.sessions[0].agentProfileId).toBe("codex-app-server");
     expect(validateChildSessionFileRequest(request).ok).toBe(true);
+  });
+
+  it("uses the TaskDeck-provided request directory when present", () => {
+    expect(childSessionRequestDirectory({ TASKDECK_CHILD_SESSION_REQUEST_DIR: "/tmp/taskdeck-child-requests" })).toBe(
+      "/tmp/taskdeck-child-requests",
+    );
   });
 
   it("rejects forbidden raw command fields", () => {

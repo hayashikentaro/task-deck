@@ -2746,12 +2746,15 @@ async function buildManagerBootstrapInstruction(command) {
 
 async function taskDeckEnvironmentForTask(task, command, hostStatusFile) {
   const childStatusFile = await childVisibleStatusFilePathForTask(task, command, hostStatusFile);
+  const childSessionRequestPaths = await childSessionRequestVisiblePathsForTask(command);
   const managerReadablePaths = await managerReadableVisiblePathsForTask(command);
   return {
     TASKDECK_TASK_ID: task.id,
     ...(task.parentSessionId ? { TASKDECK_PARENT_TASK_ID: task.parentSessionId } : {}),
     ...(task.workPackageId ? { TASKDECK_WORK_PACKAGE_ID: task.workPackageId } : {}),
     TASKDECK_STATUS_FILE: childStatusFile,
+    TASKDECK_CHILD_SESSION_REQUEST_DIR: childSessionRequestPaths.requestDir,
+    TASKDECK_CHILD_SESSION_MESSAGE_REQUEST_DIR: childSessionRequestPaths.messageRequestDir,
     ...(isManagerTask(task)
       ? {
           TASKDECK_MANAGER_ROLE: "manager",
@@ -2766,6 +2769,15 @@ async function taskDeckEnvironmentForTask(task, command, hostStatusFile) {
           TASKDECK_MANAGER_ACTION_HISTORY_FILE: managerReadablePaths.actionHistoryFile,
         }
       : {}),
+  };
+}
+
+async function childSessionRequestVisiblePathsForTask(command) {
+  const visibleDataRoot = await taskVisibleHostPath(command, dataRoot);
+  const joinVisiblePath = extractDockerExecWorkdir(command) ? path.posix.join : path.join;
+  return {
+    requestDir: joinVisiblePath(visibleDataRoot, "requests", "child-session"),
+    messageRequestDir: joinVisiblePath(visibleDataRoot, "requests", "child-message"),
   };
 }
 

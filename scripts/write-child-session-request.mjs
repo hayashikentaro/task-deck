@@ -11,7 +11,12 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(__filename), "..");
-const requestDirectory = path.join(repoRoot, ".taskdeck", "requests", "child-session");
+const defaultRequestDirectory = path.join(repoRoot, ".taskdeck", "requests", "child-session");
+
+export function childSessionRequestDirectory(env = process.env) {
+  const configuredDirectory = String(env.TASKDECK_CHILD_SESSION_REQUEST_DIR || "").trim();
+  return configuredDirectory ? path.resolve(configuredDirectory) : defaultRequestDirectory;
+}
 
 function usage() {
   return `Usage:
@@ -29,7 +34,10 @@ Options:
   --reason <text>              Batch reason.
   --file <path>                Repeatable filesLikelyToChange entry.
   --request-id <id>            Optional request id.
-  --help                       Show this help.`;
+  --help                       Show this help.
+
+Environment:
+  TASKDECK_CHILD_SESSION_REQUEST_DIR overrides the request output directory.`;
 }
 
 function readOption(args, index, name) {
@@ -102,7 +110,7 @@ export function parseWriteChildSessionRequestArgs(args, env = process.env) {
   return { draft };
 }
 
-export async function writeChildSessionRequestFile(draft, directory = requestDirectory) {
+export async function writeChildSessionRequestFile(draft, directory = childSessionRequestDirectory()) {
   const request = createChildSessionFileRequestDraft(draft);
   const filePath = path.join(directory, `${request.requestId}.request.json`);
   const tmpPath = `${filePath}.tmp`;

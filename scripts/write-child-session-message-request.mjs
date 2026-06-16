@@ -11,7 +11,12 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(__filename), "..");
-const requestDirectory = path.join(repoRoot, ".taskdeck", "requests", "child-message");
+const defaultRequestDirectory = path.join(repoRoot, ".taskdeck", "requests", "child-message");
+
+export function childSessionMessageRequestDirectory(env = process.env) {
+  const configuredDirectory = String(env.TASKDECK_CHILD_SESSION_MESSAGE_REQUEST_DIR || "").trim();
+  return configuredDirectory ? path.resolve(configuredDirectory) : defaultRequestDirectory;
+}
 
 function usage() {
   return `Usage:
@@ -25,7 +30,10 @@ Options:
   --message <text>             Required follow-up instruction.
   --reason <text>              Request reason. Default: Parent follow-up instruction.
   --request-id <id>            Optional request id.
-  --help                       Show this help.`;
+  --help                       Show this help.
+
+Environment:
+  TASKDECK_CHILD_SESSION_MESSAGE_REQUEST_DIR overrides the request output directory.`;
 }
 
 function readOption(args, index, name) {
@@ -84,7 +92,7 @@ export function parseWriteChildSessionMessageRequestArgs(args, env = process.env
   return { draft };
 }
 
-export async function writeChildSessionMessageRequestFile(draft, directory = requestDirectory) {
+export async function writeChildSessionMessageRequestFile(draft, directory = childSessionMessageRequestDirectory()) {
   const request = createChildSessionMessageFileRequestDraft(draft);
   const filePath = path.join(directory, `${request.requestId}.request.json`);
   const tmpPath = `${filePath}.tmp`;
