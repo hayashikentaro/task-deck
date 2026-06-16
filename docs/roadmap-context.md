@@ -8,7 +8,7 @@ GitHub Issues remain the source of truth for actionable work and completion stat
 
 TaskDeck is a supervision UI for multiple AI/CLI sessions.
 
-It is not a chatbot UI, a provider-specific Codex UI, or merely a prettier terminal. The medium-term direction is to make TaskDeck easier for other people to use while preserving the core supervision model. For Codex work sessions, the product route on this branch is App Server-only: use structured App Server events for turns, command output, and user-input requests, and keep PTY/TUI handling for shell and non-Codex provider compatibility.
+It is not a chatbot UI, a provider-specific Codex UI, or merely a prettier terminal. The medium-term direction is to make TaskDeck easier for other people to use while preserving the core supervision model. The product route on this branch is App Server-only: use structured App Server events for turns, command output, and user-input requests. PTY/TUI handling for shell and non-Codex providers is legacy/future support, not the active branch route.
 
 ## Medium-term themes
 
@@ -24,12 +24,12 @@ The current design direction is:
 - manager-readable context is global across projects and includes file-based manager inbox events and generated readable views;
 - Read-only global manager MVP: complete. The completed scope includes global manager launch from the control/document root, manager cwd `/workspace` in QA, project-bound worker sessions, manager inbox unread events, generated manager-readable context/unread files, manager nudge, terminal-only manager judgment, no manager writes to `TASKDECK_STATUS_FILE`, no `STATUS ERROR` from manager status parsing, and no direct manager mutation path;
 - Minimum manager action/write path: implemented for ack, review, and close actions;
-- Next phase: bounded manager-to-session messaging for the main/sub-session implementation loop;
+- Next phase: bounded manager-to-session messaging for the main/sub-session implementation loop, only after the App Server-native session model is explicit;
 - manager writes should go through `taskdeckctl`;
 - `taskdeckctl` should talk to a local IPC endpoint, preferably a Unix domain socket, rather than an exposed Web API;
 - TaskDeck server validates, dedupes, logs, executes, and broadcasts every mutation.
 
-The manager action/write path includes `taskdeckctl`, local IPC / Unix socket, manager action schema, the server-side manager action executor, ack/review/close actions, and later bounded message or spawn-child actions.
+The manager action/write path includes `taskdeckctl`, local IPC / Unix socket, manager action schema, the server-side manager action executor, and ack/review/close actions. Later bounded message or sub-work actions must be App Server-native or a new server-owned protocol; they must not silently revive the disabled legacy child-session writer path.
 
 Related design doc:
 
@@ -73,7 +73,7 @@ Related issue:
 
 Add Claude support so TaskDeck is not Codex-only.
 
-The design should avoid provider TUI parsing. Provider adapters should reuse generic supervision where possible and add only bounded, robust provider-specific behavior. When a provider exposes a stable structured app-server or machine protocol, prefer that path over PTY transcript control.
+This is future work, not a current-branch launch route. The design should avoid provider TUI parsing. Provider adapters should reuse generic supervision where possible and add only bounded, robust provider-specific behavior. When a provider exposes a stable structured app-server or machine protocol, prefer that path over PTY transcript control.
 
 Related issue:
 

@@ -1,6 +1,8 @@
-# TaskDeck Child Session Protocol
+# Legacy TaskDeck Child Session Protocol
 
-This document describes the legacy file-based protocol for TaskDeck parent/child session coordination.
+This document describes the disabled legacy file-based protocol for TaskDeck parent/child session coordination.
+
+Current rule: do not use this protocol for App Server work. It is documented only so agents can recognize old files, tests, and compatibility code without mistaking them for the active route.
 
 On the App Server-only route, file-protocol child session starts and parent-to-child message requests are disabled. TaskDeck server may still validate old request files and write rejected result files for compatibility, but it does not launch child tasks, route parent-to-child PTY input, or advertise `TASKDECK_CHILD_SESSION_REQUEST_DIR` / `TASKDECK_CHILD_SESSION_MESSAGE_REQUEST_DIR` to launched sessions.
 
@@ -23,9 +25,9 @@ Currently rejected:
 
 ### Child to TaskDeck: status files
 
-Child sessions report bounded latest status by writing JSON to `TASKDECK_STATUS_FILE`.
+Legacy or future child sessions report bounded latest status by writing JSON to `TASKDECK_STATUS_FILE`.
 
-This is already file-based and remains the supported child-to-TaskDeck reporting path.
+Task status files remain a supported TaskDeck reporting path. They do not imply that file-protocol child-session creation is enabled.
 
 ### Unsupported: platform-native sub-agent tools
 
@@ -37,7 +39,7 @@ Codex App Server may still report native collaboration subagents through structu
 
 Stdout marker blocks are not the App Server parent control path.
 
-They may remain available for zsh/manual/debug smoke tests, but docs should not teach them as the normal way to create child sessions or send parent-to-child instructions.
+They may remain in parser tests and legacy code. They are not a runtime launch or messaging path on the App Server-only branch.
 
 ## Create Child Session Request
 
@@ -150,25 +152,25 @@ Each `sessions[]` item:
 - `filesLikelyToChange`: array of repo-relative paths or globs the child session is expected to touch.
 - `initialInstruction`: complete instruction prompt for the child session.
 
-## Working Directory Semantics
+## Historical Working Directory Semantics
 
-`cwd` is resolved and validated by the TaskDeck server before launch.
+This section describes the historical writer behavior. Because the writer protocol is disabled, it is not an instruction for current App Server tasks.
 
-For parent operation, prefer the writer default:
+Historically, parent operation preferred the writer default:
 
 ```text
 cwd: .
 ```
 
-Do not pass the Docker container path shown by `pwd`, such as:
+The writer rejected container-only `/workspace/...` paths in the old Docker-wrapped profile model, such as:
 
 ```text
 /workspace/task-deck
 ```
 
-TaskDeck owns the host-to-container workdir mapping for Docker-backed profiles. Parent agents only request a TaskDeck-server-visible or server-resolvable cwd.
+The current committed App Server profile runs directly in the TaskDeck server environment. Do not use this historical Docker mapping rule to override current project selection or launch behavior.
 
-The writer rejects container-only `/workspace/...` paths.
+The legacy writer still rejects container-only `/workspace/...` paths if invoked, and the server will reject the request anyway on this branch.
 
 ## Forbidden Fields
 
@@ -183,16 +185,16 @@ Child session request files and message request files must not contain these fie
 
 TaskDeck must reject any request containing forbidden fields. Parent agents are not allowed to provide raw launch commands. TaskDeck chooses the launch command from trusted local agent profile configuration.
 
-## Child Task Metadata
+## Historical Child Task Metadata
 
-When TaskDeck launches a child session from a valid request, the resulting task should carry metadata that links it back to the parent request:
+When TaskDeck historically launched a child session from a valid request, the resulting task carried metadata that linked it back to the parent request:
 
 - `parentSessionId`: validated parent task id.
 - `spawnedFromParentRequest`: `true` for tasks created from this protocol.
 - `workPackageId`: copied from the child session request when provided.
 - `filesLikelyToChange`: copied from the child session request when provided.
 
-Parent agents request `workPackageId` and `filesLikelyToChange`, but they do not directly set `parentSessionId` or `spawnedFromParentRequest`.
+Parent agents historically requested `workPackageId` and `filesLikelyToChange`, but did not directly set `parentSessionId` or `spawnedFromParentRequest`.
 
 ## Parent-To-Child Message Request
 
@@ -284,7 +286,7 @@ The old stdout marker path is not part of the App Server-only route. This docume
 
 ## Child Status File Report
 
-Child-to-TaskDeck reporting is constrained to latest-status reporting.
+Task-to-TaskDeck reporting is constrained to latest-status reporting.
 
 TaskDeck provides these environment variables to launched task processes:
 
@@ -293,7 +295,7 @@ TaskDeck provides these environment variables to launched task processes:
 - `TASKDECK_WORK_PACKAGE_ID`: work package id when available.
 - `TASKDECK_STATUS_FILE`: absolute path where the child should write its latest status report.
 
-Child sessions should not infer the status path. They should write the exact file indicated by `TASKDECK_STATUS_FILE`.
+Tasks should not infer the status path. They should write the exact file indicated by `TASKDECK_STATUS_FILE` when they are explicitly instructed to report status that way.
 
 Status report JSON schema:
 
@@ -347,16 +349,16 @@ Free-form child-to-parent protocol blocks are not supported in this MVP. Use `su
 
 ## Manager Inbox Events
 
-Child status files remain a child-to-TaskDeck reporting path. A child still writes only its latest bounded status JSON to `TASKDECK_STATUS_FILE`, and TaskDeck still owns polling, validation, task metadata updates, and supervision attention state.
+Status files remain a task-to-TaskDeck reporting path. A task still writes only its latest bounded status JSON to `TASKDECK_STATUS_FILE`, and TaskDeck still owns polling, validation, task metadata updates, and supervision attention state.
 
-When a child task created from a parent request reports an attention-worthy status, TaskDeck also writes a manager inbox event file:
+When a legacy/future child task created from a supported parent request reports an attention-worthy status, TaskDeck also writes a manager inbox event file:
 
 ```text
 .taskdeck/manager-inbox/<eventId>.json
 .taskdeck/manager-inbox/<eventId>.ack.json
 ```
 
-The first MVP event type is `childStatusChanged` for child states `blocked`, `ready_for_review`, and `failed`. This inbox is intended for a future dedicated manager agent. It is not a push into the parent task input, it is not a free-form child-to-parent chat channel, and it does not use platform-native sub-agent tooling.
+The first MVP event type was `childStatusChanged` for child states `blocked`, `ready_for_review`, and `failed`. On the current App Server-only branch, do not create new work by relying on this legacy child-session event path. This inbox is not a push into the parent task input, it is not a free-form child-to-parent chat channel, and it does not use platform-native sub-agent tooling.
 
 TaskDeck also generates manager-readable views from unread valid manager events:
 
@@ -381,7 +383,9 @@ node scripts/read-manager-inbox.mjs --ack
 
 Acknowledgement creates a sidecar `.ack.json` file and does not delete the event.
 
-## Required Isolation Preflight
+## Historical Child Work Isolation Preflight
+
+This section applies to explicitly assigned branch/worktree child work and to any future re-enabled TaskDeck child-session protocol. It does not authorize runtime child-session creation on the current App Server-only branch.
 
 Every code-editing child session must include an isolation preflight in `initialInstruction`.
 
@@ -397,9 +401,9 @@ The child session must:
 
 Documentation-only child sessions should still isolate their work unless the parent instruction explicitly says the shared tree is safe for that specific task.
 
-## Child Completion And Parent Merge Responsibility
+## Historical/Future Child Completion And Parent Merge Responsibility
 
-Child sessions produce isolated work products. They do not own integration into the parent branch unless they are explicitly assigned as an integration session.
+Explicitly assigned branch/worktree child sessions produce isolated work products. They do not own integration into the parent branch unless they are explicitly assigned as an integration session. This section does not imply that the current runtime can launch TaskDeck child sessions.
 
 A child session is complete only after it has:
 
@@ -423,9 +427,9 @@ The parent or integration session is responsible for convergence:
 
 This means that a child task being finished in its worktree is not the same as the parent task being integrated. Until the child branch is pushed and merged by the parent/integration session, the parent branch has not received the work.
 
-## Local Policy Validation
+## Historical/Future Local Policy Validation
 
-Beyond structural validation, TaskDeck and parent agents should treat these as protocol or local-policy requirements:
+If a future child-session protocol is re-enabled, TaskDeck and parent agents should treat these as protocol or local-policy requirements:
 
 - `filesLikelyToChange` should be present for code-editing work.
 - `initialInstruction` should include the required isolation preflight for code-editing work.

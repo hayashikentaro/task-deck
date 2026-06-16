@@ -27,7 +27,7 @@ AI agents tend to implement in whatever location is most convenient unless the w
 - make merge order and conflict ownership clearer;
 - identify when a decision crosses a layer boundary and should be escalated.
 
-For TaskDeck, this supports the direction where a parent session coordinates role-bearing child sessions rather than only spawning disposable one-off workers.
+For TaskDeck, this supports the direction where a parent session coordinates role-bearing work sessions rather than only spawning disposable one-off workers. On the current App Server-only branch, this is a design direction, not a runtime instruction to use the disabled legacy child-session writer protocol.
 
 ## Suggested layers
 
@@ -118,9 +118,9 @@ Owns frontend orchestration and lifecycle wiring.
 Examples:
 
 - WebSocket event handling;
-- parent output detection;
-- parse -> validate -> create child task flow;
-- dedupe;
+- legacy parent output detection;
+- legacy parse -> validate -> create child task flow, currently disabled on the App Server-only route;
+- dedupe for supported runtime events;
 - status/error messages;
 - connecting trusted launch helpers to task creation.
 
@@ -154,12 +154,14 @@ Integration sessions should not become another feature implementation session un
 
 ## Parent and child session model
 
+This section describes the desired coordination model for role-bearing work. It does not mean the current App Server-only runtime can create TaskDeck child sessions. Do not use `scripts/write-child-session-request.mjs`, stdout marker blocks, or `TASKDECK_CHILD_SESSION_*` directories to implement this model unless a future protocol change explicitly re-enables them.
+
 A parent/planning session should:
 
 - decompose work by layer when useful;
 - define stable interfaces before parallel work begins;
 - route work to existing role sessions when appropriate;
-- spawn new child sessions only when a role/session does not already fit;
+- spawn or request new child/session work only through a currently supported TaskDeck or App Server-native mechanism;
 - collect child reports;
 - assign integration work deliberately.
 

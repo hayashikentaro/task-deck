@@ -29,9 +29,9 @@ DELETE /api/presets
 
 ## Diagnostics
 
-`GET /api/diagnostics` returns Docker reachability, merged agent-profile config sources, configured agent-container status, and configured container workspace checks. The right-rail Agent Diagnostics panel surfaces this server diagnostics API in the UI.
+`GET /api/diagnostics` returns merged agent-profile config sources and optional Docker/container diagnostics for locally configured profiles that declare diagnostic containers. The committed App Server profile does not require Docker.
 
-`POST /api/diagnostics/containers/:containerName/start` starts a configured diagnostic container when it exists but is stopped.
+`POST /api/diagnostics/containers/:containerName/start` starts a configured diagnostic container when a local profile explicitly declares one and it exists but is stopped.
 
 ## Cwd Validation
 

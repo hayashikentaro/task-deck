@@ -3,14 +3,8 @@
     {
       "id": "codex-app-server",
       "label": "Codex App Server",
-      "command": "replace with your Codex App Server launch command, for example codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio:// inside the configured Docker container",
-      "description": "Primary Codex route. Put machine-local profile commands in taskdeck.local.json or a TASKDECK_CONFIG file."
-    },
-    {
-      "id": "zsh-host",
-      "label": "zsh - host",
-      "command": "zsh",
-      "description": "Run zsh on the host in the selected project cwd."
+      "command": "codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://",
+      "description": "Primary App Server route. Put machine-local overrides for this profile in taskdeck.local.json or a TASKDECK_CONFIG file."
     }
   ]
 }

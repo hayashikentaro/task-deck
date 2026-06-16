@@ -2,7 +2,7 @@
 
 The integration agent owns convergence across child branches and layers. It is not a default feature implementation role.
 
-Use this role when parallel child sessions have produced pushed branches that must be merged into a parent or integration branch in a deliberate order.
+Use this role when explicitly assigned parallel branch/worktree work has produced pushed branches that must be merged into a parent or integration branch in a deliberate order. This role guide does not imply that the current App Server-only runtime can launch TaskDeck child sessions.
 
 ## Responsibilities
 
@@ -51,7 +51,7 @@ Read:
 Confirm the target branch, for example:
 
 ```bash
-git checkout feature/issue-29-child-session-requests
+git checkout <target-branch>
 git pull
 ```
 

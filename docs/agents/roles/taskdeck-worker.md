@@ -27,7 +27,7 @@ Use the worker reporting channels provided by TaskDeck, such as:
 
 - append-only status files;
 - append-only result or artifact files;
-- bounded request files when the protocol explicitly allows them;
+- bounded request files only when the current runtime explicitly supports that protocol;
 - normal terminal output for user-visible progress.
 
 Write only your own status, result, artifact, or explicitly supported request files.
@@ -44,7 +44,7 @@ Do not:
 - smuggle raw commands, environment variables, secrets, or auto-approval fields through request files;
 - use platform-native sub-agent tools as TaskDeck child sessions.
 
-If child-session coordination is required, follow `../../taskdeck-child-session-protocol.md` and use the documented writer scripts.
+On the current App Server-only route, TaskDeck file-protocol child-session starts and parent-to-child message requests are disabled. Do not use the legacy writer scripts in `../../taskdeck-child-session-protocol.md` unless a future prompt explicitly says that protocol has been re-enabled and the runtime docs agree.
 
 ## Completion report
 

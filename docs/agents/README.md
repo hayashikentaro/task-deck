@@ -23,7 +23,7 @@ Start with the repository root `AGENTS.md`. Use this file as the actor-to-doc ma
 ## Boundary docs
 
 - Actor and manager control-plane boundary: `../taskdeck-actor-protocol.md`
-- Child-session file protocol: `../taskdeck-child-session-protocol.md`
+- Legacy child-session file protocol, disabled on the current App Server-only route: `../taskdeck-child-session-protocol.md`
 - AI-first layering and responsibility boundaries: `../ai-first-layering.md`
 
 ## Maintenance rule

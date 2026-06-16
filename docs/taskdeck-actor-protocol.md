@@ -29,6 +29,22 @@ Manager calls taskdeckctl for supported writes.
 Server performs the validated action.
 ```
 
+## Current App Server-Only Boundary
+
+On this branch, the only committed task launch surface is Codex App Server running directly in the TaskDeck server environment. The legacy file-protocol child-session start/message path is disabled.
+
+Do not use these as current control paths:
+
+```text
+scripts/write-child-session-request.mjs
+scripts/write-child-session-message-request.mjs
+TASKDECK_CHILD_SESSION_REQUEST_DIR
+TASKDECK_CHILD_SESSION_MESSAGE_REQUEST_DIR
+TASKDECK_CHILD_SESSION_BATCH_REQUEST stdout markers
+```
+
+TaskDeck may materialize Codex App Server native subagents as read-only supervision cards. Those cards are not file-protocol TaskDeck child sessions, are not launched by TaskDeck, and are not targets for the legacy child-session message protocol.
+
 ## Actor diagram
 
 ```mermaid
@@ -78,7 +94,7 @@ flowchart TD
 
 ### Worker agents
 
-Worker agents include ordinary Codex, Goose, shell, or future provider sessions that are not the dedicated manager.
+Worker agents on this branch are Codex App Server tasks that are not the dedicated manager. Goose, shell, non-Codex providers, and PTY-backed routes are legacy/future surfaces unless a local override explicitly opts into them.
 
 Worker agents are project-bound. They are launched in a selected project workspace and perform actual work inside that project scope.
 
@@ -97,7 +113,7 @@ They may write:
 - append-only status files
 - append-only result or artifact files
 - their own notes
-- bounded request files when the protocol explicitly allows them
+- bounded request files when the current running protocol explicitly allows them
 ```
 
 They must not:
@@ -338,7 +354,7 @@ Add and maintain this actor protocol document. Reference it from `AGENTS.md` so 
 
 ### Phase 2: Validate manager inbox MVP
 
-Use a branch worktree to verify that child status changes emit valid manager inbox events.
+Use a branch worktree to verify that supported task status changes emit valid manager inbox events. Do not use the disabled legacy child-session writer protocol for this validation.
 
 ### Phase 3: Add an App Server-backed manager session
 
@@ -353,7 +369,7 @@ Generate or expose global files the manager can read without scraping UI or PTY 
 ```text
 unread manager events across projects
 active tasks across projects
-child status summaries across projects
+supported task/sub-work status summaries across projects
 relevant task summaries
 ```
 
@@ -373,7 +389,7 @@ Read the manager inbox and decide the next action.
 Verify:
 
 ```text
-worker in any project writes append-only status
+worker in any project writes append-only status through a currently supported path
 server emits global manager event / readable context
 global manager receives nudge
 global manager reads files
