@@ -53,6 +53,8 @@
   --task-terminal-border: transparent;
   --left-rail-width: 238px;
   --right-rail-width: 238px;
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", Meiryo, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Noto Sans Mono CJK JP", "Noto Sans Mono CJK SC", "Noto Sans Mono CJK TC", "Noto Sans Mono CJK KR", "BIZ UDGothic", "Yu Gothic UI", Meiryo, monospace;
 }
 
 * {
@@ -72,7 +74,9 @@ body {
     radial-gradient(circle at 50% -18%, rgb(128 112 76 / 10%), transparent 34rem),
     linear-gradient(180deg, #141411 0%, var(--bg) 100%);
   color: var(--text);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
+  line-break: strict;
+  word-break: normal;
 }
 
 button,
@@ -318,7 +322,7 @@ select {
   background-repeat: no-repeat;
   background-size: 12px 12px;
   color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", sans-serif;
+  font-family: var(--font-sans);
   font-size: 15px;
   font-weight: 500;
   line-height: 1;
@@ -384,7 +388,8 @@ dt {
 
 dd {
   margin: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .app-shell {
@@ -1348,6 +1353,7 @@ dd {
   border-bottom: 1px solid var(--line);
   color: var(--status-muted);
   font-size: 12px;
+  overflow-wrap: break-word;
 }
 
 .terminal-host {
@@ -1458,7 +1464,7 @@ dd {
   padding: 14px;
   overflow: auto;
   color: var(--text-secondary);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.45;
   white-space: pre-wrap;
@@ -1532,18 +1538,16 @@ dd {
   font-size: 12px;
   font-weight: 700;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: break-word;
 }
 
 .codex-app-server-request-copy span {
   min-width: 0;
   color: var(--text-secondary);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: break-word;
 }
 
 .codex-app-server-request-actions {
@@ -1558,7 +1562,7 @@ dd {
   max-height: 140px;
   border-color: var(--line-strong);
   background: var(--surface-input);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   line-height: 1.4;
   resize: none;
   overflow-y: auto;
