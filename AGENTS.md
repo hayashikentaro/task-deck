@@ -76,7 +76,7 @@ At a high level:
 
 Do not add raw Web API manager-write paths, raw terminal-write paths, raw SQL mutation paths, or direct worker-to-worker command paths unless the user explicitly approves a protocol change and `docs/taskdeck-actor-protocol.md` is updated in the same change.
 
-When asked to create TaskDeck child sessions or send parent-to-child instructions, use the writer scripts defined in `docs/taskdeck-child-session-protocol.md`. Do not use platform-native multi-agent/sub-agent tools and do not treat those agents as TaskDeck child sessions.
+For Codex App Server work, treat Codex App Server subagent threads as TaskDeck child sessions and follow `docs/taskdeck-child-session-protocol.md` for how those threads map into TaskDeck. Use the documented writer scripts only for compatibility/fallback file-based requests. Do not use raw terminal transcript parsing or direct worker-to-worker command paths for child-session control.
 
 ## Branch And Worktree Policy
 

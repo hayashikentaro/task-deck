@@ -1,18 +1,54 @@
 # TaskDeck Child Session Protocol
 
-This document describes the supported file-based protocol for TaskDeck parent/child session coordination.
+This document describes TaskDeck parent/child session coordination.
 
-The active control path for App Server parent sessions is file-based. Parent agents run TaskDeck writer scripts with ordinary CLI arguments. The writer scripts build JSON with fixed code, write request files under `.taskdeck/requests/`, and TaskDeck server reads those files.
+## Primary Model: App Server Subagent Threads
 
-Parent agents must not hand-write protocol JSON. Parent agents must not print stdout marker blocks as the App Server control path.
+In the App Server-first route, a TaskDeck child session is a Codex App Server subagent thread.
 
-Parent agents must not use platform-native multi-agent or sub-agent tools such as `multi_agent_v1.spawn_agent` to create TaskDeck child sessions. A platform-native sub-agent is not a TaskDeck child session because TaskDeck cannot supervise it, route file-based messages to it, or track its task metadata.
+TaskDeck is adapting itself to the Codex App Server UI/control model. Do not force App Server subagents through TaskDeck's older file-created child-task model when the App Server exposes structured thread data.
+
+The primary control and detection path is App Server structured JSON:
+
+```text
+Codex App Server thread/started
+  -> params.thread.parentThreadId identifies the parent thread when the new thread is a subagent
+  -> params.thread.id is the child App Server thread id
+  -> params.thread.sessionId groups the parent and child in one App Server session tree
+  -> params.thread.agentNickname and params.thread.agentRole provide child display metadata when present
+  -> thread/status/changed, thread/closed, thread/deleted, and related App Server notifications update child state
+```
+
+TaskDeck should render those App Server child threads as TaskDeck tasks/cards. App Server thread ids and parent thread ids are the source of truth for parent/child identity in Codex App Server work.
+
+Do not detect App Server child creation from Codex TUI text, terminal transcript text, assistant prose, or stdout marker blocks. Those are not stable machine protocols.
 
 ## Supported Transports
 
-### Parent to TaskDeck: file-based request files
+### App Server to TaskDeck: structured thread events
 
-Use file-based request files for App Server parent control operations.
+This is the primary transport for Codex child sessions.
+
+TaskDeck should consume structured App Server events and map each subagent thread into TaskDeck child metadata. The expected TaskDeck metadata includes:
+
+- App Server session id;
+- App Server thread id;
+- parent App Server thread id;
+- subagent nickname;
+- subagent role;
+- cwd;
+- App Server status;
+- optional Git metadata when exposed by the thread.
+
+These fields should remain distinct from compatibility metadata such as `spawnedFromParentRequest`.
+
+### Compatibility: file-based request files
+
+The file-based request protocol is a compatibility and fallback path for TaskDeck-managed child task creation. It is not the primary App Server child-session model.
+
+Parent agents using this compatibility path run TaskDeck writer scripts with ordinary CLI arguments. The writer scripts build JSON with fixed code, write request files under `.taskdeck/requests/`, and TaskDeck server reads those files.
+
+Parent agents must not hand-write protocol JSON. Parent agents must not print stdout marker blocks as the App Server control path.
 
 Currently implemented:
 
@@ -25,10 +61,6 @@ Child sessions report bounded latest status by writing JSON to `TASKDECK_STATUS_
 
 This is already file-based and remains the supported child-to-TaskDeck reporting path.
 
-### Unsupported: platform-native sub-agent tools
-
-Platform-native multi-agent or sub-agent tools, including `multi_agent_v1.spawn_agent`, are not TaskDeck transports. Do not use them to create TaskDeck child sessions or to send parent-to-child instructions.
-
 ### Deprecated / debug-only stdout marker transport
 
 Stdout marker blocks are not the App Server parent control path.
@@ -37,7 +69,7 @@ They may remain available for zsh/manual/debug smoke tests, but docs should not 
 
 ## Create Child Session Request
 
-An App Server parent should create a child session by running the writer script:
+When using the compatibility file-based path, a parent creates a TaskDeck-managed child task by running the writer script:
 
 ```sh
 node scripts/write-child-session-request.mjs \
@@ -46,7 +78,7 @@ node scripts/write-child-session-request.mjs \
   --instruction "You are working on hayashikentaro/task-deck. First read AGENTS.md. Do not edit files yet. Report that you are ready and wait for a scoped parent instruction."
 ```
 
-Do not use `multi_agent_v1.spawn_agent` or any other platform-native sub-agent tool for this operation. Creating a TaskDeck child session means writing a TaskDeck child-session request file through this writer script.
+For App Server-native subagents, prefer Codex App Server subagent spawning and TaskDeck's structured thread-event detection. For compatibility file-based creation, creating a TaskDeck-managed child task means writing a TaskDeck child-session request file through this writer script.
 
 Defaults:
 
@@ -179,7 +211,7 @@ TaskDeck must reject any request containing forbidden fields. Parent agents are 
 
 ## Child Task Metadata
 
-When TaskDeck launches a child session from a valid request, the resulting task should carry metadata that links it back to the parent request:
+When TaskDeck launches a compatibility child task from a valid request, the resulting task should carry metadata that links it back to the parent request:
 
 - `parentSessionId`: validated parent task id.
 - `spawnedFromParentRequest`: `true` for tasks created from this protocol.
@@ -190,7 +222,7 @@ Parent agents request `workPackageId` and `filesLikelyToChange`, but they do not
 
 ## Parent-To-Child Message Request
 
-An App Server parent should send follow-up instructions to an existing child session by running the writer script:
+When using the compatibility file-based path, a parent sends follow-up instructions to an existing TaskDeck-managed child task by running the writer script:
 
 ```sh
 node scripts/write-child-session-message-request.mjs \
@@ -198,7 +230,7 @@ node scripts/write-child-session-message-request.mjs \
   --message "Please inspect issue #34 and report whether you need more context. Do not edit files."
 ```
 
-Do not use `multi_agent_v1.spawn_agent` or any other platform-native sub-agent tool for this operation. TaskDeck can route parent-to-child instructions only to TaskDeck child tasks created through the file-based request protocol.
+For App Server-native subagents, prefer App Server-supported steering and thread controls when available. This writer routes messages only to compatibility child tasks created through the file-based request protocol.
 
 Target one child by either:
 
@@ -348,7 +380,7 @@ When a child task created from a parent request reports an attention-worthy stat
 .taskdeck/manager-inbox/<eventId>.ack.json
 ```
 
-The first MVP event type is `childStatusChanged` for child states `blocked`, `ready_for_review`, and `failed`. This inbox is intended for a future dedicated manager agent. It is not a push into the parent task input, it is not a free-form child-to-parent chat channel, and it does not use platform-native sub-agent tooling.
+The first MVP event type is `childStatusChanged` for child states `blocked`, `ready_for_review`, and `failed`. This inbox is intended for a future dedicated manager agent. It is not a push into the parent task input and it is not a free-form child-to-parent chat channel. For App Server-native children, manager events should be derived after TaskDeck materializes the App Server subagent thread as a child task/card.
 
 TaskDeck also generates manager-readable views from unread valid manager events:
 

@@ -82,6 +82,8 @@ Worker agents include ordinary Codex, Goose, shell, or future provider sessions 
 
 Worker agents are project-bound. They are launched in a selected project workspace and perform actual work inside that project scope.
 
+For Codex App Server work, TaskDeck child sessions are Codex App Server subagent threads surfaced through structured App Server events. Their parent/child identity comes from App Server thread metadata, not from terminal transcript parsing or hand-written TaskDeck state.
+
 They may read:
 
 ```text

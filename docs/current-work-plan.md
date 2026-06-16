@@ -92,7 +92,7 @@ Implementation priorities for this phase:
 2. Preserve PTY-backed profiles for non-Codex providers and shell compatibility, not for Codex work sessions.
 3. Keep App Server JSON hidden from normal task logs while rendering human-readable assistant text, command output, and request state.
 4. Route App Server approvals, user-input requests, and command decisions through TaskDeck UI controls rather than raw transcript prompts.
-5. Make child-session and manager-loop flows App Server-compatible before broadening feature work.
+5. Surface Codex App Server subagent threads as TaskDeck child sessions before broadening feature work.
 6. Do not add Codex TUI parsing or committed Codex CLI/TUI launch profiles on this branch.
 
 ## Next phase: manager-mediated implementation loop (#64)
@@ -169,7 +169,7 @@ manager acknowledges / reviews / closes as appropriate
 
 - The current architectural focus is the App Server-first local TaskDeck implementation loop, not provider expansion, desktop packaging, or external decision services.
 - The App Server route gives TaskDeck structured Codex turns, approvals, command output, and user-input requests instead of relying on Codex TUI transcript interpretation.
-- Worker agents should continue to communicate through append-only files and bounded status/reporting surfaces.
+- Worker agents should continue to communicate through append-only files and bounded status/reporting surfaces where TaskDeck owns the transport. Codex App Server subagent identity and lifecycle should come from structured App Server thread events.
 - Worker sessions are project-bound; the manager session is a global TaskDeck supervisor launched from the TaskDeck control/document root.
 - Manager reads are file-based and global across projects: manager inbox, generated readable views, and file change notifications.
 - Manager writes should not be raw Web API calls, direct cross-agent commands, or direct edits to TaskDeck state.
@@ -181,7 +181,8 @@ manager acknowledges / reviews / closes as appropriate
 
 - Do not use Codex TUI or terminal transcript output as machine control data.
 - Do not add new Codex TUI parsing when the same behavior belongs in the App Server adapter path.
-- Do not use platform-native multi-agent/sub-agent tools as TaskDeck child sessions.
+- Treat Codex App Server subagent threads as the primary TaskDeck child-session model.
+- Do not use Codex TUI or terminal transcript parsing to detect or control child sessions.
 - TaskDeck branch work uses `git worktree`: one worktree, one branch, one purpose.
 - Do not create disposable full clones for TaskDeck branch work.
 - Do not let non-manager agents command other agents directly.

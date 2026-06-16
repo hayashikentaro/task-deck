@@ -6,7 +6,7 @@ This document is a navigation map for contributors and AI-agent sessions. It des
 
 TaskDeck is a task-centric supervision UI for AI-agent work. It is not a chatbot UI, and it is not merely a prettier terminal.
 
-For Codex work sessions, TaskDeck's product route is App Server-only on this branch. The Codex App Server adapter gives TaskDeck structured turns, approval requests, command output, and user-input requests. PTY/TUI handling remains part of the runtime for shell sessions and non-Codex providers, but committed Codex CLI/TUI access is intentionally absent.
+For Codex work sessions, TaskDeck's product route is App Server-only on this branch. The Codex App Server adapter gives TaskDeck structured turns, approval requests, command output, user-input requests, and subagent threads. In the App Server route, a Codex App Server subagent thread is the TaskDeck child-session model. PTY/TUI handling remains part of the runtime for shell sessions and non-Codex providers, but committed Codex CLI/TUI access is intentionally absent.
 
 In the current session-identity-first card design, the primary card-level visual question is which task maps to the terminal/session the operator is viewing or about to resume. `Needs you` / `Not now` remains the primary supervision signal for sorting, badges, and action prompts, but it should not dominate the whole card surface or compete with stable task/session identity as a full-card color system.
 
@@ -23,15 +23,27 @@ In the current session-identity-first card design, the primary card-level visual
 1. The web app loads `/api/context`, opens the WebSocket, and receives task snapshots and output updates over WebSocket.
 2. The New Agent Session form creates a task from an agent profile and selected project.
 3. The server launches the selected command. `codex-app-server` tasks run as a stdio App Server subprocess; terminal-backed profiles run in a PTY.
-4. App Server messages are reduced to human-readable task output, pending request state, and task state updates. PTY output is appended to bounded in-memory and persisted logs, broadcast over WebSocket, and rendered by xterm.js in the terminal pane.
+4. App Server messages are reduced to human-readable task output, pending request state, task state updates, and App Server subagent thread records. PTY output is appended to bounded in-memory and persisted logs, broadcast over WebSocket, and rendered by xterm.js in the terminal pane.
 5. Server-side lifecycle observations, App Server status events, and adapter-specific fallback signals update `agentState` and `attentionState` without treating silence as thinking.
 6. Task, log, preset, session-label, and attachment state is persisted under `.taskdeck/`.
 7. Focused REST calls handle actions such as task renaming, log reload, attachments, and diagnostics queries when a UI path calls them.
 8. UI state updates from REST responses and WebSocket messages keep the task list, selected task, terminal output, composer availability, and tools in sync.
 
-## #29 Child Session Auto-Launch Ownership
+## Child Session Ownership
 
-Issue #29 adds a narrow parent-output-to-child-task flow:
+The App Server-first child model maps Codex App Server subagent threads directly into TaskDeck child sessions. TaskDeck should detect child creation from structured App Server data, not from Codex TUI text, assistant prose, or stdout marker blocks.
+
+The primary detection path is:
+
+```text
+Codex App Server thread/started
+  -> thread.parentThreadId links the child thread to the parent thread
+  -> thread.sessionId, thread.id, thread.agentNickname, thread.agentRole, cwd, and status become TaskDeck child metadata
+  -> TaskDeck renders the child as a task/card tied to the same App Server session tree
+  -> thread/status/changed, thread/closed, thread/deleted, and related App Server events keep the child state in sync
+```
+
+The historical #29 flow added a narrow parent-output-to-child-task path:
 
 ```text
 parent output
@@ -47,16 +59,16 @@ parent output
   -> later parent/integration workflow handles merging
 ```
 
-This flow follows the AI-first layer model in `docs/ai-first-layering.md` and the request contract in `docs/taskdeck-child-session-protocol.md`.
+That file/marker-based flow is now a compatibility or manual fallback path, not the primary App Server child-session model. It remains useful for non-App-Server experiments and local smoke tests while App Server-native child rendering is implemented.
 
-- Protocol owns the request block shape, required and optional fields, forbidden fields, validation semantics, parser/validator behavior, and protocol docs. Typical files are `docs/taskdeck-child-session-protocol.md` and `apps/web/src/childSessionRequests.ts`. Protocol work must not introduce raw launch commands or UI workflow decisions.
-- App Flow owns scanning parent task output/logs, calling the parser, deduping processed request blocks, resolving trusted local agent profiles, mapping valid requests to `CreateTaskInput`, invoking the existing task creation flow, and surfacing concise created/rejected status. Typical files are `apps/web/src/App.tsx` and `apps/web/src/agentLaunch.ts`.
-- Runtime owns App Server and PTY-backed task launch, task metadata preservation, queued input behavior, `initialInstruction` delivery, and process/output lifecycle. Typical files are `apps/server/src/server.js` and, for stable metadata semantics, `packages/core/src/index.js`.
-- UI owns child metadata display, Child and work-package badges, TaskInfoPane child details, concise status presentation, and the #29 decision to avoid a confirmation modal for valid parent-generated requests. Typical files are `apps/web/src/components/TaskList.tsx`, `apps/web/src/components/TaskInfoPane.tsx`, and related local styles when needed.
-- Core owns parent/child task metadata semantics and persisted compatibility for fields such as `parentSessionId`, `spawnedFromParentRequest`, `workPackageId`, and `filesLikelyToChange` when those semantics change.
+- App Server adapter owns structured child detection from thread events and the mapping from App Server thread ids to TaskDeck task ids. Typical files are `apps/server/src/server.js` and future `codex-app-server` extraction points.
+- Core owns parent/child metadata semantics and persisted compatibility. App Server-native fields such as App Server thread id, parent thread id, session id, subagent nickname, and subagent role should be distinct from compatibility fields such as `spawnedFromParentRequest`.
+- UI owns child metadata display, Child and work-package/subagent badges, TaskInfoPane child details, concise status presentation, and keeping parent/child cards visually connected.
+- Compatibility protocol owns the file-based request shape, forbidden fields, validation semantics, parser/validator behavior, and protocol docs. Typical files are `docs/taskdeck-child-session-protocol.md`, `apps/web/src/childSessionRequests.ts`, and the writer scripts. Compatibility protocol work must not reintroduce raw launch commands or make stdout marker blocks the App Server control path.
+- App Flow owns any remaining compatibility scanning/deduping for request blocks or files until the App Server-native path replaces it.
 - Integration owns collecting pushed child branches after child sessions finish, choosing merge order, merging into the parent or integration branch, and running checks. Integration is not part of the auto-launch runtime itself; use `docs/agents/roles/integration.md` for that workflow.
 
-#29 must not execute raw commands from parent output. Parent requests may name an agent profile, cwd, permission, title, work package, file hints, and an initial instruction, but TaskDeck builds the actual launch command from trusted local profile configuration.
+#29 compatibility handling must not execute raw commands from parent output. Parent requests may name an agent profile, cwd, permission, title, work package, file hints, and an initial instruction, but TaskDeck builds the actual launch command from trusted local profile configuration.
 
 #29 is also not worktree management, branch management, dependency graph execution, automatic merge, parent-to-child follow-up instruction routing, or child completion result tracking. Follow-up instruction routing belongs to #30. Child completion/result tracking and integration handoff should be handled by later workflows/issues such as #40 and the integration role guide.
 
