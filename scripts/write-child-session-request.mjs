@@ -152,6 +152,7 @@ async function main() {
     const { filePath, request } = await writeChildSessionRequestFile(parsed.draft);
     console.log(`Wrote TaskDeck child session request: ${filePath}`);
     console.log(`requestId: ${request.requestId}`);
+    console.log("TaskDeck will report accepted/rejected in the parent task log; do not poll result files with shell commands unless debugging.");
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     console.error("");

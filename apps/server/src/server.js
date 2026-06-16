@@ -1094,10 +1094,12 @@ async function processChildSessionRequestFile(filePath) {
     return;
   }
   if (parentTask.spawnedFromParentRequest) {
+    const error = "parentTaskId must identify a parent task, not a child task.";
     await writeChildSessionRequestResult(request.requestId, {
       state: "rejected",
-      error: "parentTaskId must identify a parent task, not a child task.",
+      error,
     });
+    notifyChildSessionRequestRejected(parentTask.id, request.requestId, error);
     return;
   }
 
@@ -1107,6 +1109,7 @@ async function processChildSessionRequestFile(filePath) {
       state: "rejected",
       error: buildResult.error,
     });
+    notifyChildSessionRequestRejected(parentTask.id, request.requestId, buildResult.error);
     return;
   }
 
@@ -1118,6 +1121,7 @@ async function processChildSessionRequestFile(filePath) {
         state: "rejected",
         error: startResult.error,
       });
+      notifyChildSessionRequestRejected(parentTask.id, request.requestId, startResult.error);
       return;
     }
     createdTaskIds.push(startResult.taskId);
@@ -1127,6 +1131,7 @@ async function processChildSessionRequestFile(filePath) {
     state: "accepted",
     createdTaskIds,
   });
+  notifyChildSessionRequestAccepted(parentTask.id, request.requestId, createdTaskIds);
 }
 
 async function buildChildSessionFileStartInputs(request, parentTask) {
@@ -1196,6 +1201,28 @@ async function writeChildSessionRequestResult(requestId, { state, createdTaskIds
   await fs.rename(tempPath, filePath);
 }
 
+function notifyChildSessionRequestAccepted(parentTaskId, requestId, createdTaskIds) {
+  const taskIds = normalizeStringArray(createdTaskIds);
+  appendTaskDeckResultStatus(
+    parentTaskId,
+    `Child session request accepted: ${requestId}${taskIds.length ? `; created tasks: ${taskIds.join(", ")}` : ""}. No shell check is required.`,
+  );
+}
+
+function notifyChildSessionRequestRejected(parentTaskId, requestId, error) {
+  appendTaskDeckResultStatus(
+    parentTaskId,
+    `Child session request rejected: ${requestId}; ${String(error || "unknown error")}. No shell check is required.`,
+  );
+}
+
+function appendTaskDeckResultStatus(taskId, message) {
+  if (!tasks.has(taskId)) {
+    return;
+  }
+  appendAndBroadcast(taskId, `[TaskDeck] ${message}\n`);
+}
+
 async function scanChildSessionMessageRequestFiles() {
   if (childSessionMessageRequestPollInFlight) {
     return;
@@ -1259,8 +1286,9 @@ async function processChildSessionMessageRequestFile(filePath) {
   }
 
   const request = validation.request;
+  const parentTask = tasks.get(request.parentTaskId);
   const buildResult = buildChildSessionMessageDelivery({
-    parentTask: tasks.get(request.parentTaskId),
+    parentTask,
     request,
     tasks,
     formatInput: formatParentInstructionInputForPty,
@@ -1270,15 +1298,20 @@ async function processChildSessionMessageRequestFile(filePath) {
       state: "rejected",
       error: buildResult.error,
     });
+    if (parentTask) {
+      notifyChildSessionMessageRequestRejected(parentTask.id, request.requestId, buildResult.error);
+    }
     return;
   }
 
   const sendResult = sendTaskInputToPty(buildResult.childTask.id, buildResult.data, "parent-instruction-file");
   if (!sendResult.ok) {
+    const error = childSessionMessageInputError(buildResult.childTask, sendResult.reason);
     await writeChildSessionMessageRequestResult(request.requestId, {
       state: "rejected",
-      error: childSessionMessageInputError(buildResult.childTask, sendResult.reason),
+      error,
     });
+    notifyChildSessionMessageRequestRejected(parentTask.id, request.requestId, error);
     return;
   }
 
@@ -1286,6 +1319,7 @@ async function processChildSessionMessageRequestFile(filePath) {
     state: "accepted",
     targetTaskId: buildResult.childTask.id,
   });
+  notifyChildSessionMessageRequestAccepted(parentTask.id, request.requestId, buildResult.childTask.id);
 }
 
 async function childSessionMessageRequestResultExists(requestId) {
@@ -1309,6 +1343,20 @@ async function writeChildSessionMessageRequestResult(requestId, { state, targetT
   await fs.mkdir(childSessionMessageRequestRoot, { recursive: true });
   await fs.writeFile(tempPath, `${JSON.stringify(result, null, 2)}\n`);
   await fs.rename(tempPath, filePath);
+}
+
+function notifyChildSessionMessageRequestAccepted(parentTaskId, requestId, targetTaskId) {
+  appendTaskDeckResultStatus(
+    parentTaskId,
+    `Child session message accepted: ${requestId}; delivered to ${targetTaskId}. No shell check is required.`,
+  );
+}
+
+function notifyChildSessionMessageRequestRejected(parentTaskId, requestId, error) {
+  appendTaskDeckResultStatus(
+    parentTaskId,
+    `Child session message rejected: ${requestId}; ${String(error || "unknown error")}. No shell check is required.`,
+  );
 }
 
 async function fileExists(filePath) {
@@ -1691,6 +1739,12 @@ function handleCodexAppServerOutputLine(activeAppServer, line, stream) {
   }
 
   if (!trimmedLine.startsWith("{")) {
+    if (isIgnorableCodexAppServerTextDiagnostic(trimmedLine)) {
+      if (codexAppServerDebugEnabled) {
+        appendAndBroadcast(activeAppServer.taskId, `${line}\n`);
+      }
+      return;
+    }
     appendAndBroadcast(activeAppServer.taskId, `${line}\n`);
     handleCodexAppServerTextDiagnostic(activeAppServer, line);
     return;
@@ -1707,6 +1761,10 @@ function handleCodexAppServerOutputLine(activeAppServer, line, stream) {
     appendAndBroadcast(activeAppServer.taskId, `${line}\n`);
     handleCodexAppServerTextDiagnostic(activeAppServer, line);
   }
+}
+
+function isIgnorableCodexAppServerTextDiagnostic(line) {
+  return String(line || "").includes("failed to clean up stale arg0 temp dirs");
 }
 
 function handleCodexAppServerMessage(activeAppServer, message) {
@@ -1867,7 +1925,6 @@ function handleCodexAppServerLoginStartResponse(activeAppServer, result) {
       "[TaskDeck] ChatGPT device login required.",
       verificationUrl ? `[TaskDeck] Verification URL: ${verificationUrl}` : "",
       userCode ? `[TaskDeck] User code: ${userCode}` : "",
-      loginId ? `[TaskDeck] Login ID: ${loginId}` : "",
     ].filter(Boolean).join("\n") + "\n"
   );
   updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WAITING_INPUT, {

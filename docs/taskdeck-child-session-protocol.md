@@ -69,6 +69,7 @@ The writer creates:
 It writes to a `.tmp` file first, then atomically renames to `.request.json`.
 
 The writer may print a short human-readable summary and file path. It must not print `TASKDECK_CHILD_SESSION_BATCH_REQUEST` marker blocks.
+TaskDeck reports accepted or rejected request results in the parent task log after the server processes the request; parent agents should not poll result files with shell commands during normal operation.
 
 TaskDeck server polls the request directory, validates request files, launches valid child session requests through trusted local agent profiles, and writes one result file:
 
@@ -225,6 +226,7 @@ The writer creates:
 It writes to a `.tmp` file first, then atomically renames to `.request.json`.
 
 The writer may print a short human-readable summary and file path. It must not print `TASKDECK_CHILD_SESSION_MESSAGE_REQUEST` marker blocks.
+TaskDeck reports accepted or rejected message results in the parent task log after the server processes the request; parent agents should not poll result files with shell commands during normal operation.
 
 TaskDeck server polls the request directory, validates request files, resolves the target against child sessions owned by the parent task, sends valid messages through the existing task input path, and writes one result file:
 
