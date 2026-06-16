@@ -447,10 +447,14 @@ function supervisionTitle(task: Task) {
 }
 
 function isChildSession(task: Task) {
-  return Boolean(task.spawnedFromParentRequest || task.parentSessionId);
+  return Boolean(task.spawnedFromParentRequest || task.parentSessionId || task.codexAppServerParentThreadId);
 }
 
 function childSessionTitle(task: Task) {
+  if (task.codexAppServerParentThreadId) {
+    const role = task.codexAppServerAgentRole || task.codexAppServerAgentNickname || task.codexAppServerThreadId;
+    return role ? `App Server subagent ${role}` : "App Server subagent thread";
+  }
   if (task.parentSessionId) {
     return `Child session from parent ${task.parentSessionId}`;
   }

@@ -10,6 +10,7 @@ import {
   markTaskChildStatusReported,
   markTaskClosed,
   markTaskRunning,
+  serializeTask,
 } from "@taskdeck/core";
 
 describe("task lifecycle visibility", () => {
@@ -51,6 +52,39 @@ describe("task lifecycle visibility", () => {
       status: TaskStatus.CLOSED,
       attentionState: AttentionState.NONE,
       attentionStateSource: AgentStateSource.MANUAL,
+    });
+  });
+
+  it("preserves Codex App Server thread metadata through serialization", () => {
+    const task = createTask({
+      id: "task_app_thread_test",
+      title: "App Server subagent",
+      command: "codex app-server subagent thread",
+      cwd: ".",
+      agentProfileId: "codex-app-server",
+      parentSessionId: "task_parent",
+      codexAppServerSessionId: "session_1",
+      codexAppServerThreadId: "thread_child",
+      codexAppServerParentThreadId: "thread_parent",
+      codexAppServerRootTaskId: "task_parent",
+      codexAppServerAgentNickname: "finder",
+      codexAppServerAgentRole: "investigator",
+      codexAppServerThreadPath: "/tmp/thread.jsonl",
+      codexAppServerThreadStatus: "active",
+    });
+
+    expect(serializeTask(task)).toMatchObject({
+      id: "task_app_thread_test",
+      parentSessionId: "task_parent",
+      spawnedFromParentRequest: false,
+      codexAppServerSessionId: "session_1",
+      codexAppServerThreadId: "thread_child",
+      codexAppServerParentThreadId: "thread_parent",
+      codexAppServerRootTaskId: "task_parent",
+      codexAppServerAgentNickname: "finder",
+      codexAppServerAgentRole: "investigator",
+      codexAppServerThreadPath: "/tmp/thread.jsonl",
+      codexAppServerThreadStatus: "active",
     });
   });
 });

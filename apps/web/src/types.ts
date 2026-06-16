@@ -71,6 +71,14 @@ export type Task = {
   agentSessionResumeCommand?: string;
   parentSessionId?: string;
   spawnedFromParentRequest?: boolean;
+  codexAppServerSessionId?: string;
+  codexAppServerThreadId?: string;
+  codexAppServerParentThreadId?: string;
+  codexAppServerRootTaskId?: string;
+  codexAppServerAgentNickname?: string;
+  codexAppServerAgentRole?: string;
+  codexAppServerThreadPath?: string;
+  codexAppServerThreadStatus?: string;
   workPackageId?: string;
   filesLikelyToChange?: string[];
   childStatusFile?: string;

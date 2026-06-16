@@ -95,6 +95,30 @@ Implementation priorities for this phase:
 5. Surface Codex App Server subagent threads as TaskDeck child sessions before broadening feature work.
 6. Do not add Codex TUI parsing or committed Codex CLI/TUI launch profiles on this branch.
 
+### Immediate App Server subagent integration plan
+
+The next implementation slice is to render Codex App Server-created subagents as TaskDeck child task cards.
+
+Detection and identity should come from App Server structured thread events:
+
+- `thread/started` is the primary creation signal.
+- `params.thread.parentThreadId` identifies the parent App Server thread when the new thread is a subagent.
+- `params.thread.id` is the child App Server thread id and should be the durable dedupe key for the TaskDeck child card.
+- `params.thread.sessionId`, `agentNickname`, `agentRole`, `cwd`, and status fields should be stored as TaskDeck metadata for display and routing.
+
+TaskDeck should keep an in-memory App Server thread-to-task index per active App Server process. Root App Server threads map to their original TaskDeck task. Subagent threads map to virtual TaskDeck child tasks that do not launch a separate process.
+
+The App Server adapter should route thread-scoped events by `threadId`:
+
+- `thread/status/changed`, `thread/closed`, and `thread/deleted` update the matching TaskDeck task state.
+- `turn/started` and `turn/completed` update the matching TaskDeck task's agent state.
+- `item/started`, `item/completed`, assistant deltas, command output, and file-change output append to the matching task log.
+- approval and user-input server requests store their target task from the request `threadId`, so attention and UI controls appear on the child card when a subagent is waiting.
+
+TaskDeck child cards created from App Server subagents should accept input by sending App Server `turn/start` for that child thread, not by spawning another process. Stopping a child card should not kill the shared App Server process; it should interrupt the active child turn when possible and otherwise mark only the child task stopped.
+
+Recovery can be added after the live event path: use `thread/loaded/list`, `thread/list`, and `thread/read` to reconcile App Server thread state after reconnect or restart when the running App Server process supports it.
+
 ## Next phase: manager-mediated implementation loop (#64)
 
 The manager-mediated implementation loop remains the next product workflow goal. It should build on the App Server-first Codex route where that route supports the needed interaction, while preserving the same TaskDeck actor boundaries.
