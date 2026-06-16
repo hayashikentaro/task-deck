@@ -117,10 +117,8 @@ const defaultAgentProfiles = [
   {
     id: codexAppServerAgentProfileId,
     label: "Codex App Server (experimental)",
-    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -i -w /workspace ai-agent-sandbox-agent-1 sh -lc 'exec codex app-server --listen stdio://'",
-    description: "Run the experimental server-side Codex App Server adapter inside the AI agent sandbox container",
-    diagnosticContainer: "ai-agent-sandbox-agent-1",
-    diagnosticWorkspace: "/workspace",
+    command: "codex app-server --listen stdio://",
+    description: "Experimental server-side Codex App Server adapter",
   },
   {
     id: "claude",
@@ -1435,9 +1433,6 @@ async function fileExists(filePath) {
 }
 
 function isCodexProfile(profile) {
-  if (String(profile.id || "").trim() === codexAppServerAgentProfileId) {
-    return false;
-  }
   return (
     String(profile.id || "").includes("codex") ||
     String(profile.label || "").toLowerCase().includes("codex") ||

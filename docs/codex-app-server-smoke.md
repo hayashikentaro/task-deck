@@ -20,9 +20,7 @@ When TaskDeck runs in a container and the browser runs on the host, `localhost` 
 
 ## Launch Environment
 
-TaskDeck launches the App Server through the configured `codex-app-server` agent profile command and communicates over stdio. The built-in profile starts `ai-agent-sandbox-agent-1` and runs `codex app-server --listen stdio://` inside it with `docker exec -i`, not `-it`, because App Server uses JSON over ordinary stdin/stdout pipes rather than a terminal.
-
-If host and container Codex installs use different `CODEX_HOME` auth state, authenticate Codex in the container or override that profile in `taskdeck.local.json` so the App Server runs in the environment that owns the intended ChatGPT login.
+TaskDeck launches the App Server through the configured `codex-app-server` agent profile command and communicates over stdio. If host and container Codex installs use different `CODEX_HOME` auth state, override that profile in `taskdeck.local.json` so the App Server runs in the same environment that owns the intended ChatGPT login.
 
 ## Manual Smoke
 
