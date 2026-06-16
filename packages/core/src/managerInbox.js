@@ -4,10 +4,11 @@ export const MANAGER_EVENT_KIND = "taskDeckManagerEvent";
 export const MANAGER_EVENT_VERSION = 1;
 
 export const ManagerEventType = Object.freeze({
-  CHILD_STATUS_CHANGED: "childStatusChanged",
+  TASK_STATUS_CHANGED: "taskStatusChanged",
 });
 
 const managerEventTypes = new Set(Object.values(ManagerEventType));
+const legacyManagerEventTypes = new Set(["childStatusChanged"]);
 const managerNotifiableChildStates = new Set([
   ChildReportedState.BLOCKED,
   ChildReportedState.READY_FOR_REVIEW,
@@ -18,7 +19,6 @@ export function createManagerChildStatusEvent({
   eventId,
   parentTaskId,
   childTaskId,
-  workPackageId = "",
   state,
   summary = "",
   artifacts = [],
@@ -28,11 +28,10 @@ export function createManagerChildStatusEvent({
   return {
     kind: MANAGER_EVENT_KIND,
     version: MANAGER_EVENT_VERSION,
-    type: ManagerEventType.CHILD_STATUS_CHANGED,
+    type: ManagerEventType.TASK_STATUS_CHANGED,
     eventId: String(eventId || "").trim(),
     parentTaskId: String(parentTaskId || "").trim(),
     childTaskId: String(childTaskId || "").trim(),
-    workPackageId: String(workPackageId || "").trim(),
     state,
     summary: String(summary || ""),
     artifacts: normalizeStringArray(artifacts),
@@ -51,7 +50,7 @@ export function validateManagerEvent(value) {
   if (value.version !== MANAGER_EVENT_VERSION) {
     return { ok: false, error: `Manager event version must be ${MANAGER_EVENT_VERSION}.` };
   }
-  if (!managerEventTypes.has(value.type)) {
+  if (!managerEventTypes.has(value.type) && !legacyManagerEventTypes.has(value.type)) {
     return { ok: false, error: "Manager event type is unsupported." };
   }
 
@@ -74,7 +73,7 @@ export function validateManagerEvent(value) {
   }
 
   if (!isManagerNotifiableChildState(value.state)) {
-    return { ok: false, error: "Manager child status event state must be blocked, ready_for_review, or failed." };
+    return { ok: false, error: "Manager task status event state must be blocked, ready_for_review, or failed." };
   }
   if (typeof value.summary !== "string") {
     return { ok: false, error: "summary must be a string." };
@@ -94,11 +93,10 @@ export function validateManagerEvent(value) {
     event: {
       kind: MANAGER_EVENT_KIND,
       version: MANAGER_EVENT_VERSION,
-      type: value.type,
+      type: managerEventTypes.has(value.type) ? value.type : ManagerEventType.TASK_STATUS_CHANGED,
       eventId,
       parentTaskId,
       childTaskId,
-      workPackageId: String(value.workPackageId || "").trim(),
       state: value.state,
       summary: value.summary,
       artifacts: normalizeStringArray(value.artifacts),
@@ -128,7 +126,6 @@ export function sanitizeManagerEventId(value) {
 export function generateManagerChildStatusEventId({
   parentTaskId = "",
   childTaskId = "",
-  workPackageId = "",
   state = "",
   now = new Date(),
   randomSuffix = Math.random().toString(36).slice(2, 8),
@@ -137,10 +134,10 @@ export function generateManagerChildStatusEventId({
   const timestamp = Number.isNaN(date.valueOf())
     ? new Date().toISOString().replace(/[^0-9]/g, "").slice(0, 14)
     : date.toISOString().replace(/[^0-9]/g, "").slice(0, 14);
-  const base = sanitizeManagerEventId(workPackageId) || sanitizeManagerEventId(childTaskId) || "child";
+  const base = sanitizeManagerEventId(childTaskId) || "task";
   const suffix = sanitizeManagerEventId(randomSuffix) || "event";
   return sanitizeManagerEventId(
-    `child-status-${base}-${sanitizeManagerEventId(state)}-${timestamp}-${sanitizeManagerEventId(parentTaskId)}-${suffix}`,
+    `task-status-${base}-${sanitizeManagerEventId(state)}-${timestamp}-${sanitizeManagerEventId(parentTaskId)}-${suffix}`,
   );
 }
 

@@ -51,7 +51,6 @@ Read the relevant docs before changing the matching area:
 - Integration role guidance when doing parent/integration merge work: `docs/agents/roles/integration.md`
 - UI styling changes: `docs/guides/ui-style.md`
 - Reusable UI components, shared controls, or icon-only controls: `docs/guides/ui-components.md`
-- Legacy child-session file protocol, currently disabled on the App Server-only route: `docs/taskdeck-child-session-protocol.md`
 
 GitHub Issues are the source of truth for actionable work, open/closed state, detailed acceptance criteria, and backlog. Repository docs are durable context and design guidance, not a parallel issue tracker.
 
@@ -68,13 +67,13 @@ This branch is intentionally App Server-only.
 - The only committed/exposed task launch profile is `codex-app-server`.
 - The committed `codex-app-server` command runs directly in the TaskDeck server environment: `codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://`.
 - Do not assume TaskDeck should call `docker`, `docker exec`, `zsh`, Goose, Aider, Claude, or a Codex TUI profile on this branch.
-- File-protocol TaskDeck child-session starts and parent-to-child message requests are disabled. Do not use `scripts/write-child-session-request.mjs`, `scripts/write-child-session-message-request.mjs`, stdout marker blocks, or `TASKDECK_CHILD_SESSION_*` request directories as the current control path.
-- Codex App Server native subagents may be materialized as read-only supervision cards. They are not TaskDeck file-protocol child sessions and must not be treated as tasks that TaskDeck launched or can command through the child-session message protocol.
-- PTY, shell, non-Codex provider, Docker diagnostics, and legacy child-session code may still exist for compatibility, tests, or future reintroduction. Do not use their presence as evidence that those routes are active product behavior.
+- Do not add stdout marker protocols, file-request writers, or request-directory environment variables as a control path.
+- Codex App Server native subagents may be materialized as read-only supervision cards. They are App Server thread projections, not TaskDeck-launched sessions, and TaskDeck must not expose controls that imply they can be commanded independently.
+- PTY, shell, non-Codex provider, and Docker diagnostics code may still exist for compatibility, tests, or future local overrides. Do not use their presence as evidence that those routes are active product behavior.
 
 ## Actor Boundary
 
-For parent/child sessions, manager behavior, agent-to-TaskDeck communication, request transports, or PTY command delivery, follow `docs/taskdeck-actor-protocol.md`.
+For session hierarchy, native subagent display, manager behavior, agent-to-TaskDeck communication, request transports, or PTY command delivery, follow `docs/taskdeck-actor-protocol.md`.
 
 At a high level:
 
@@ -87,7 +86,7 @@ At a high level:
 
 Do not add raw Web API manager-write paths, raw terminal-write paths, raw SQL mutation paths, or direct worker-to-worker command paths unless the user explicitly approves a protocol change and `docs/taskdeck-actor-protocol.md` is updated in the same change.
 
-Do not create TaskDeck child sessions or send parent-to-child instructions through the legacy writer scripts on the current App Server-only route. `docs/taskdeck-child-session-protocol.md` documents that legacy protocol for compatibility and possible future reintroduction; it is not an active launch instruction. Do not use platform-native multi-agent/sub-agent tools as TaskDeck child sessions, and do not treat Codex native subagents as file-protocol TaskDeck child sessions.
+Do not add direct worker-to-worker command paths. Do not use platform-native multi-agent/sub-agent tools as TaskDeck-launched sessions, and do not treat Codex native subagents as independently commandable TaskDeck sessions.
 
 ## Branch And Worktree Policy
 
@@ -118,24 +117,24 @@ Preserve user changes already present in the working tree. If the working tree h
 
 Do not create a feature branch merely because a task is documentation-only or issue-driven. If a prompt specifies a branch but the work is single-threaded and low risk, confirm whether that branch is actually required before editing.
 
-## Child Session Integration
+## Branch Worktree Integration
 
-This section applies only when a user has explicitly assigned a branch/worktree child-session workflow outside the current App Server-only runtime. It does not authorize starting TaskDeck runtime child sessions on this branch.
+This section applies only when a user has explicitly assigned a branch/worktree subtask workflow outside the current App Server-only runtime. It does not authorize starting TaskDeck runtime sub-sessions on this branch.
 
-When working as a child session on a branch worktree, producing local changes is not enough to complete the task.
+When working on an assigned branch worktree subtask, producing local changes is not enough to complete the task.
 
-A child session is complete only after it has:
+A branch worktree subtask is complete only after it has:
 
-- committed the relevant changes on its child branch;
-- pushed that child branch to `origin`;
+- committed the relevant changes on its subtask branch;
+- pushed that subtask branch to `origin`;
 - reported the branch name;
 - reported the latest commit SHA;
 - reported verification commands and results;
 - reported changed files and merge notes.
 
-Child sessions must not merge themselves into the parent or integration branch unless the prompt explicitly assigns that session to perform integration.
+Subtask branches must not merge themselves into the parent or integration branch unless the prompt explicitly assigns that session to perform integration.
 
-The parent or integration session owns convergence: collect child branch reports, inspect dependency order and file overlap, merge deliberately, run verification, resolve conflicts, and perform the final integration pass.
+The parent or integration session owns convergence: collect subtask branch reports, inspect dependency order and file overlap, merge deliberately, run verification, resolve conflicts, and perform the final integration pass.
 
 ## Change Authorization
 

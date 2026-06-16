@@ -31,14 +31,13 @@ import {
 } from "../../../scripts/read-manager-inbox.mjs";
 
 describe("manager inbox event helpers", () => {
-  it("creates a valid child status manager event", () => {
+  it("creates a valid task status manager event", () => {
     const event = createManagerChildStatusEvent({
       eventId: "child-status-app-server-standby-ready",
       parentTaskId: "task_parent",
       childTaskId: "task_child",
-      workPackageId: "app-server-standby",
       state: "ready_for_review",
-      summary: "Short child status summary.",
+      summary: "Short task status summary.",
       artifacts: ["docs/example.md"],
       detailsFile: "",
       createdAt: "2026-06-12T00:00:00.000Z",
@@ -47,13 +46,12 @@ describe("manager inbox event helpers", () => {
     expect(event).toEqual({
       kind: "taskDeckManagerEvent",
       version: 1,
-      type: "childStatusChanged",
+      type: "taskStatusChanged",
       eventId: "child-status-app-server-standby-ready",
       parentTaskId: "task_parent",
       childTaskId: "task_child",
-      workPackageId: "app-server-standby",
       state: "ready_for_review",
-      summary: "Short child status summary.",
+      summary: "Short task status summary.",
       artifacts: ["docs/example.md"],
       detailsFile: "",
       createdAt: "2026-06-12T00:00:00.000Z",
@@ -81,11 +79,11 @@ describe("manager inbox event helpers", () => {
     });
     expect(validateManagerEvent({ ...event, state: "working" })).toMatchObject({
       ok: false,
-      error: "Manager child status event state must be blocked, ready_for_review, or failed.",
+      error: "Manager task status event state must be blocked, ready_for_review, or failed.",
     });
   });
 
-  it("classifies manager-notifiable child states", () => {
+  it("classifies manager-notifiable task states", () => {
     expect(isManagerNotifiableChildState("blocked")).toBe(true);
     expect(isManagerNotifiableChildState("ready_for_review")).toBe(true);
     expect(isManagerNotifiableChildState("failed")).toBe(true);
@@ -100,7 +98,6 @@ describe("manager readable context helpers", () => {
       eventId: "child-status-readable-test",
       parentTaskId: "task_parent",
       childTaskId: "task_child",
-      workPackageId: "app-server-standby",
       state: "ready_for_review",
       summary: "Implementation is ready for review.",
       artifacts: ["docs/example.md"],
@@ -152,7 +149,6 @@ describe("manager readable context helpers", () => {
       eventId: "child-status-markdown-test",
       parentTaskId: "task_parent",
       childTaskId: "task_child",
-      workPackageId: "app-server-standby",
       state: "blocked",
       summary: "Need a decision.",
       artifacts: ["docs/example.md"],
@@ -189,8 +185,8 @@ describe("manager readable context helpers", () => {
     expect(markdown).toContain("Judgment output: this terminal response only");
     expect(markdown).not.toContain("Your bounded judgment/status: TASKDECK_STATUS_FILE");
     expect(markdown).toContain(".taskdeck/manager-readable/unread-events.json");
-    expect(markdown).toContain("[childStatusChanged] blocked");
-    expect(markdown).toContain("Child task id: task_child");
+    expect(markdown).toContain("[taskStatusChanged] blocked");
+    expect(markdown).toContain("Task id: task_child");
     expect(markdown).toContain("Summary: Need a decision.");
     expect(markdown).toContain("- docs/example.md");
     expect(markdown).toContain("taskdeckctl ack --event child-status-markdown-test");
@@ -296,7 +292,6 @@ describe("read-manager-inbox script helpers", () => {
         eventId: "child-status-list-test",
         parentTaskId: "task_parent",
         childTaskId: "task_child",
-        workPackageId: "app-server-standby",
         state: "ready_for_review",
         summary: "Implementation is ready for review.",
         artifacts: ["docs/example.md"],
@@ -309,7 +304,7 @@ describe("read-manager-inbox script helpers", () => {
 
       expect(result.events).toEqual([event]);
       expect(output).toContain("Unread TaskDeck manager events: 1");
-      expect(output).toContain("[childStatusChanged] ready_for_review workPackage=app-server-standby child=task_child");
+      expect(output).toContain("[taskStatusChanged] ready_for_review task=task_child");
       expect(output).toContain("Implementation is ready for review.");
       expect(output).toContain("- docs/example.md");
     } finally {

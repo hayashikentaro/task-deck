@@ -21,10 +21,10 @@ describe("task lifecycle visibility", () => {
     expect(isTaskVisibleInNormalList(closedTask)).toBe(false);
   });
 
-  it("does not let stale child status reports revive attention on closed tasks", () => {
+  it("does not let stale task status reports revive attention on closed tasks", () => {
     const task = markTaskClosed(
       {
-        ...markTaskRunning(createTask({ title: "Child task", command: "echo child", cwd: "." })),
+        ...markTaskRunning(createTask({ title: "Reported task", command: "echo task", cwd: "." })),
         childReportedState: ChildReportedState.READY_FOR_REVIEW,
         attentionState: AttentionState.REVIEW_READY,
         attentionStateSource: AgentStateSource.CHILD_STATUS,

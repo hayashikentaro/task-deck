@@ -41,10 +41,10 @@ Do not:
 - command another worker directly;
 - call manager-action commands;
 - edit generated `.taskdeck` runtime files by hand;
-- smuggle raw commands, environment variables, secrets, or auto-approval fields through request files;
-- use platform-native sub-agent tools as TaskDeck child sessions.
+- smuggle raw commands, environment variables, secrets, or auto-approval fields through request/status files;
+- treat platform-native sub-agent tools as independently commandable TaskDeck sessions.
 
-On the current App Server-only route, TaskDeck file-protocol child-session starts and parent-to-child message requests are disabled. Do not use the legacy writer scripts in `../../taskdeck-child-session-protocol.md` unless a future prompt explicitly says that protocol has been re-enabled and the runtime docs agree.
+On the current App Server-only route, do not add stdout-marker protocols, request-file writers, or direct worker-to-worker command paths.
 
 ## Completion report
 
@@ -56,4 +56,4 @@ When the assigned work is complete, report:
 - commit and push details when the assignment requires them;
 - blockers or follow-up work.
 
-If working as a child session on a branch worktree, the task is not complete until the relevant changes are committed, pushed, and the branch name plus latest commit SHA are reported.
+If working on an assigned branch worktree subtask, the task is not complete until the relevant changes are committed, pushed, and the branch name plus latest commit SHA are reported.

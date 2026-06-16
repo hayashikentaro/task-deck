@@ -1192,6 +1192,16 @@ dd {
   color: var(--status-stopped);
 }
 
+.task-badge[data-kind="native-subagent"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.task-badge[data-kind="linked-task"] {
+  border-color: var(--text-muted);
+  color: var(--text-muted);
+}
+
 .task-badge[data-kind="child-status-working"] {
   border-color: var(--status-working);
   color: var(--status-working);

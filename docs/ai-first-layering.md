@@ -22,12 +22,12 @@ AI agents tend to implement in whatever location is most convenient unless the w
 
 - keep prompts shorter by reading only relevant files;
 - avoid changing unrelated layers;
-- preserve durable context inside role-specific child sessions;
+- preserve durable context inside role-specific implementation sessions;
 - route follow-up work to an existing specialist session;
 - make merge order and conflict ownership clearer;
 - identify when a decision crosses a layer boundary and should be escalated.
 
-For TaskDeck, this supports the direction where a parent session coordinates role-bearing work sessions rather than only spawning disposable one-off workers. On the current App Server-only branch, this is a design direction, not a runtime instruction to use the disabled legacy child-session writer protocol.
+For TaskDeck, this supports the direction where a parent session coordinates role-bearing work sessions rather than only spawning disposable one-off workers. On the current App Server-only branch, this is a design direction, not a runtime instruction to add stdout-marker or request-file sub-session protocols.
 
 ## Suggested layers
 
@@ -41,7 +41,7 @@ Examples:
 
 - Task/session meaning;
 - supervision concepts;
-- parent/child task metadata semantics;
+- parent/subagent task metadata semantics;
 - persisted task compatibility rules.
 
 Typical files:
@@ -56,17 +56,17 @@ Owns machine-readable boundaries between agents, TaskDeck, and runtime flows.
 
 Examples:
 
-- legacy `TASKDECK_CHILD_SESSION_BATCH_REQUEST` marker blocks;
-- forbidden fields;
-- validation rules;
-- child result/report formats;
-- parent-to-child instruction request formats.
+- server-owned action contracts;
+- App Server-native event contracts;
+- generated manager action capabilities;
+- bounded worker status/report formats.
 
 Typical files:
 
-- `docs/taskdeck-child-session-protocol.md`;
-- `apps/web/src/childSessionRequests.ts`;
-- future protocol/parser modules.
+- `docs/taskdeck-actor-protocol.md`;
+- `packages/core/src/managerInbox.js`;
+- `packages/core/src/managerReadable.js`;
+- future App Server-native protocol modules.
 
 Protocol sessions should keep contracts explicit and testable. They should not build UI workflows or raw launch commands.
 
@@ -97,7 +97,7 @@ Owns presentation, interaction affordances, and visual hierarchy.
 Examples:
 
 - Task cards;
-- child badges;
+- native subagent badges;
 - expanded task-card metadata;
 - action buttons;
 - CSS and visual emphasis.
@@ -118,8 +118,8 @@ Owns frontend orchestration and lifecycle wiring.
 Examples:
 
 - WebSocket event handling;
-- legacy parent output detection;
-- legacy parse -> validate -> create child task flow, currently disabled on the App Server-only route;
+- App Server request/event orchestration;
+- native subagent card selection and update flow;
 - dedupe for supported runtime events;
 - status/error messages;
 - connecting trusted launch helpers to task creation.
@@ -134,15 +134,15 @@ App Flow sessions often cross layer boundaries. They should reuse Protocol, Core
 
 ### Integration
 
-Owns convergence across child branches and layers.
+Owns convergence across subtask branches and layers.
 
 Examples:
 
-- collecting pushed child branches;
+- collecting pushed subtask branches;
 - deciding merge order;
 - merging into the integration branch;
 - running checks after merges;
-- resolving conflicts or routing work back to the correct child session;
+- resolving conflicts or routing work back to the correct subtask session;
 - final integration passes.
 
 Typical files:
@@ -152,28 +152,28 @@ Typical files:
 
 Integration sessions should not become another feature implementation session unless explicitly assigned. Their main job is convergence.
 
-## Parent and child session model
+## Parent and Subtask Model
 
-This section describes the desired coordination model for role-bearing work. It does not mean the current App Server-only runtime can create TaskDeck child sessions. Do not use `scripts/write-child-session-request.mjs`, stdout marker blocks, or `TASKDECK_CHILD_SESSION_*` directories to implement this model unless a future protocol change explicitly re-enables them.
+This section describes the desired coordination model for role-bearing work. It does not mean the current App Server-only runtime can create independently commandable TaskDeck sub-sessions. Do not add stdout marker blocks, request-file writers, or request-directory environment variables to implement this model.
 
 A parent/planning session should:
 
 - decompose work by layer when useful;
 - define stable interfaces before parallel work begins;
 - route work to existing role sessions when appropriate;
-- spawn or request new child/session work only through a currently supported TaskDeck or App Server-native mechanism;
-- collect child reports;
+- spawn or request new subtask work only through a currently supported TaskDeck or App Server-native mechanism;
+- collect subtask reports;
 - assign integration work deliberately.
 
-A child session should:
+A subtask session should:
 
 - work within its assigned role and scope;
 - refresh current repository state before acting;
 - stop and report when a requested change crosses its authority;
-- commit and push its child branch;
+- commit and push its subtask branch;
 - report branch, commit, changed files, checks, and merge notes.
 
-A child session should not merge itself into the parent/integration branch unless it is explicitly acting as the integration session.
+A subtask session should not merge itself into the parent/integration branch unless it is explicitly acting as the integration session.
 
 ## Review-driven parent session model
 
@@ -187,7 +187,7 @@ The parent session should preserve the durable product context:
 - which follow-up issues were created;
 - final merge or defer decisions.
 
-Reviewer child sessions should usually be treated as refreshable inspection tools rather than long-lived owners. Reviewers are valuable because they can keep a viewpoint independent from the implementation session. They should be refreshed or recreated when stale context would weaken the review.
+Reviewer sessions should usually be treated as refreshable inspection tools rather than long-lived owners. Reviewers are valuable because they can keep a viewpoint independent from the implementation session. They should be refreshed or recreated when stale context would weaken the review.
 
 Useful reviewer roles include:
 
@@ -201,12 +201,12 @@ Reviewer sessions should be given an explicit failure-detection objective. They 
 
 A typical review loop is:
 
-1. Parent sends implementation work to an implementation child.
-2. Implementation child commits, pushes, and reports a structured result.
-3. Parent starts or refreshes one or more reviewer children with specific review roles.
-4. Reviewer children return structured findings.
+1. Parent sends implementation work to an implementation session.
+2. Implementation session commits, pushes, and reports a structured result.
+3. Parent starts or refreshes one or more reviewer sessions with specific review roles.
+4. Reviewer sessions return structured findings.
 5. Parent decides which findings are blocking, which are follow-ups, and which are intentionally accepted risks.
-6. Parent sends only the selected blocking fixes back to the implementation child.
+6. Parent sends only the selected blocking fixes back to the implementation session.
 7. Only the relevant reviewers are refreshed for the next round.
 8. Integration reviewer or integration session performs merge readiness checks.
 
@@ -216,7 +216,7 @@ This model is not primarily about token savings. Its value is independent perspe
 
 ## Refresh preflight for long-lived role sessions
 
-Long-lived child sessions are useful because they keep layer-specific context. They can also become stale. Before acting on a new instruction, a role session should:
+Long-lived role sessions are useful because they keep layer-specific context. They can also become stale. Before acting on a new instruction, a role session should:
 
 - fetch the latest integration branch;
 - inspect files relevant to its role and scope;
@@ -244,4 +244,4 @@ Keep work sequential when the change is a vertical orchestration flow through th
 Examples:
 
 - Good parallel work: docs, parser, runtime, UI display.
-- Better sequential work: parent output -> parse -> trusted command build -> child task creation -> dedupe -> status messaging.
+- Better sequential work: App Server event -> server reduction -> task state/log projection -> UI display.

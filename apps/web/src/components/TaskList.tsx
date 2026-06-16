@@ -174,7 +174,13 @@ export function TaskList({
           const stateBadge = taskStateBadge(task);
           const isEditingTitle = editingTaskId === task.id;
           const isTerminalInputLocked = Boolean(task.terminalInputLockedAt);
-          const terminalInputLockLabel = isTerminalInputLocked ? "Unlock terminal input" : "Lock terminal input";
+          const isNativeSubagent = isNativeSubagentTask(task);
+          const terminalInputLockLabel = isNativeSubagent
+            ? "Native subagent input is read-only"
+            : isTerminalInputLocked
+              ? "Unlock terminal input"
+              : "Lock terminal input";
+          const lineageBadge = taskLineageBadge(task);
           return (
             <article
               className="task-list-item"
@@ -239,9 +245,9 @@ export function TaskList({
                         Manager
                       </span>
                     ) : null}
-                    {isChildSession(task) ? (
-                      <span className="task-badge" data-kind="child-session" title={childSessionTitle(task)}>
-                        Child
+                    {lineageBadge ? (
+                      <span className="task-badge" data-kind={lineageBadge.kind} title={lineageBadge.title}>
+                        {lineageBadge.label}
                       </span>
                     ) : null}
                     {task.childReportedState ? (
@@ -267,14 +273,6 @@ export function TaskList({
                     <span className="task-command" title={task.command}>
                       {task.agentLabel || agentOrCommandLabel(task.command)}
                     </span>
-                    {task.workPackageId ? (
-                      <>
-                        <span className="task-meta-separator">·</span>
-                        <span className="task-work-package" title={`Work package ${task.workPackageId}`}>
-                          {workPackageLabel(task.workPackageId)}
-                        </span>
-                      </>
-                    ) : null}
                     <span className="task-meta-spacer" />
                     <span className="task-updated">{formatTime(task.updatedAt)}</span>
                   </span>
@@ -304,7 +302,7 @@ export function TaskList({
                 aria-pressed={isTerminalInputLocked}
                 className="task-terminal-input-lock-button"
                 data-active={isTerminalInputLocked ? "true" : "false"}
-                disabled={task.status !== "running"}
+                disabled={task.status !== "running" || isNativeSubagent}
                 onClick={() => onToggleTerminalInputLock(task.id, !isTerminalInputLocked)}
                 title={terminalInputLockLabel}
                 type="button"
@@ -447,20 +445,28 @@ function supervisionTitle(task: Task) {
   return task.status === "running" ? "Recent PTY activity observed." : "Task is not running.";
 }
 
-function isChildSession(task: Task) {
-  return Boolean(task.spawnedFromParentRequest || task.parentSessionId);
-}
-
-function childSessionTitle(task: Task) {
+function taskLineageBadge(task: Task) {
   if (task.agentSessionSource === "codex_app_server_native_subagent") {
-    return task.parentSessionId
-      ? `Codex App Server native subagent from parent ${task.parentSessionId}`
-      : "Codex App Server native subagent";
+    return {
+      kind: "native-subagent",
+      label: "Subagent",
+      title: task.parentSessionId
+        ? `Codex App Server native subagent from parent ${task.parentSessionId}`
+        : "Codex App Server native subagent",
+    };
   }
   if (task.parentSessionId) {
-    return `Child session from parent ${task.parentSessionId}`;
+    return {
+      kind: "linked-task",
+      label: "Linked",
+      title: task.parentSessionId ? `Linked task from parent ${task.parentSessionId}` : "Linked task",
+    };
   }
-  return "Child session spawned from a parent request";
+  return null;
+}
+
+function isNativeSubagentTask(task: Task) {
+  return task.agentSessionSource === "codex_app_server_native_subagent";
 }
 
 function childReportedStatusLabel(state: NonNullable<Task["childReportedState"]>) {
@@ -470,7 +476,7 @@ function childReportedStatusLabel(state: NonNullable<Task["childReportedState"]>
 function childReportedStatusTitle(task: Task) {
   const state = task.childReportedState ? String(task.childReportedState).replace(/_/g, " ") : "unknown";
   const summary = task.childStatusSummary ? `: ${task.childStatusSummary}` : "";
-  return `Child reported ${state}${summary}`;
+  return `Reported ${state}${summary}`;
 }
 
 function agentBadgeLabel(task: Task) {
@@ -484,10 +490,6 @@ function agentBadgeTitle(task: Task) {
   const profileId = String(task.agentProfileId || "").trim();
   const label = task.agentLabel || agentOrCommandLabel(task.command);
   return profileId ? `${label} (${profileId})` : label;
-}
-
-function workPackageLabel(workPackageId: string) {
-  return workPackageId.length > 18 ? `WP ${workPackageId.slice(0, 15)}...` : `WP ${workPackageId}`;
 }
 
 function taskDisplayName(task: Task) {

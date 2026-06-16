@@ -128,7 +128,7 @@ export function formatManagerInboxReport(events, { ackedCount = 0 } = {}) {
 
   for (const event of events) {
     lines.push("");
-    lines.push(`[${event.type}] ${event.state}${formatWorkPackage(event)} child=${event.childTaskId}`);
+    lines.push(`[${event.type}] ${event.state} task=${event.childTaskId}`);
     if (event.summary) {
       lines.push(event.summary);
     }
@@ -213,10 +213,6 @@ async function fileExists(filePath) {
   } catch {
     return false;
   }
-}
-
-function formatWorkPackage(event) {
-  return event.workPackageId ? ` workPackage=${event.workPackageId}` : "";
 }
 
 async function main() {

@@ -18,12 +18,11 @@ Start with the repository root `AGENTS.md`. Use this file as the actor-to-doc ma
 | Codex implementer | A Codex coding session is making repository changes, running verification, and committing or pushing work. | `roles/codex-implementer.md` |
 | TaskDeck manager | A dedicated global manager session is supervising TaskDeck tasks across projects. | `roles/taskdeck-manager.md` |
 | TaskDeck worker | A project-bound TaskDeck worker session is performing assigned work and reporting through supported worker channels. | `roles/taskdeck-worker.md` |
-| Integration agent | A parent or integration session is merging child branches and converging parallel work. | `roles/integration.md` |
+| Integration agent | A parent or integration session is merging subtask branches and converging parallel work. | `roles/integration.md` |
 
 ## Boundary docs
 
 - Actor and manager control-plane boundary: `../taskdeck-actor-protocol.md`
-- Legacy child-session file protocol, disabled on the current App Server-only route: `../taskdeck-child-session-protocol.md`
 - AI-first layering and responsibility boundaries: `../ai-first-layering.md`
 
 ## Maintenance rule

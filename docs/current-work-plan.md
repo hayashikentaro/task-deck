@@ -11,7 +11,7 @@ GitHub Issues remain the source of truth for actionable work, open/closed state,
 3. Minimum manager action/write path through `taskdeckctl`: implemented for ack, review, and close.
 4. Manager action discoverability and runtime action guide: implemented enough to support real manager sessions.
 5. Current phase: move Codex work sessions to the App Server-first route.
-6. Next phase: rebuild the manager-mediated main/sub-session loop only on App Server-native semantics; do not revive the legacy file-protocol child-session route as the shortcut.
+6. Next phase: rebuild the manager-mediated main/sub-session loop only on App Server-native semantics; do not add stdout-marker or request-file shortcuts.
 7. Resume broader product work such as Electron packaging, Claude support, external configuration, and external Decision Workspace integration only after the local implementation loop is stable.
 
 ## Completed read-only manager MVP
@@ -84,9 +84,9 @@ TaskDeck UI
   -> TaskDeck task state, logs, and supervision UI
 ```
 
-The committed `Codex App Server` profile is the only exposed task launch profile on this branch and runs `codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://` directly in the TaskDeck server environment. This branch assumes TaskDeck server itself is already running in the intended agent environment. Use ignored local config only if a machine needs to wrap that command, for example by launching a separate container. The route uses `danger-full-access` and `approvalPolicy: "never"` for the App Server process, App Server threads, and App Server turns to avoid nested Codex sandbox setup and command approval prompts. Interactive Codex CLI/TUI profiles, non-Codex providers, shell profiles, and file-protocol TaskDeck child-session launches are intentionally disabled while the App Server thread model is rebuilt.
+The committed `Codex App Server` profile is the only exposed task launch profile on this branch and runs `codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://` directly in the TaskDeck server environment. This branch assumes TaskDeck server itself is already running in the intended agent environment. Use ignored local config only if a machine needs to wrap that command, for example by launching a separate container. The route uses `danger-full-access` and `approvalPolicy: "never"` for the App Server process, App Server threads, and App Server turns to avoid nested Codex sandbox setup and command approval prompts. Interactive Codex CLI/TUI profiles, non-Codex providers, shell profiles, and file/request-based sub-session launches are not committed product routes while the App Server thread model is rebuilt.
 
-During this App Server-only migration slice, TaskDeck may still render Codex native subagent events as read-only native subagent cards. Those cards are not TaskDeck file-protocol child sessions and must not rely on `spawnedFromParentRequest`, `TASKDECK_CHILD_SESSION_REQUEST_DIR`, or parent-to-child PTY input routing.
+During this App Server-only migration slice, TaskDeck may render Codex native subagent events as read-only native subagent cards. Those cards are App Server thread projections, not independently launched TaskDeck sessions, and must not expose direct subagent input routing or any other independently commandable control surface.
 
 Implementation priorities for this phase:
 
@@ -101,7 +101,7 @@ Implementation priorities for this phase:
 
 The manager-mediated implementation loop remains the next product workflow goal. It must build on the App Server-first Codex route and preserve the same TaskDeck actor boundaries.
 
-Do not implement this loop by re-enabling legacy stdout marker parsing, `scripts/write-child-session-request.mjs`, `scripts/write-child-session-message-request.mjs`, or `TASKDECK_CHILD_SESSION_*` request directories. Those surfaces are disabled compatibility code on this branch. The next viable path is App Server-native: either supervise Codex native subagent events as read-only cards or add a new server-owned action protocol that is explicitly documented and exposed by the running server.
+Do not implement this loop by adding stdout marker parsing, request-file writers, or request-directory environment variables. The next viable path is App Server-native: either supervise Codex native subagent events as read-only cards or add a new server-owned action protocol that is explicitly documented and exposed by the running server.
 
 The goal is to make TaskDeck support a real implementation loop with these roles:
 
@@ -115,7 +115,7 @@ Main session
   -> decides follow-up instructions or closure
 
 Sub-sessions
-  -> future App Server-native bounded work sessions, not legacy file-protocol child sessions
+  -> future App Server-native bounded work sessions, not stdout-marker or request-file sessions
   -> report blocked / ready_for_review / done / failed only after a supported reporting path exists
 
 TaskDeck Manager
@@ -152,7 +152,7 @@ That command must not appear in generated manager action guidance until it is im
 
 Prefer small, testable slices:
 
-1. Document the App Server-native role model and remove any remaining implication that legacy child-session writers are active.
+1. Document the App Server-native role model and avoid implying that stdout-marker or request-file sub-session routes exist.
 2. Implement one bounded manager-to-session message action through `taskdeckctl` and the server-owned manager action endpoint.
 3. Decide whether sub-session work is represented by Codex native subagent events or by a new TaskDeck server-owned action; document that protocol before exposing it.
 4. Add generated suggested actions only for actions that the running server and `taskdeckctl` support.
@@ -186,8 +186,8 @@ manager acknowledges / reviews / closes as appropriate
 
 - Do not use Codex TUI or terminal transcript output as machine control data.
 - Do not add new Codex TUI parsing when the same behavior belongs in the App Server adapter path.
-- Do not use the legacy file-protocol child-session writer scripts or stdout marker blocks as the App Server control path.
-- Do not use platform-native multi-agent/sub-agent tools as TaskDeck child sessions.
+- Do not add request-file writers or stdout marker blocks as the App Server control path.
+- Do not use platform-native multi-agent/sub-agent tools as independently commandable TaskDeck sessions.
 - TaskDeck branch work uses `git worktree`: one worktree, one branch, one purpose.
 - Do not create disposable full clones for TaskDeck branch work.
 - Do not let non-manager agents command other agents directly.
@@ -201,7 +201,6 @@ manager acknowledges / reviews / closes as appropriate
 ## Primary design docs
 
 - `docs/taskdeck-actor-protocol.md`
-- `docs/taskdeck-child-session-protocol.md` (legacy/disabled on the current App Server-only route)
 - `docs/agents/roles/taskdeck-manager.md`
 
 ## Primary issue

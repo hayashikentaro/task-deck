@@ -1,6 +1,6 @@
 # AI Review System
 
-This document defines the durable review system for TaskDeck worker and child-session changes.
+This document defines the durable review system for TaskDeck worker, subtask, and session-control changes.
 
 Review agents are disposable execution instances. The review rulebook in this repository is the source of truth. A reviewer should be recreatable from the relevant reviewer profile, the current goal, the diff, verification output, and the architecture/product docs.
 
@@ -64,7 +64,7 @@ Add Architecture Reviewer when a change touches responsibility boundaries, share
 
 Add UX/Product Reviewer when a change touches task cards, supervision states, Needs you / Not now behavior, terminal/composer workflow, review surfaces, or human decision load.
 
-Add Security Reviewer when a change touches command construction, sandbox or permission behavior, environment variables, secrets, file paths, external input, network exposure, or child-session launch behavior.
+Add Security Reviewer when a change touches command construction, sandbox or permission behavior, environment variables, secrets, file paths, external input, network exposure, or session/subagent control behavior.
 
 ## Reviewer Profiles
 

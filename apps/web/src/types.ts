@@ -71,9 +71,6 @@ export type Task = {
   agentSessionDetectedAt?: string;
   agentSessionResumeCommand?: string;
   parentSessionId?: string;
-  spawnedFromParentRequest?: boolean;
-  workPackageId?: string;
-  filesLikelyToChange?: string[];
   childStatusFile?: string;
   childReportedState?: ChildReportedState | "";
   childStatusSummary?: string;
@@ -130,11 +127,6 @@ export type CreateTaskInput = {
   agentSessionSource?: string;
   agentSessionDetectedAt?: string;
   agentSessionResumeCommand?: string;
-  parentSessionId?: string;
-  spawnedFromParentRequest?: boolean;
-  childSessionRequestKey?: string;
-  workPackageId?: string;
-  filesLikelyToChange?: string[];
   initialInstruction?: string;
   attachments?: PendingTaskAttachment[];
 };

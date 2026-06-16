@@ -39,10 +39,10 @@ Do not:
 - mutate generated `.taskdeck` runtime files by hand;
 - use `taskdeckctl` manager actions unless explicitly operating as a manager session and following generated runtime action guidance;
 - command other agents directly;
-- use platform-native multi-agent or sub-agent tools as TaskDeck child sessions;
+- treat platform-native multi-agent or sub-agent tools as independently commandable TaskDeck sessions;
 - add raw manager Web API write paths, raw terminal write paths, raw SQL mutation paths, or direct worker-to-worker command paths without an explicit actor protocol change.
 
-On the current App Server-only route, do not create TaskDeck child sessions or send parent-to-child instructions through the legacy writer scripts documented in `../../taskdeck-child-session-protocol.md`. That protocol is disabled until the App Server-native thread/session model is rebuilt and the runtime docs explicitly re-enable it. Codex native subagents may appear as read-only supervision cards, but they are not TaskDeck file-protocol child sessions.
+On the current App Server-only route, do not add stdout-marker protocols, request-file writers, or direct worker-to-worker command paths. Codex native subagents may appear as read-only supervision cards, but they are App Server thread projections and are not independently commandable TaskDeck sessions.
 
 ## Verification
 

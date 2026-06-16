@@ -31,19 +31,11 @@ Server performs the validated action.
 
 ## Current App Server-Only Boundary
 
-On this branch, the only committed task launch surface is Codex App Server running directly in the TaskDeck server environment. The legacy file-protocol child-session start/message path is disabled.
+On this branch, the only committed task launch surface is Codex App Server running directly in the TaskDeck server environment.
 
-Do not use these as current control paths:
+TaskDeck may materialize Codex App Server native subagents as read-only supervision cards. Those cards are App Server thread projections. TaskDeck does not launch them as independent sessions and must not expose controls that imply the user or manager can command them separately from the parent App Server task.
 
-```text
-scripts/write-child-session-request.mjs
-scripts/write-child-session-message-request.mjs
-TASKDECK_CHILD_SESSION_REQUEST_DIR
-TASKDECK_CHILD_SESSION_MESSAGE_REQUEST_DIR
-TASKDECK_CHILD_SESSION_BATCH_REQUEST stdout markers
-```
-
-TaskDeck may materialize Codex App Server native subagents as read-only supervision cards. Those cards are not file-protocol TaskDeck child sessions, are not launched by TaskDeck, and are not targets for the legacy child-session message protocol.
+Do not add stdout marker protocols, request-file writers, or request-directory environment variables as an App Server control path.
 
 ## Actor diagram
 
@@ -354,7 +346,7 @@ Add and maintain this actor protocol document. Reference it from `AGENTS.md` so 
 
 ### Phase 2: Validate manager inbox MVP
 
-Use a branch worktree to verify that supported task status changes emit valid manager inbox events. Do not use the disabled legacy child-session writer protocol for this validation.
+Use a branch worktree to verify that supported task status changes emit valid manager inbox events.
 
 ### Phase 3: Add an App Server-backed manager session
 

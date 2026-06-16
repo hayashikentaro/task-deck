@@ -1,6 +1,6 @@
 # Reviewer Profiles
 
-Reviewer profiles define narrow, refreshable review roles for TaskDeck worker and child-session changes.
+Reviewer profiles define narrow, refreshable review roles for TaskDeck worker, subtask, and session-control changes.
 
 A reviewer is not a personality and should not depend on conversation history. A reviewer is a role instance reconstructed from this profile directory, the current goal, the diff, verification output, and relevant repository docs.
 

@@ -26,7 +26,7 @@ Pay special attention to these drift risks:
 - App Server status/request events and PTY output/repaint activity are process observations, not product identity.
 - Adapter-specific behavior should stay isolated enough that Codex App Server, Goose, and generic tuning do not accidentally rewrite each other.
 - Task/session identity and supervision urgency should not become competing full-card state systems.
-- Child-session launch should build commands from trusted local profiles, not raw parent output.
+- Session launch should build commands from trusted local profiles, not raw agent output.
 
 ## Required Inputs
 
@@ -54,7 +54,7 @@ Block when:
 - a new concept overlaps an existing one without naming, ownership, or migration clarity;
 - persisted metadata shape changes without backward compatibility;
 - adapter-specific behavior leaks into generic logic in a way that changes another adapter unintentionally;
-- child-session or permission behavior bypasses trusted profile boundaries.
+- session-control or permission behavior bypasses trusted profile boundaries.
 
 ## Evidence To Report
 

@@ -36,19 +36,6 @@ import {
   inferAgentStateFromStatus,
 } from "@taskdeck/core";
 import {
-  childSessionFileRequestResultFilenames,
-  createChildSessionRequestResult,
-  validateChildSessionFileRequest,
-} from "@taskdeck/core/child-session-file-requests";
-import {
-  childSessionMessageFileRequestResultFilenames,
-  createChildSessionMessageRequestResult,
-  validateChildSessionMessageFileRequest,
-} from "@taskdeck/core/child-session-message-file-requests";
-import {
-  createManagerChildStatusEvent,
-  generateManagerChildStatusEventId,
-  isManagerNotifiableChildState,
   managerEventFilenames,
   sanitizeManagerEventId,
   validateManagerEvent,
@@ -78,8 +65,6 @@ const sessionLabelStorePath = path.join(dataRoot, "session-labels.json");
 const logRoot = path.join(dataRoot, "logs");
 const attachmentRoot = path.join(dataRoot, "attachments");
 const pendingAttachmentRoot = path.join(attachmentRoot, "pending");
-const childSessionRequestRoot = path.join(dataRoot, "requests", "child-session");
-const childSessionMessageRequestRoot = path.join(dataRoot, "requests", "child-message");
 const managerInboxRoot = path.join(dataRoot, "manager-inbox");
 const managerReadableRoot = path.join(dataRoot, MANAGER_READABLE_DIRNAME);
 const managerReadableContextPath = path.join(managerReadableRoot, MANAGER_READABLE_CONTEXT_FILENAME);
@@ -101,10 +86,6 @@ const codexAppServerAgentProfileId = "codex-app-server";
 const codexAppServerCommand = "codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://";
 const codexAppServerOnlyTaskError =
   "TaskDeck now only starts Codex App Server tasks while the App Server thread model is being rebuilt.";
-const fileProtocolChildSessionsDisabledError =
-  "TaskDeck file-protocol child session starts are disabled on the App Server-only route; use Codex native subagents instead.";
-const fileProtocolChildMessagesDisabledError =
-  "TaskDeck file-protocol child session messages are disabled on the App Server-only route; use Codex native subagents instead.";
 const defaultAgentProfiles = [
   {
     id: codexAppServerAgentProfileId,
@@ -140,7 +121,6 @@ const ptyActivityWindowMs = 3000;
 const maxPtyActivityFrames = 40;
 const quietAttentionMs = 5000;
 const childStatusPollIntervalMs = 2000;
-const childSessionRequestPollIntervalMs = 1000;
 const defaultContainerWorkspaceRoot = "/workspace";
 const protectedContainerCleanupPids = new Set(["1", "7", "8", "130"]);
 const imageAttachmentMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
@@ -151,7 +131,6 @@ const imageAttachmentExtensions = new Map([
 ]);
 const activePtys = new Map();
 const activeCodexAppServers = new Map();
-const processedChildSessionMessageRequestIds = new Set();
 const processedManagerActionIds = new Set();
 const childStatusFileSnapshots = new Map();
 let managerActionSocketPath = managerActionDefaultSocketPath;
@@ -161,8 +140,6 @@ let persistTasksQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
 let persistSessionLabelsQueue = Promise.resolve();
 let childStatusPollInFlight = false;
-let childSessionRequestPollInFlight = false;
-let childSessionMessageRequestPollInFlight = false;
 
 const managerActionTypes = new Set(["ack", "review", "close"]);
 
@@ -330,6 +307,10 @@ app.patch("/api/tasks/:taskId/terminal-input-lock", async (request, response) =>
 
   if (task.status !== TaskStatus.RUNNING) {
     response.status(409).json({ error: "Only running tasks can toggle terminal input lock." });
+    return;
+  }
+  if (isCodexAppServerNativeSubagentTask(task)) {
+    response.status(409).json({ error: "Native subagent cards are read-only." });
     return;
   }
 
@@ -560,11 +541,6 @@ wss.on("connection", (socket) => {
           agentSessionSource: String(message.agentSessionSource || "").trim(),
           agentSessionDetectedAt: String(message.agentSessionDetectedAt || "").trim(),
           agentSessionResumeCommand: String(message.agentSessionResumeCommand || "").trim(),
-          parentSessionId: String(message.parentSessionId || "").trim(),
-          spawnedFromParentRequest: normalizeBoolean(message.spawnedFromParentRequest),
-          childSessionRequestKey: String(message.childSessionRequestKey || "").trim(),
-          workPackageId: String(message.workPackageId || "").trim(),
-          filesLikelyToChange: normalizeStringArray(message.filesLikelyToChange),
           initialInstruction: String(message.initialInstruction || "").trim(),
           attachments: normalizePendingAttachmentRefs(message.attachments),
         },
@@ -637,8 +613,6 @@ wss.on("connection", (socket) => {
 
 await initializePersistence();
 await scanChildStatusFiles();
-await scanChildSessionRequestFiles();
-await scanChildSessionMessageRequestFiles();
 await refreshManagerReadableFiles();
 await startManagerActionSocket();
 await configureWebApp();
@@ -658,12 +632,6 @@ attentionTimer.unref?.();
 
 const childStatusTimer = setInterval(scanChildStatusFiles, childStatusPollIntervalMs);
 childStatusTimer.unref?.();
-
-const childSessionRequestTimer = setInterval(scanChildSessionRequestFiles, childSessionRequestPollIntervalMs);
-childSessionRequestTimer.unref?.();
-
-const childSessionMessageRequestTimer = setInterval(scanChildSessionMessageRequestFiles, childSessionRequestPollIntervalMs);
-childSessionMessageRequestTimer.unref?.();
 
 function buildUniqueNewSessionTitle(title, sessionMode) {
   const normalizedTitle = String(title || "").trim();
@@ -686,12 +654,7 @@ function buildUniqueNewSessionTitle(title, sessionMode) {
 }
 
 async function startTask(startInput, socket) {
-  const {
-    command,
-    agentProfileId,
-    spawnedFromParentRequest,
-    childSessionRequestKey,
-  } = startInput;
+  const { command, agentProfileId } = startInput;
 
   if (!command) {
     send(socket, { type: "error", message: "Enter a command before starting a task." });
@@ -700,16 +663,6 @@ async function startTask(startInput, socket) {
 
   if (!isCodexAppServerAgentProfileId(agentProfileId)) {
     send(socket, { type: "error", message: codexAppServerOnlyTaskError });
-    return;
-  }
-
-  if (spawnedFromParentRequest && !childSessionRequestKey) {
-    send(socket, { type: "error", message: "Child session request key is required." });
-    return;
-  }
-
-  if (spawnedFromParentRequest) {
-    send(socket, { type: "error", message: fileProtocolChildSessionsDisabledError });
     return;
   }
 
@@ -730,22 +683,12 @@ async function startTaskNow({
   agentSessionSource,
   agentSessionDetectedAt,
   agentSessionResumeCommand,
-  parentSessionId,
-  spawnedFromParentRequest,
-  childSessionRequestKey,
-  workPackageId,
-  filesLikelyToChange = [],
   initialInstruction,
   attachments = [],
 }, socket) {
   if (!isCodexAppServerAgentProfileId(agentProfileId)) {
     send(socket, { type: "error", message: codexAppServerOnlyTaskError });
     return { ok: false, error: codexAppServerOnlyTaskError };
-  }
-
-  if (spawnedFromParentRequest) {
-    send(socket, { type: "error", message: fileProtocolChildSessionsDisabledError });
-    return { ok: false, error: fileProtocolChildSessionsDisabledError };
   }
 
   const isManagerLaunch = isManagerAgentProfileId(agentProfileId);
@@ -784,10 +727,6 @@ async function startTaskNow({
     resumeCommand,
     identityColorSlot,
     initialInstruction: launchInitialInstruction,
-    parentSessionId,
-    spawnedFromParentRequest,
-    workPackageId,
-    filesLikelyToChange,
     isManager: isManagerLaunch,
     ...explicitAgentSession,
   });
@@ -894,225 +833,6 @@ async function cwdForTaskLaunch({ cwd, isManagerLaunch }) {
 async function taskDeckControlRootCwd() {
   const projectRoots = await resolveProjectRoots();
   return path.resolve(projectRoots[0] || path.dirname(repoRoot));
-}
-
-async function scanChildSessionRequestFiles() {
-  if (childSessionRequestPollInFlight) {
-    return;
-  }
-
-  childSessionRequestPollInFlight = true;
-  try {
-    await fs.mkdir(childSessionRequestRoot, { recursive: true });
-    const filenames = await fs.readdir(childSessionRequestRoot);
-    for (const filename of filenames) {
-      if (!filename.endsWith(".request.json") || filename.endsWith(".tmp")) {
-        continue;
-      }
-      await processChildSessionRequestFile(path.join(childSessionRequestRoot, filename));
-    }
-  } catch (error) {
-    console.warn(`TaskDeck child session request scan failed: ${error.message}`);
-  } finally {
-    childSessionRequestPollInFlight = false;
-  }
-}
-
-async function processChildSessionRequestFile(filePath) {
-  const fallbackRequestId = path.basename(filePath, ".request.json");
-  if (await childSessionRequestResultExists(fallbackRequestId)) {
-    return;
-  }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(await fs.readFile(filePath, "utf8"));
-  } catch (error) {
-    await writeChildSessionRequestResult(fallbackRequestId, {
-      state: "rejected",
-      error: `Could not parse request JSON: ${error.message}`,
-    });
-    return;
-  }
-
-  const validation = validateChildSessionFileRequest(parsed);
-  const requestId = validation.ok ? validation.request.requestId : String(parsed?.requestId || fallbackRequestId || "").trim();
-  if (await childSessionRequestResultExists(requestId)) {
-    return;
-  }
-  if (!validation.ok) {
-    await writeChildSessionRequestResult(requestId, {
-      state: "rejected",
-      error: validation.error,
-    });
-    return;
-  }
-
-  const request = validation.request;
-  const parentTask = tasks.get(request.parentTaskId);
-  if (!parentTask) {
-    await writeChildSessionRequestResult(request.requestId, {
-      state: "rejected",
-      error: `parentTaskId "${request.parentTaskId}" does not match an existing task.`,
-    });
-    return;
-  }
-  if (parentTask.spawnedFromParentRequest) {
-    const error = "parentTaskId must identify a parent task, not a child task.";
-    await writeChildSessionRequestResult(request.requestId, {
-      state: "rejected",
-      error,
-    });
-    notifyChildSessionRequestRejected(parentTask.id, request.requestId, error);
-    return;
-  }
-
-  await writeChildSessionRequestResult(request.requestId, {
-    state: "rejected",
-    error: fileProtocolChildSessionsDisabledError,
-  });
-  notifyChildSessionRequestRejected(parentTask.id, request.requestId, fileProtocolChildSessionsDisabledError);
-}
-
-async function childSessionRequestResultExists(requestId) {
-  const filenames = childSessionFileRequestResultFilenames(requestId);
-  return (await fileExists(path.join(childSessionRequestRoot, filenames.accepted))) ||
-    (await fileExists(path.join(childSessionRequestRoot, filenames.rejected)));
-}
-
-async function writeChildSessionRequestResult(requestId, { state, createdTaskIds = [], error = "" }) {
-  const filenames = childSessionFileRequestResultFilenames(requestId);
-  const filename = state === "accepted" ? filenames.accepted : filenames.rejected;
-  const filePath = path.join(childSessionRequestRoot, filename);
-  const tempPath = `${filePath}.tmp`;
-  const result = createChildSessionRequestResult({
-    requestId,
-    state,
-    createdTaskIds,
-    error,
-  });
-
-  await fs.mkdir(childSessionRequestRoot, { recursive: true });
-  await fs.writeFile(tempPath, `${JSON.stringify(result, null, 2)}\n`);
-  await fs.rename(tempPath, filePath);
-}
-
-function notifyChildSessionRequestRejected(parentTaskId, requestId, error) {
-  appendTaskDeckResultStatus(
-    parentTaskId,
-    `Child session request rejected: ${requestId}; ${String(error || "unknown error")}. No shell check is required.`,
-  );
-}
-
-function appendTaskDeckResultStatus(taskId, message) {
-  if (!tasks.has(taskId)) {
-    return;
-  }
-  appendAndBroadcast(taskId, `[TaskDeck] ${message}\n`);
-}
-
-async function scanChildSessionMessageRequestFiles() {
-  if (childSessionMessageRequestPollInFlight) {
-    return;
-  }
-
-  childSessionMessageRequestPollInFlight = true;
-  try {
-    await fs.mkdir(childSessionMessageRequestRoot, { recursive: true });
-    const filenames = await fs.readdir(childSessionMessageRequestRoot);
-    for (const filename of filenames) {
-      if (!filename.endsWith(".request.json") || filename.endsWith(".tmp")) {
-        continue;
-      }
-      await processChildSessionMessageRequestFile(path.join(childSessionMessageRequestRoot, filename));
-    }
-  } catch (error) {
-    console.warn(`TaskDeck child session message request scan failed: ${error.message}`);
-  } finally {
-    childSessionMessageRequestPollInFlight = false;
-  }
-}
-
-async function processChildSessionMessageRequestFile(filePath) {
-  const fallbackRequestId = path.basename(filePath, ".request.json");
-  if (
-    processedChildSessionMessageRequestIds.has(fallbackRequestId) ||
-    await childSessionMessageRequestResultExists(fallbackRequestId)
-  ) {
-    return;
-  }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(await fs.readFile(filePath, "utf8"));
-  } catch (error) {
-    processedChildSessionMessageRequestIds.add(fallbackRequestId);
-    await writeChildSessionMessageRequestResult(fallbackRequestId, {
-      state: "rejected",
-      error: `Could not parse request JSON: ${error.message}`,
-    });
-    return;
-  }
-
-  const validation = validateChildSessionMessageFileRequest(parsed);
-  const requestId = validation.ok ? validation.request.requestId : String(parsed?.requestId || fallbackRequestId || "").trim();
-  if (
-    processedChildSessionMessageRequestIds.has(requestId) ||
-    await childSessionMessageRequestResultExists(requestId)
-  ) {
-    return;
-  }
-
-  processedChildSessionMessageRequestIds.add(requestId);
-
-  if (!validation.ok) {
-    await writeChildSessionMessageRequestResult(requestId, {
-      state: "rejected",
-      error: validation.error,
-    });
-    return;
-  }
-
-  const request = validation.request;
-  const parentTask = tasks.get(request.parentTaskId);
-  await writeChildSessionMessageRequestResult(request.requestId, {
-    state: "rejected",
-    error: fileProtocolChildMessagesDisabledError,
-  });
-  if (parentTask) {
-    notifyChildSessionMessageRequestRejected(parentTask.id, request.requestId, fileProtocolChildMessagesDisabledError);
-  }
-  return;
-}
-
-async function childSessionMessageRequestResultExists(requestId) {
-  const filenames = childSessionMessageFileRequestResultFilenames(requestId);
-  return (await fileExists(path.join(childSessionMessageRequestRoot, filenames.accepted))) ||
-    (await fileExists(path.join(childSessionMessageRequestRoot, filenames.rejected)));
-}
-
-async function writeChildSessionMessageRequestResult(requestId, { state, targetTaskId = "", error = "" }) {
-  const filenames = childSessionMessageFileRequestResultFilenames(requestId);
-  const filename = state === "accepted" ? filenames.accepted : filenames.rejected;
-  const filePath = path.join(childSessionMessageRequestRoot, filename);
-  const tempPath = `${filePath}.tmp`;
-  const result = createChildSessionMessageRequestResult({
-    requestId,
-    state,
-    targetTaskId,
-    error,
-  });
-
-  await fs.mkdir(childSessionMessageRequestRoot, { recursive: true });
-  await fs.writeFile(tempPath, `${JSON.stringify(result, null, 2)}\n`);
-  await fs.rename(tempPath, filePath);
-}
-
-function notifyChildSessionMessageRequestRejected(parentTaskId, requestId, error) {
-  appendTaskDeckResultStatus(
-    parentTaskId,
-    `Child session message rejected: ${requestId}; ${String(error || "unknown error")}. No shell check is required.`,
-  );
 }
 
 async function fileExists(filePath) {
@@ -2438,7 +2158,6 @@ function materializeCodexAppServerNativeSubagent(activeAppServer, threadId, item
         agentSessionSource: "codex_app_server_native_subagent",
         agentSessionDetectedAt: detectedAt,
         parentSessionId: parentTask.id,
-        spawnedFromParentRequest: false,
         identityColorSlot: assignTaskIdentityColorSlot(),
       })),
       AgentState.STARTING,
@@ -2857,8 +2576,6 @@ async function taskDeckEnvironmentForTask(task, command, hostStatusFile) {
   const managerReadablePaths = await managerReadableVisiblePathsForTask(command);
   return {
     TASKDECK_TASK_ID: task.id,
-    ...(task.parentSessionId ? { TASKDECK_PARENT_TASK_ID: task.parentSessionId } : {}),
-    ...(task.workPackageId ? { TASKDECK_WORK_PACKAGE_ID: task.workPackageId } : {}),
     TASKDECK_STATUS_FILE: childStatusFile,
     ...(isManagerTask(task)
       ? {
@@ -2966,7 +2683,7 @@ async function scanChildStatusFiles() {
       broadcastTasks();
     }
   } catch (error) {
-    console.warn(`TaskDeck child status scan failed: ${error.message}`);
+    console.warn(`TaskDeck task status scan failed: ${error.message}`);
   } finally {
     childStatusPollInFlight = false;
   }
@@ -2993,7 +2710,7 @@ async function scanChildStatusFileForTask(task) {
     childStatusFileSnapshots.set(task.id, errorFingerprint);
     return updateTaskFromChildStatusResult(task.id, {
       ok: false,
-      error: `Could not read child status file: ${error.message}`,
+      error: `Could not read task status file: ${error.message}`,
     });
   }
 
@@ -3024,68 +2741,7 @@ async function updateTaskFromChildStatusResult(taskId, result) {
   }
 
   tasks.set(task.id, nextTask);
-  if (result.ok) {
-    await maybeWriteManagerChildStatusEvent(task, nextTask);
-  }
   return true;
-}
-
-async function maybeWriteManagerChildStatusEvent(previousTask, nextTask) {
-  if (!nextTask.spawnedFromParentRequest || !nextTask.parentSessionId) {
-    return;
-  }
-  if (!isManagerNotifiableChildState(nextTask.childReportedState)) {
-    return;
-  }
-
-  const dedupeKey = managerChildStatusEventDedupeKey(nextTask);
-  if (managerChildStatusEventDedupeKey(previousTask) === dedupeKey) {
-    return;
-  }
-
-  const now = new Date();
-  const eventId = generateManagerChildStatusEventId({
-    parentTaskId: nextTask.parentSessionId,
-    childTaskId: nextTask.id,
-    workPackageId: nextTask.workPackageId,
-    state: nextTask.childReportedState,
-    now,
-  });
-  const event = createManagerChildStatusEvent({
-    eventId,
-    parentTaskId: nextTask.parentSessionId,
-    childTaskId: nextTask.id,
-    workPackageId: nextTask.workPackageId,
-    state: nextTask.childReportedState,
-    summary: nextTask.childStatusSummary,
-    artifacts: nextTask.childStatusArtifacts,
-    detailsFile: nextTask.childStatusDetailsFile,
-    createdAt: now.toISOString(),
-  });
-
-  try {
-    await writeManagerEventFile(event);
-  } catch (error) {
-    console.warn(`TaskDeck manager inbox event write failed: ${error.message}`);
-    return;
-  }
-
-  try {
-    await refreshManagerReadableFiles();
-    nudgeRunningManagerTasks();
-  } catch (error) {
-    console.warn(`TaskDeck manager readable context refresh failed: ${error.message}`);
-  }
-}
-
-async function writeManagerEventFile(event) {
-  const filenames = managerEventFilenames(event.eventId);
-  const filePath = path.join(managerInboxRoot, filenames.event);
-  const tempPath = path.join(managerInboxRoot, filenames.temp);
-
-  await fs.mkdir(managerInboxRoot, { recursive: true });
-  await fs.writeFile(tempPath, `${JSON.stringify(event, null, 2)}\n`);
-  await fs.rename(tempPath, filePath);
 }
 
 async function startManagerActionSocket() {
@@ -3774,16 +3430,8 @@ function isCodexAppServerTask(task) {
   return isCodexAppServerAgentProfileId(task?.agentProfileId);
 }
 
-function managerChildStatusEventDedupeKey(task) {
-  return JSON.stringify([
-    task.id,
-    task.parentSessionId || "",
-    task.workPackageId || "",
-    task.childReportedState || "",
-    task.childStatusSummary || "",
-    normalizeStringArray(task.childStatusArtifacts),
-    task.childStatusDetailsFile || "",
-  ]);
+function isCodexAppServerNativeSubagentTask(task) {
+  return task?.agentSessionSource === "codex_app_server_native_subagent";
 }
 
 function haveSameChildStatusFields(left, right) {

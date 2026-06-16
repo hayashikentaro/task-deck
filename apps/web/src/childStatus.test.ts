@@ -6,8 +6,8 @@ import {
   validateChildStatusReport,
 } from "@taskdeck/core";
 
-describe("child status report validation", () => {
-  it("accepts a valid child status report", () => {
+describe("task status report validation", () => {
+  it("accepts a valid task status report", () => {
     const result = validateChildStatusReport({
       kind: "childStatus",
       version: 1,
@@ -33,7 +33,7 @@ describe("child status report validation", () => {
   it("rejects invalid JSON without throwing", () => {
     expect(parseChildStatusReportJson("{ not json")).toEqual({
       ok: false,
-      error: "Child status file must contain valid JSON.",
+      error: "Task status file must contain valid JSON.",
     });
   });
 
@@ -46,7 +46,7 @@ describe("child status report validation", () => {
 
     expect(result).toEqual({
       ok: false,
-      error: "Child status report state must be one of working, blocked, ready_for_review, done, or failed.",
+      error: "Task status report state must be one of working, blocked, ready_for_review, done, or failed.",
     });
   });
 
@@ -60,7 +60,7 @@ describe("child status report validation", () => {
 
     expect(result).toEqual({
       ok: false,
-      error: "Child status report detailsFile must be a string when provided.",
+      error: "Task status report detailsFile must be a string when provided.",
     });
   });
 
@@ -74,7 +74,7 @@ describe("child status report validation", () => {
 
     expect(result).toEqual({
       ok: false,
-      error: "Child status report artifacts must be an array of strings when provided.",
+      error: "Task status report artifacts must be an array of strings when provided.",
     });
   });
 

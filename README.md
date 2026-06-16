@@ -114,6 +114,5 @@ TaskDeck can launch local agent processes that may edit files and run commands. 
 - [Local API reference](docs/api.md)
 - [Actor protocol and manager control plane](docs/taskdeck-actor-protocol.md)
 - [Branch worktree lifecycle](docs/branch-worktree-lifecycle.md)
-- [Legacy child session request protocol](docs/taskdeck-child-session-protocol.md)
 - [Current work plan](docs/current-work-plan.md)
 - [Session identity card experiment](docs/issues/0015-session-identity-first-cards.md)

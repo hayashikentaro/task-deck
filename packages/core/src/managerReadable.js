@@ -128,7 +128,7 @@ export function buildManagerActionGuide({
     lines.push("", `### ${event.eventId || "unknown-event"}`);
     lines.push(`- State: ${event.state || "(unknown)"}`);
     if (event.summary) lines.push(`- Summary: ${event.summary}`);
-    if (event.childTaskId) lines.push(`- Child task id: ${event.childTaskId}`);
+    if (event.childTaskId) lines.push(`- Task id: ${event.childTaskId}`);
     if (event.parentTaskId) lines.push(`- Parent task id: ${event.parentTaskId}`);
     if (suggestedActions.length === 0) {
       lines.push("- No suggested action.");
@@ -214,12 +214,11 @@ export function buildManagerReadableContext({
     lines.push(`### [${event.type}] ${event.state}`);
     lines.push(`- Event id: ${event.eventId}`);
     lines.push(`- Created at: ${event.createdAt}`);
-    lines.push(`- Child task id: ${event.childTaskId}`);
+    lines.push(`- Task id: ${event.childTaskId}`);
     lines.push(`- Parent task id: ${event.parentTaskId}`);
-    if (event.workPackageId) lines.push(`- Work package id: ${event.workPackageId}`);
-    if (event.childTask) lines.push(`- Child task: ${formatTaskSummary(event.childTask)}`);
+    if (event.childTask) lines.push(`- Task: ${formatTaskSummary(event.childTask)}`);
     if (event.parentTask) lines.push(`- Parent task: ${formatTaskSummary(event.parentTask)}`);
-    lines.push(`- Child reported state: ${event.state}`);
+    lines.push(`- Reported state: ${event.state}`);
     lines.push(`- Summary: ${event.summary || "(none)"}`);
     if (event.artifacts.length > 0) {
       lines.push("- Artifacts:");
@@ -273,7 +272,6 @@ function normalizeEventList(events) {
     eventId: String(event?.eventId || ""),
     parentTaskId: String(event?.parentTaskId || ""),
     childTaskId: String(event?.childTaskId || ""),
-    workPackageId: String(event?.workPackageId || ""),
     state: String(event?.state || ""),
     summary: String(event?.summary || ""),
     artifacts: normalizeStringArray(event?.artifacts),
@@ -304,7 +302,6 @@ function taskSummary(task) {
     agentState: String(task.agentState || ""),
     attentionState: String(task.attentionState || ""),
     parentSessionId: String(task.parentSessionId || ""),
-    workPackageId: String(task.workPackageId || ""),
     childReportedState: String(task.childReportedState || ""),
     childStatusSummary: String(task.childStatusSummary || ""),
     childStatusArtifacts: normalizeStringArray(task.childStatusArtifacts),

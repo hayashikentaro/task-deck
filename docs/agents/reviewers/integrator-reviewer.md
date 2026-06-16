@@ -2,7 +2,7 @@
 
 The Integrator Reviewer combines narrow reviewer reports into a human-facing merge recommendation.
 
-This reviewer does not replace the integration agent role that actually merges child branches. It is the judgment layer that summarizes whether the current change should be merged, inspected, retried, or rejected.
+This reviewer does not replace the integration agent role that actually merges subtask branches. It is the judgment layer that summarizes whether the current change should be merged, inspected, retried, or rejected.
 
 ## Responsibilities
 

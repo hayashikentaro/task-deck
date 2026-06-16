@@ -1,6 +1,6 @@
 # Security Reviewer
 
-The Security Reviewer checks changes that affect command execution, permissions, local file access, external input, network exposure, secrets, or child-session launch behavior.
+The Security Reviewer checks changes that affect command execution, permissions, local file access, external input, network exposure, secrets, or session/subagent control behavior.
 
 This reviewer should be used selectively for high-risk areas. It is not required for every copy, styling, or low-risk documentation change.
 
@@ -25,7 +25,7 @@ Check whether the change:
 - diff or focused patches;
 - worker completion report;
 - verification output;
-- relevant protocol docs such as `docs/taskdeck-child-session-protocol.md` when child launch is touched;
+- relevant protocol docs such as `docs/taskdeck-actor-protocol.md` when session or subagent control is touched;
 - relevant architecture docs for runtime, permission, command, or input boundaries.
 
 ## Do Not Review
@@ -44,7 +44,7 @@ Block when:
 - path handling can escape the intended workspace;
 - secrets, env values, local runtime data, or logs are exposed or committed;
 - LAN/internet exposure is expanded without authentication, network controls, or explicit design;
-- child-session request validation is weakened.
+- session or subagent control validation is weakened.
 
 Use `NEEDS_HUMAN` when the change intentionally shifts the risk model and needs product/operator approval.
 

@@ -29,38 +29,27 @@ In the current session-identity-first card design, the primary card-level visual
 7. Focused REST calls handle actions such as task renaming, log reload, attachments, and diagnostics queries when a UI path calls them.
 8. UI state updates from REST responses and WebSocket messages keep the task list, selected task, terminal output, composer availability, and tools in sync.
 
-## Legacy #29 Child Session Auto-Launch Ownership
-
-Issue #29 previously added a narrow parent-output-to-child-task flow:
+## Native Subagent Card Ownership
 
 ```text
-parent output
-  -> detect TASKDECK_CHILD_SESSION_BATCH_REQUEST
-  -> parse and validate
-  -> resolve trusted local agent profile
-  -> build trusted launch command
-  -> create child task
-  -> auto-send initialInstruction
-  -> display child metadata
-  -> dedupe created/rejected requests
-  -> report created/rejected status
-  -> later parent/integration workflow handles merging
+Codex App Server parent task
+  -> structured native subagent/thread events
+  -> server materializes read-only subagent supervision card
+  -> thread-scoped assistant text and command output
+  -> thread completion marks the subagent card complete
+  -> parent App Server task remains the only commandable session
 ```
 
-This flow is disabled on the App Server-only route. TaskDeck no longer scans the Web UI output path for stdout child-session marker blocks, no longer exposes file-protocol child-session request directories to launched App Server sessions, and rejects file-protocol child session starts while the App Server-native thread/session model is being rebuilt.
+TaskDeck does not parse parent task output for launch markers and does not create independently commandable sub-sessions from worker text. Native subagent cards come only from structured Codex App Server events such as native subagent thread creation, item deltas, command execution summaries, and turn completion.
 
-The legacy ownership map remains useful if this protocol is reintroduced:
+Ownership map:
 
-- Protocol owns the request block shape, required and optional fields, forbidden fields, validation semantics, parser/validator behavior, and protocol docs. Typical files are `docs/taskdeck-child-session-protocol.md` and `apps/web/src/childSessionRequests.ts`. Protocol work must not introduce raw launch commands or UI workflow decisions.
-- App Flow owns scanning parent task output/logs, calling the parser, deduping processed request blocks, resolving trusted local agent profiles, mapping valid requests to `CreateTaskInput`, invoking the existing task creation flow, and surfacing concise created/rejected status. Typical files are `apps/web/src/App.tsx` and `apps/web/src/agentLaunch.ts`.
-- Runtime owns App Server and PTY-backed task launch, task metadata preservation, queued input behavior, `initialInstruction` delivery, and process/output lifecycle. Typical files are `apps/server/src/server.js` and, for stable metadata semantics, `packages/core/src/index.js`.
-- UI owns child metadata display, Child and work-package badges, expanded task-card details, concise status presentation, and the #29 decision to avoid a confirmation modal for valid parent-generated requests. Typical files are `apps/web/src/components/TaskList.tsx` and related local styles when needed.
-- Core owns parent/child task metadata semantics and persisted compatibility for fields such as `parentSessionId`, `spawnedFromParentRequest`, `workPackageId`, and `filesLikelyToChange` when those semantics change.
-- Integration owns collecting pushed child branches after child sessions finish, choosing merge order, merging into the parent or integration branch, and running checks. Integration is not part of the auto-launch runtime itself; use `docs/agents/roles/integration.md` for that workflow.
+- Runtime owns Codex App Server subprocess lifecycle, JSON-RPC notification handling, native subagent task materialization, thread-to-task log routing, and completion transitions. Typical file: `apps/server/src/server.js`.
+- UI owns the read-only subagent card presentation, `Subagent` badge, locked input affordance, and normal task-card selection behavior. Typical files: `apps/web/src/components/TaskList.tsx`, `InputComposer.tsx`, and related styles.
+- Core owns durable task/session metadata that is still needed by the App Server path, including `parentSessionId` for native subagent cards and persisted compatibility rules for old task records.
+- Integration owns branch/worktree convergence when explicitly assigned by a development workflow. Integration is not part of native subagent card materialization; use `docs/agents/roles/integration.md` for branch-worktree merge guidance.
 
-#29 must not execute raw commands from parent output if reintroduced. Parent requests may name an agent profile, cwd, permission, title, work package, file hints, and an initial instruction, but TaskDeck must build the actual launch command from trusted local profile configuration.
-
-#29 is also not worktree management, branch management, dependency graph execution, automatic merge, parent-to-child follow-up instruction routing, or child completion result tracking. Follow-up instruction routing belongs to #30. Child completion/result tracking and integration handoff should be handled by later workflows/issues such as #40 and the integration role guide.
+Do not add stdout marker parsing, request-file writers, raw launch commands from agent output, or direct worker-to-worker command paths as a shortcut for App Server-native sub-work.
 
 ## Runtime State
 

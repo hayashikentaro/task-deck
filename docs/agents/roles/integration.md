@@ -1,22 +1,22 @@
 # Integration Agent Role
 
-The integration agent owns convergence across child branches and layers. It is not a default feature implementation role.
+The integration agent owns convergence across subtask branches and layers. It is not a default feature implementation role.
 
-Use this role when explicitly assigned parallel branch/worktree work has produced pushed branches that must be merged into a parent or integration branch in a deliberate order. This role guide does not imply that the current App Server-only runtime can launch TaskDeck child sessions.
+Use this role when explicitly assigned parallel branch/worktree work has produced pushed branches that must be merged into a parent or integration branch in a deliberate order. This role guide does not imply that the current App Server-only runtime can launch independently commandable TaskDeck sub-sessions.
 
 ## Responsibilities
 
 An integration agent should:
 
 - inspect the parent/integration branch;
-- collect child branch reports;
-- confirm child branches are pushed;
+- collect subtask branch reports;
+- confirm subtask branches are pushed;
 - inspect changed files and dependency relationships;
 - choose merge order intentionally;
-- merge child branches one by one or in clearly safe batches;
+- merge subtask branches one by one or in clearly safe batches;
 - run verification after each merge or safe batch;
 - stop on non-trivial conflicts or failing checks;
-- route follow-up work back to the appropriate child role when needed;
+- route follow-up work back to the appropriate subtask role when needed;
 - perform a final integration pass.
 
 ## Non-responsibilities
@@ -24,10 +24,10 @@ An integration agent should:
 An integration agent should not:
 
 - implement missing feature work unless explicitly asked;
-- silently merge incomplete or unpushed child work;
+- silently merge incomplete or unpushed subtask work;
 - merge in completion order without considering dependencies;
 - force push;
-- rewrite child branches;
+- rewrite subtask branches;
 - hide conflicts by guessing through unrelated changes;
 - broaden the feature scope during integration.
 
@@ -57,9 +57,9 @@ git pull
 
 Stop and report if the target branch has unexpected local changes.
 
-## Child branch inspection
+## Subtask Branch Inspection
 
-For each child branch or worktree:
+For each subtask branch or worktree:
 
 ```bash
 git status --short --branch
@@ -77,7 +77,7 @@ Record:
 - reported verification results;
 - possible dependency or conflict notes.
 
-If a child worktree has relevant uncommitted changes, it is not complete. Ask the child role to commit and push, or perform that only if explicitly assigned.
+If a subtask worktree has relevant uncommitted changes, it is not complete. Ask the subtask role to commit and push, or perform that only if explicitly assigned.
 
 ## Merge order
 
@@ -97,14 +97,14 @@ This is only a heuristic. Always inspect actual files and dependencies.
 
 ## Merge procedure
 
-For each selected child branch:
+For each selected subtask branch:
 
 ```bash
 git checkout <target-branch>
 git pull
-git diff --stat <target-branch>..<child-branch>
-git diff --name-only <target-branch>..<child-branch>
-git merge --no-ff <child-branch>
+git diff --stat <target-branch>..<subtask-branch>
+git diff --name-only <target-branch>..<subtask-branch>
+git merge --no-ff <subtask-branch>
 ```
 
 If conflicts occur:
@@ -143,8 +143,8 @@ Report:
 
 - target branch;
 - final HEAD SHA;
-- child branches inspected;
-- child branches merged;
+- subtask branches inspected;
+- subtask branches merged;
 - merge order used;
 - merge commits created;
 - files changed by each merge;

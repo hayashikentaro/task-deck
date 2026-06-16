@@ -29,7 +29,7 @@ The current design direction is:
 - `taskdeckctl` should talk to a local IPC endpoint, preferably a Unix domain socket, rather than an exposed Web API;
 - TaskDeck server validates, dedupes, logs, executes, and broadcasts every mutation.
 
-The manager action/write path includes `taskdeckctl`, local IPC / Unix socket, manager action schema, the server-side manager action executor, and ack/review/close actions. Later bounded message or sub-work actions must be App Server-native or a new server-owned protocol; they must not silently revive the disabled legacy child-session writer path.
+The manager action/write path includes `taskdeckctl`, local IPC / Unix socket, manager action schema, the server-side manager action executor, and ack/review/close actions. Later bounded message or sub-work actions must be App Server-native or a new server-owned protocol; they must not introduce stdout-marker or request-file shortcuts.
 
 Related design doc:
 
@@ -99,7 +99,7 @@ Related issues:
 - Keep worker-to-TaskDeck reporting constrained and append-only where possible.
 - Keep worker sessions project-bound and keep the manager session TaskDeck-control-root-bound.
 - Treat manager-readable context as global cross-project supervision context.
-- Avoid free-form child-to-parent or worker-to-worker chat.
+- Avoid free-form subtask-to-parent or worker-to-worker chat.
 - Prove manager read behavior before implementing manager write behavior.
 - Keep future manager write operations behind `taskdeckctl` and server-side validation.
 - Avoid exposing manager write as a broad Web API surface.
@@ -118,4 +118,4 @@ Related issues:
 - Full settings editor.
 - Provider-specific transcript parsers.
 - Chatbot-style UX.
-- Free-form child-to-parent messaging.
+- Free-form subtask-to-parent messaging.
