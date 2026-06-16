@@ -20,7 +20,7 @@ When TaskDeck runs in a container and the browser runs on the host, `localhost` 
 
 ## Launch Environment
 
-TaskDeck launches the App Server through the configured `codex-app-server` agent profile command and communicates over stdio. The built-in `Codex App Server` profile starts `ai-agent-sandbox-agent-1` and runs `codex --sandbox danger-full-access app-server --listen stdio://` inside it with `docker exec -i`, not `-it`, because App Server uses JSON over ordinary stdin/stdout pipes rather than a terminal. TaskDeck also sends `sandbox: "danger-full-access"` in `thread/start`. The `danger-full-access` sandbox setting applies inside the configured Docker container and avoids nested Codex sandbox setup in that container.
+TaskDeck launches the App Server through the configured `codex-app-server` agent profile command and communicates over stdio. The built-in `Codex App Server` profile starts `ai-agent-sandbox-agent-1` and runs `codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://` inside it with `docker exec -i`, not `-it`, because App Server uses JSON over ordinary stdin/stdout pipes rather than a terminal. TaskDeck also sends `sandbox: "danger-full-access"` and `approvalPolicy: "never"` in `thread/start`, then sends `sandboxPolicy: { type: "dangerFullAccess" }` and `approvalPolicy: "never"` in `turn/start`. The `danger-full-access` sandbox setting applies inside the configured Docker container and avoids nested Codex sandbox setup in that container.
 
 If host and container Codex installs use different `CODEX_HOME` auth state, authenticate Codex in the container or override that profile in `taskdeck.local.json` so the App Server runs in the environment that owns the intended ChatGPT login.
 

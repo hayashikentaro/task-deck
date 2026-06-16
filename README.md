@@ -1,6 +1,6 @@
 # TaskDeck
 
-TaskDeck is a local supervision UI for running and monitoring multiple AI agent tasks. On this branch its Codex route uses the structured Codex App Server adapter so TaskDeck can supervise turns, approvals, command output, and user-input requests without treating a TUI transcript as the control protocol. Terminal-backed PTY profiles remain available for shell and non-Codex provider compatibility.
+TaskDeck is a local supervision UI for running and monitoring multiple AI agent tasks. On this branch its Codex route uses the structured Codex App Server adapter so TaskDeck can supervise turns, command output, and user-input requests without treating a TUI transcript as the control protocol. Terminal-backed PTY profiles remain available for shell and non-Codex provider compatibility.
 
 ![TaskDeck screenshot](docs/assets/readme-attached-image.png)
 
@@ -49,7 +49,7 @@ The dev command runs the local Node server and mounts Vite middleware for the Re
 4. Start the task.
 5. Send instructions from the composer attached to the task log.
 
-Task cards in the left rail show the active tasks and their supervision state. The center pane shows the selected task's live output and persisted log view. For Codex App Server tasks, TaskDeck renders structured App Server messages as human-readable task output and handles approval/user-input requests through the UI.
+Task cards in the left rail show the active tasks and their supervision state. The center pane shows the selected task's live output and persisted log view. For Codex App Server tasks, TaskDeck renders structured App Server messages as human-readable task output and handles user-input requests through the UI.
 
 ## Configure Projects
 
@@ -81,7 +81,7 @@ For example:
 TASKDECK_CONFIG=/path/to/taskdeck.profiles.json npm run dev
 ```
 
-The committed App Server route uses `danger-full-access` inside the configured Docker container because the container is the outer sandbox and nested Codex sandboxing is not available there. TaskDeck passes that sandbox mode both to the Codex CLI App Server process and to App Server `thread/start`. TaskDeck does not otherwise synthesize Codex CLI/TUI reasoning, startup, or resume flags for this profile. The committed route intentionally avoids interactive Codex CLI access; custom local profiles are outside the product route for this branch.
+The committed App Server route uses `danger-full-access` and `--ask-for-approval never` inside the configured Docker container because the container is the outer sandbox and nested Codex sandboxing is not available there. TaskDeck also passes full-access/no-approval overrides to App Server `thread/start` and `turn/start`. TaskDeck does not otherwise synthesize Codex CLI/TUI reasoning, startup, or resume flags for this profile. The committed route intentionally avoids interactive Codex CLI access; custom local profiles are outside the product route for this branch.
 
 Agent profiles merge by `id`: built-in defaults load first, then committed config, ignored local config, and finally `TASKDECK_CONFIG`.
 

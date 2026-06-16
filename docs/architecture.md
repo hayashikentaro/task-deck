@@ -6,7 +6,7 @@ This document is a navigation map for contributors and AI-agent sessions. It des
 
 TaskDeck is a task-centric supervision UI for AI-agent work. It is not a chatbot UI, and it is not merely a prettier terminal.
 
-For Codex work sessions, TaskDeck's product route is App Server-only on this branch. The Codex App Server adapter gives TaskDeck structured turns, approval requests, command output, and user-input requests. PTY/TUI handling remains part of the runtime for shell sessions and non-Codex providers, but committed Codex CLI/TUI access is intentionally absent.
+For Codex work sessions, TaskDeck's product route is App Server-only on this branch. The Codex App Server adapter gives TaskDeck structured turns, command output, and user-input requests. PTY/TUI handling remains part of the runtime for shell sessions and non-Codex providers, but committed Codex CLI/TUI access is intentionally absent.
 
 In the current session-identity-first card design, the primary card-level visual question is which task maps to the terminal/session the operator is viewing or about to resume. `Needs you` / `Not now` remains the primary supervision signal for sorting, badges, and action prompts, but it should not dominate the whole card surface or compete with stable task/session identity as a full-card color system.
 
@@ -132,7 +132,7 @@ Agent profiles can be changed without editing application code. TaskDeck merges 
 
 Each profile supports `id`, `label`, `command`, `description`, optional `diagnosticContainer`, optional `diagnosticWorkspace`, and optional `modelOptions`. The diagnostics panel uses the diagnostic fields to inspect/start configured Docker containers and check whether expected container workspace directories exist. Profiles without diagnostic container fields, such as host shell profiles, are launchable but omitted from container diagnostics. The committed container profiles run inside `ai-agent-sandbox-agent-1`.
 
-Codex App Server launches through `docker exec -i ... codex --sandbox danger-full-access app-server --listen stdio://` so TaskDeck can communicate over ordinary stdin/stdout pipes. The committed route uses `danger-full-access` inside the configured Docker container to avoid nested Codex sandbox setup there, and TaskDeck also passes `sandbox: "danger-full-access"` when starting App Server threads. TaskDeck does not otherwise synthesize Codex CLI/TUI reasoning, startup, or resume flags for this profile. Prefer machine-readable or non-TUI agent modes when an agent exposes one; keep the PTY path for shell and non-Codex provider compatibility.
+Codex App Server launches through `docker exec -i ... codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://` so TaskDeck can communicate over ordinary stdin/stdout pipes. The committed route uses `danger-full-access` inside the configured Docker container to avoid nested Codex sandbox setup there, and TaskDeck also passes full-access/no-approval overrides when starting App Server threads and turns. TaskDeck does not otherwise synthesize Codex CLI/TUI reasoning, startup, or resume flags for this profile. Prefer machine-readable or non-TUI agent modes when an agent exposes one; keep the PTY path for shell and non-Codex provider compatibility.
 
 ## Where To Change What
 

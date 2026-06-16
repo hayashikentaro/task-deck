@@ -4,7 +4,7 @@ import type { ChildSessionBatchRequest } from "./childSessionRequests";
 import type { TaskDeckContext } from "./types";
 
 const appServerCommand =
-  "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -i -w /workspace ai-agent-sandbox-agent-1 sh -lc 'exec codex --sandbox danger-full-access app-server --listen stdio://'";
+  "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -i -w /workspace ai-agent-sandbox-agent-1 sh -lc 'exec codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://'";
 
 const context: TaskDeckContext = {
   repoRoot: "/workspace/task-deck",
@@ -69,7 +69,7 @@ describe("buildChildTaskInputs", () => {
       agentLabel: "Codex App Server",
       command: appServerCommand,
     });
-    expect(result.inputs[0].command).toContain("codex --sandbox danger-full-access app-server --listen stdio://");
+    expect(result.inputs[0].command).toContain("codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://");
     expect(result.inputs[0].command).not.toContain("docker exec -it");
   });
 

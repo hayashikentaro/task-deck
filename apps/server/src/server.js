@@ -103,7 +103,7 @@ const defaultAgentProfiles = [
   {
     id: codexAppServerAgentProfileId,
     label: "Codex App Server",
-    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -i -w /workspace ai-agent-sandbox-agent-1 sh -lc 'exec codex --sandbox danger-full-access app-server --listen stdio://'",
+    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -i -w /workspace ai-agent-sandbox-agent-1 sh -lc 'exec codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://'",
     description: "Run the primary Codex App Server adapter inside the AI agent sandbox container",
     diagnosticContainer: "ai-agent-sandbox-agent-1",
     diagnosticWorkspace: "/workspace",
@@ -1652,6 +1652,7 @@ function sendCodexAppServerThreadStart(activeAppServer) {
         cwd,
         ephemeral: true,
         sandbox: "danger-full-access",
+        approvalPolicy: "never",
       });
     })
     .catch((error) => {
@@ -1675,6 +1676,8 @@ function sendCodexAppServerTurn(activeAppServer, text) {
   }
   sendCodexAppServerRequest(activeAppServer, "turn/start", {
     threadId: activeAppServer.threadId,
+    approvalPolicy: "never",
+    sandboxPolicy: { type: "dangerFullAccess" },
     input: [
       {
         type: "text",

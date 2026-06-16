@@ -72,7 +72,7 @@ This does not mean manager-to-session messaging is implemented. It means the run
 
 ## Current phase: Codex App Server-first route
 
-TaskDeck's Codex work-session route is the structured `codex --sandbox danger-full-access app-server --listen stdio://` adapter, not the Codex TUI transcript.
+TaskDeck's Codex work-session route is the structured `codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://` adapter, not the Codex TUI transcript.
 
 The intended direction is:
 
@@ -80,18 +80,18 @@ The intended direction is:
 TaskDeck UI
   -> TaskDeck server
   -> Codex App Server process over stdio JSON
-  -> structured turns / approvals / command output / user-input requests
+  -> structured turns / command output / user-input requests
   -> TaskDeck task state, logs, and supervision UI
 ```
 
-The committed `Codex App Server` profile is the only committed Codex work-session profile and runs inside `ai-agent-sandbox-agent-1` with `docker exec -i`, not `-it`, because the App Server path uses ordinary stdin/stdout pipes. It uses `danger-full-access` for the App Server process and App Server threads to avoid nested Codex sandbox setup inside the Docker container. Interactive Codex CLI/TUI profiles are intentionally absent from this branch to avoid mixing the old route with the App Server route.
+The committed `Codex App Server` profile is the only committed Codex work-session profile and runs inside `ai-agent-sandbox-agent-1` with `docker exec -i`, not `-it`, because the App Server path uses ordinary stdin/stdout pipes. It uses `danger-full-access` and `approvalPolicy: "never"` for the App Server process, App Server threads, and App Server turns to avoid nested Codex sandbox setup and command approval prompts inside the Docker container. Interactive Codex CLI/TUI profiles are intentionally absent from this branch to avoid mixing the old route with the App Server route.
 
 Implementation priorities for this phase:
 
 1. Keep App Server as the only committed Codex work-session profile.
 2. Preserve PTY-backed profiles for non-Codex providers and shell compatibility, not for Codex work sessions.
 3. Keep App Server JSON hidden from normal task logs while rendering human-readable assistant text, command output, and request state.
-4. Route App Server approvals, user-input requests, and command decisions through TaskDeck UI controls rather than raw transcript prompts.
+4. Route App Server user-input requests through TaskDeck UI controls rather than raw transcript prompts.
 5. Make child-session and manager-loop flows App Server-compatible before broadening feature work.
 6. Do not add Codex TUI parsing or committed Codex CLI/TUI launch profiles on this branch.
 
@@ -168,7 +168,7 @@ manager acknowledges / reviews / closes as appropriate
 ## Why this order
 
 - The current architectural focus is the App Server-first local TaskDeck implementation loop, not provider expansion, desktop packaging, or external decision services.
-- The App Server route gives TaskDeck structured Codex turns, approvals, command output, and user-input requests instead of relying on Codex TUI transcript interpretation.
+- The App Server route gives TaskDeck structured Codex turns, command output, and user-input requests instead of relying on Codex TUI transcript interpretation.
 - Worker agents should continue to communicate through append-only files and bounded status/reporting surfaces.
 - Worker sessions are project-bound; the manager session is a global TaskDeck supervisor launched from the TaskDeck control/document root.
 - Manager reads are file-based and global across projects: manager inbox, generated readable views, and file change notifications.

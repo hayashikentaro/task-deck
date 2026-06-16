@@ -8,7 +8,7 @@ GitHub Issues remain the source of truth for actionable work and completion stat
 
 TaskDeck is a supervision UI for multiple AI/CLI sessions.
 
-It is not a chatbot UI, a provider-specific Codex UI, or merely a prettier terminal. The medium-term direction is to make TaskDeck easier for other people to use while preserving the core supervision model. For Codex work sessions, the product route on this branch is App Server-only: use structured App Server events for turns, approvals, command output, and user-input requests, and keep PTY/TUI handling for shell and non-Codex provider compatibility.
+It is not a chatbot UI, a provider-specific Codex UI, or merely a prettier terminal. The medium-term direction is to make TaskDeck easier for other people to use while preserving the core supervision model. For Codex work sessions, the product route on this branch is App Server-only: use structured App Server events for turns, command output, and user-input requests, and keep PTY/TUI handling for shell and non-Codex provider compatibility.
 
 ## Medium-term themes
 
@@ -37,7 +37,7 @@ Related design doc:
 
 ### Codex App Server-first route
 
-Codex supervision should move away from transcript-driven TUI control and toward the structured `codex app-server --listen stdio://` adapter.
+Codex supervision should move away from transcript-driven TUI control and toward the structured `codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://` adapter.
 
 The current route is:
 
@@ -45,7 +45,7 @@ The current route is:
 - run the App Server inside `ai-agent-sandbox-agent-1` with `docker exec -i`;
 - keep raw App Server JSON out of normal logs;
 - render assistant text, command output, and App Server status as TaskDeck task output;
-- surface approval and user-input requests through TaskDeck controls;
+- surface user-input requests through TaskDeck controls;
 - keep committed Codex work sessions on the App Server route only;
 - avoid adding Codex TUI parsing or committed Codex CLI/TUI launch profiles.
 
