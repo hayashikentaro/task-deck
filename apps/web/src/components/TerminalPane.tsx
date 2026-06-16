@@ -20,6 +20,7 @@ type TerminalPaneProps = {
 
 const logTailLength = 200_000;
 const terminalFontSizeStorageKey = "taskdeck.terminalFontSize";
+const terminalDefaultFontSize = 16;
 const terminalFontSizes = [11, 12, 13, 14, 15, 16, 18];
 const terminalBottomScrollTolerancePx = 16;
 const transparentTerminalBackground = "rgba(0, 0, 0, 0)";
@@ -600,5 +601,5 @@ function isDirectInputDebugEnabled() {
 
 function readStoredTerminalFontSize() {
   const storedValue = Number(window.localStorage.getItem(terminalFontSizeStorageKey));
-  return terminalFontSizes.includes(storedValue) ? storedValue : 13;
+  return terminalFontSizes.includes(storedValue) ? storedValue : terminalDefaultFontSize;
 }
