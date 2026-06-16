@@ -18,6 +18,7 @@
   --status-selected: #5e948f;
   --status-active: #5e948f;
   --status-starting: #c6a45b;
+  --status-ready: #5e948f;
   --status-thinking: #b5a85e;
   --status-working: #5e948f;
   --status-needs-input: #d4bd5f;
@@ -837,6 +838,7 @@ dd {
 
 .task-list-item[data-tone="active"],
 .task-list-item[data-tone="starting"],
+.task-list-item[data-tone="ready"],
 .task-list-item[data-tone="thinking"],
 .task-list-item[data-tone="working"] {
   border-color: color-mix(in srgb, var(--task-card-border) 82%, var(--line));
@@ -1144,6 +1146,11 @@ dd {
 .task-badge[data-kind="agent-starting"] {
   border-color: var(--status-starting);
   color: var(--status-starting);
+}
+
+.task-badge[data-kind="agent-ready"] {
+  border-color: var(--status-ready);
+  color: var(--status-ready);
 }
 
 .task-badge[data-kind="agent-thinking"] {

@@ -103,7 +103,7 @@ const defaultAgentProfiles = [
   {
     id: codexAppServerAgentProfileId,
     label: "Codex App Server",
-    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -i -w /workspace ai-agent-sandbox-agent-1 sh -lc 'exec codex app-server --listen stdio://'",
+    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -i -w /workspace ai-agent-sandbox-agent-1 sh -lc 'exec codex --sandbox danger-full-access app-server --listen stdio://'",
     description: "Run the primary Codex App Server adapter inside the AI agent sandbox container",
     diagnosticContainer: "ai-agent-sandbox-agent-1",
     diagnosticWorkspace: "/workspace",
@@ -2456,7 +2456,7 @@ function updateCodexAppServerReady(activeAppServer, reason) {
   if (activeAppServer.authFailureDetected) {
     return;
   }
-  updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.THINKING, {
+  updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.READY, {
     reason,
     source: AgentStateSource.PROCESS,
     confidence: AgentStateConfidence.HIGH,

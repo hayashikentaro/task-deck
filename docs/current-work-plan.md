@@ -72,7 +72,7 @@ This does not mean manager-to-session messaging is implemented. It means the run
 
 ## Current phase: Codex App Server-first route
 
-TaskDeck's Codex work-session route is the structured `codex app-server --listen stdio://` adapter, not the Codex TUI transcript.
+TaskDeck's Codex work-session route is the structured `codex --sandbox danger-full-access app-server --listen stdio://` adapter, not the Codex TUI transcript.
 
 The intended direction is:
 
@@ -84,7 +84,7 @@ TaskDeck UI
   -> TaskDeck task state, logs, and supervision UI
 ```
 
-The committed `Codex App Server` profile is the only committed Codex work-session profile and runs inside `ai-agent-sandbox-agent-1` with `docker exec -i`, not `-it`, because the App Server path uses ordinary stdin/stdout pipes. Interactive Codex CLI/TUI profiles are intentionally absent from this branch to avoid mixing the old route with the App Server route.
+The committed `Codex App Server` profile is the only committed Codex work-session profile and runs inside `ai-agent-sandbox-agent-1` with `docker exec -i`, not `-it`, because the App Server path uses ordinary stdin/stdout pipes. It passes `--sandbox danger-full-access` to avoid nested Codex sandbox setup inside the Docker container. Interactive Codex CLI/TUI profiles are intentionally absent from this branch to avoid mixing the old route with the App Server route.
 
 Implementation priorities for this phase:
 

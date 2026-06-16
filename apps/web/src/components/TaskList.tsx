@@ -412,6 +412,7 @@ function taskTone(task: Task, runningTaskIds: Set<string>) {
   if (
     runningTaskIds.has(task.id) ||
     task.agentState === "starting" ||
+    task.agentState === "ready" ||
     task.agentState === "thinking" ||
     task.agentState === "working"
   ) {

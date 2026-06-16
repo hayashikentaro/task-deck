@@ -1,6 +1,7 @@
 export type TaskStatus = "idle" | "running" | "succeeded" | "failed" | "interrupted" | "closed";
 export type AgentState =
   | "starting"
+  | "ready"
   | "thinking"
   | "working"
   | "waiting_input"

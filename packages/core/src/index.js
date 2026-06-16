@@ -9,6 +9,7 @@ export const TaskStatus = Object.freeze({
 
 export const AgentState = Object.freeze({
   STARTING: "starting",
+  READY: "ready",
   THINKING: "thinking",
   WORKING: "working",
   WAITING_INPUT: "waiting_input",
