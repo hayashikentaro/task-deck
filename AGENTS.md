@@ -82,7 +82,9 @@ When asked to create TaskDeck child sessions or send parent-to-child instruction
 
 TaskDeck branch work uses `git worktree`.
 
-Use the main repository as the default base checkout when starting new branch work from scratch. If the current checkout is already on a feature branch selected by the user, continue using that checkout for that branch's development unless the user explicitly asks to move the work elsewhere.
+Use `develop` as the default active development branch. Treat `main` as a protected upstream/release branch: do not check out, edit on, commit to, or push `main` unless the user explicitly asks for `main` work.
+
+Use the current repository checkout as the default working checkout when starting branch work. If the current checkout is already on a branch selected by the user, continue using that checkout for that branch's development unless the user explicitly asks to move the work elsewhere.
 
 Create one worktree per branch and purpose for parallel development when parallel work is actually needed. Do not redirect a requested branch checkout to another existing worktree unless the user asked to use that worktree.
 
@@ -99,7 +101,7 @@ git status --short --branch
 git branch --show-current
 ```
 
-Continue on the current branch or worktree unless explicitly instructed otherwise. When the user asks to check out, switch to, or continue on a branch, perform that branch operation in the current checkout first, preserving user changes and reporting any blockers. `main` is an allowed working branch only for single-threaded low-risk work, repository maintenance that is intentionally main-targeted, or tasks where the user has not selected another branch.
+Continue on the current branch or worktree unless explicitly instructed otherwise. When the user asks to check out, switch to, or continue on a branch, perform that branch operation in the current checkout first, preserving user changes and reporting any blockers. If no branch is specified for ordinary development work, use `develop` rather than `main`.
 
 When committing and pushing, push back to the same branch that was current at the start of the task.
 
