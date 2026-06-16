@@ -1,5 +1,4 @@
-import { buildLaunchCommand, isCodexProfile } from "./agentLaunch";
-import { normalizeCodexReasoningEffort, type CodexPermissionLevel } from "./codexPermissions";
+import { buildLaunchCommand } from "./agentLaunch";
 import type { ChildSessionBatchRequest } from "./childSessionRequests";
 import type { CreateTaskInput, TaskDeckContext } from "./types";
 
@@ -26,10 +25,7 @@ export function buildChildTaskInputs(
       return { status: "rejected", error: `unknown agentProfileId "${session.agentProfileId}"` };
     }
 
-    const isCodex = isCodexProfile(profile);
-    const codexPermissionLevel = (session.agentPermissionLevel ?? "full_access") as CodexPermissionLevel;
-    const codexReasoningEffort = isCodex ? normalizeCodexReasoningEffort(session.agentReasoningEffort) : "";
-    const launchCommand = buildLaunchCommand(profile, "new", null, codexPermissionLevel, codexReasoningEffort);
+    const launchCommand = buildLaunchCommand(profile);
     if (!launchCommand.command) {
       return { status: "rejected", error: `empty launch command for agentProfileId "${session.agentProfileId}"` };
     }
@@ -43,8 +39,6 @@ export function buildChildTaskInputs(
       cwd: session.cwd,
       agentProfileId: profile.id,
       agentLabel: profile.label,
-      agentPermissionLevel: isCodex ? codexPermissionLevel : session.agentPermissionLevel,
-      agentReasoningEffort: isCodex && codexReasoningEffort ? codexReasoningEffort : undefined,
       sessionMode: "new",
       initialInstruction: session.initialInstruction,
       parentSessionId: parentTaskId,

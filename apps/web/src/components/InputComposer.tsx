@@ -48,7 +48,7 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
   const modeText = getComposerMode(task, isConnected, { isCodexAppServerNeedsAttention, isUnsupportedCancelActiveTask });
   const inputPlaceholder = canSend
     ? isCodexAppServerTask
-      ? "Send input to Codex task"
+      ? "Send input to Codex App Server task"
       : "Input to running task"
     : modeText;
   const inputState = getComposerInputState({ task, isConnected, isUploadingAttachments });

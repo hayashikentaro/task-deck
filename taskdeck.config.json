@@ -9,20 +9,6 @@
       "diagnosticWorkspace": "/workspace"
     },
     {
-      "id": "codex",
-      "label": "Codex PTY fallback",
-      "command": "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex'",
-      "description": "Run the Codex TUI inside the AI agent sandbox container when the App Server route is not suitable",
-      "diagnosticContainer": "ai-agent-sandbox-agent-1",
-      "diagnosticWorkspace": "/workspace",
-      "modelOptions": [
-        { "id": "default", "label": "Default" },
-        { "id": "gpt-5.5", "label": "gpt-5.5" },
-        { "id": "gpt-5.5-thinking", "label": "gpt-5.5 Thinking" },
-        { "id": "gpt-5.4-codex", "label": "gpt-5.4 Codex" }
-      ]
-    },
-    {
       "id": "claude",
       "label": "Claude",
       "command": "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 claude",
@@ -59,20 +45,6 @@
       "label": "zsh - host",
       "command": "zsh",
       "description": "Run zsh on the host in the selected project cwd"
-    },
-    {
-      "id": "taskdeck-manager",
-      "label": "TaskDeck Manager",
-      "command": "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex'",
-      "description": "Run a dedicated Codex manager session for reading TaskDeck manager inbox and readable context files",
-      "diagnosticContainer": "ai-agent-sandbox-agent-1",
-      "diagnosticWorkspace": "/workspace",
-      "modelOptions": [
-        { "id": "default", "label": "Default" },
-        { "id": "gpt-5.5", "label": "gpt-5.5" },
-        { "id": "gpt-5.5-thinking", "label": "gpt-5.5 Thinking" },
-        { "id": "gpt-5.4-codex", "label": "gpt-5.4 Codex" }
-      ]
     }
   ]
 }

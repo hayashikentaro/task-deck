@@ -8,7 +8,7 @@ GitHub Issues remain the source of truth for actionable work and completion stat
 
 TaskDeck is a supervision UI for multiple AI/CLI sessions.
 
-It is not a chatbot UI, a provider-specific Codex UI, or merely a prettier terminal. The medium-term direction is to make TaskDeck easier for other people to use while preserving the core supervision model. For Codex work sessions, the product route is now App Server-first: use structured App Server events for turns, approvals, command output, and user-input requests, and keep PTY/TUI handling as a compatibility fallback.
+It is not a chatbot UI, a provider-specific Codex UI, or merely a prettier terminal. The medium-term direction is to make TaskDeck easier for other people to use while preserving the core supervision model. For Codex work sessions, the product route on this branch is App Server-only: use structured App Server events for turns, approvals, command output, and user-input requests, and keep PTY/TUI handling for shell and non-Codex provider compatibility.
 
 ## Medium-term themes
 
@@ -46,8 +46,8 @@ The current route is:
 - keep raw App Server JSON out of normal logs;
 - render assistant text, command output, and App Server status as TaskDeck task output;
 - surface approval and user-input requests through TaskDeck controls;
-- keep `Codex PTY fallback` available only for workflows the App Server route cannot yet handle;
-- avoid adding new Codex TUI parsing unless it is a bounded fallback for explicit user-action prompts.
+- keep committed Codex work sessions on the App Server route only;
+- avoid adding Codex TUI parsing or committed Codex CLI/TUI launch profiles.
 
 This is still compatible with provider-neutral TaskDeck. The principle is not "Codex-only"; it is "prefer structured provider adapters over TUI transcript control whenever a provider exposes one."
 

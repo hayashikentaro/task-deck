@@ -2,9 +2,9 @@
 
 This document describes the supported file-based protocol for TaskDeck parent/child session coordination.
 
-The active control path for Codex parent sessions is file-based. Parent agents run TaskDeck writer scripts with ordinary CLI arguments. The writer scripts build JSON with fixed code, write request files under `.taskdeck/requests/`, and TaskDeck server reads those files.
+The active control path for App Server parent sessions is file-based. Parent agents run TaskDeck writer scripts with ordinary CLI arguments. The writer scripts build JSON with fixed code, write request files under `.taskdeck/requests/`, and TaskDeck server reads those files.
 
-Parent agents must not hand-write protocol JSON. Parent agents must not print stdout marker blocks as the Codex control path.
+Parent agents must not hand-write protocol JSON. Parent agents must not print stdout marker blocks as the App Server control path.
 
 Parent agents must not use platform-native multi-agent or sub-agent tools such as `multi_agent_v1.spawn_agent` to create TaskDeck child sessions. A platform-native sub-agent is not a TaskDeck child session because TaskDeck cannot supervise it, route file-based messages to it, or track its task metadata.
 
@@ -12,7 +12,7 @@ Parent agents must not use platform-native multi-agent or sub-agent tools such a
 
 ### Parent to TaskDeck: file-based request files
 
-Use file-based request files for Codex parent control operations.
+Use file-based request files for App Server parent control operations.
 
 Currently implemented:
 
@@ -31,18 +31,18 @@ Platform-native multi-agent or sub-agent tools, including `multi_agent_v1.spawn_
 
 ### Deprecated / debug-only stdout marker transport
 
-Stdout marker blocks are not the Codex parent control path.
+Stdout marker blocks are not the App Server parent control path.
 
 They may remain available for zsh/manual/debug smoke tests, but docs should not teach them as the normal way to create child sessions or send parent-to-child instructions.
 
 ## Create Child Session Request
 
-A Codex parent should create a child session by running the writer script:
+An App Server parent should create a child session by running the writer script:
 
 ```sh
 node scripts/write-child-session-request.mjs \
-  --title "Codex low child session" \
-  --work-package codex-low-standby \
+  --title "App Server child session" \
+  --work-package app-server-standby \
   --instruction "You are working on hayashikentaro/task-deck. First read AGENTS.md. Do not edit files yet. Report that you are ready and wait for a scoped parent instruction."
 ```
 
@@ -50,9 +50,7 @@ Do not use `multi_agent_v1.spawn_agent` or any other platform-native sub-agent t
 
 Defaults:
 
-- `--profile codex`
-- `--permission full_access`
-- `--reasoning low`
+- `--profile codex-app-server`
 - `--cwd .`
 - `--reason "Create a child session using the file-based TaskDeck request writer."`
 - `--file` may be repeated for `filesLikelyToChange`.
@@ -82,7 +80,7 @@ Accepted result shape:
 {
   "kind": "childSessionRequestResult",
   "version": 1,
-  "requestId": "codex-low-standby-20260608120000-a1b2c3",
+  "requestId": "app-server-standby-20260608120000-a1b2c3",
   "state": "accepted",
   "createdTaskIds": ["task_xxx"],
   "processedAt": "2026-06-08T12:00:01.000Z"
@@ -95,7 +93,7 @@ Rejected result shape:
 {
   "kind": "childSessionRequestResult",
   "version": 1,
-  "requestId": "codex-low-standby-20260608120000-a1b2c3",
+  "requestId": "app-server-standby-20260608120000-a1b2c3",
   "state": "rejected",
   "error": "parentTaskId \"task_xxx\" does not match an existing task.",
   "processedAt": "2026-06-08T12:00:01.000Z"
@@ -110,18 +108,16 @@ The writer creates JSON like this. Parent agents should not hand-write this file
 {
   "kind": "childSessionRequest",
   "version": 1,
-  "requestId": "codex-low-standby-20260608120000-a1b2c3",
+  "requestId": "app-server-standby-20260608120000-a1b2c3",
   "createdAt": "2026-06-08T12:00:00.000Z",
   "parentTaskId": "task_parent",
   "reason": "Create a child session using the file-based TaskDeck request writer.",
   "sessions": [
     {
-      "title": "Codex low child session",
-      "agentProfileId": "codex",
-      "agentPermissionLevel": "full_access",
-      "agentReasoningEffort": "low",
+      "title": "App Server child session",
+      "agentProfileId": "codex-app-server",
       "cwd": ".",
-      "workPackageId": "codex-low-standby",
+      "workPackageId": "app-server-standby",
       "filesLikelyToChange": [],
       "initialInstruction": "You are working on hayashikentaro/task-deck. First read AGENTS.md. Do not edit files yet. Report that you are ready and wait for a scoped parent instruction."
     }
@@ -143,8 +139,6 @@ Each `sessions[]` item:
 
 - `title`: user-facing task title for the child session.
 - `agentProfileId`: configured TaskDeck agent profile id to use.
-- `agentPermissionLevel`: permission level for the selected agent profile when applicable. Accepted values are `full_access`, `workspace_write`, and `read_only`.
-- `agentReasoningEffort`: optional Codex reasoning effort for Codex child sessions. Accepted values are `low`, `medium`, `high`, and `xhigh`.
 - `cwd`: intended working directory for the child session. Defaults to `.` from the writer.
 - `workPackageId`: stable id for this work package.
 - `filesLikelyToChange`: array of repo-relative paths or globs the child session is expected to touch.
@@ -154,7 +148,7 @@ Each `sessions[]` item:
 
 `cwd` is resolved and validated by the TaskDeck server before launch.
 
-For Codex parent operation, prefer the writer default:
+For parent operation, prefer the writer default:
 
 ```text
 cwd: .
@@ -196,11 +190,11 @@ Parent agents request `workPackageId` and `filesLikelyToChange`, but they do not
 
 ## Parent-To-Child Message Request
 
-A Codex parent should send follow-up instructions to an existing child session by running the writer script:
+An App Server parent should send follow-up instructions to an existing child session by running the writer script:
 
 ```sh
 node scripts/write-child-session-message-request.mjs \
-  --work-package codex-low-standby \
+  --work-package app-server-standby \
   --message "Please inspect issue #34 and report whether you need more context. Do not edit files."
 ```
 
@@ -241,7 +235,7 @@ Accepted result shape:
 {
   "kind": "childSessionMessageRequestResult",
   "version": 1,
-  "requestId": "message-codex-low-standby-20260608120000-a1b2c3",
+  "requestId": "message-app-server-standby-20260608120000-a1b2c3",
   "state": "accepted",
   "targetTaskId": "task_child",
   "processedAt": "2026-06-08T12:00:01.000Z"
@@ -254,9 +248,9 @@ Rejected result shape:
 {
   "kind": "childSessionMessageRequestResult",
   "version": 1,
-  "requestId": "message-codex-low-standby-20260608120000-a1b2c3",
+  "requestId": "message-app-server-standby-20260608120000-a1b2c3",
   "state": "rejected",
-  "error": "No child matched workPackageId codex-low-standby for this parent.",
+  "error": "No child matched workPackageId app-server-standby for this parent.",
   "processedAt": "2026-06-08T12:00:01.000Z"
 }
 ```
@@ -267,18 +261,18 @@ The writer creates JSON like this. Parent agents should not hand-write this file
 {
   "kind": "childSessionMessageRequest",
   "version": 1,
-  "requestId": "message-codex-low-standby-20260608120000-a1b2c3",
+  "requestId": "message-app-server-standby-20260608120000-a1b2c3",
   "createdAt": "2026-06-08T12:00:00.000Z",
   "parentTaskId": "task_parent",
   "target": {
-    "workPackageId": "codex-low-standby"
+    "workPackageId": "app-server-standby"
   },
   "message": "Please inspect issue #34 and report whether you need more context. Do not edit files.",
   "reason": "Parent follow-up instruction."
 }
 ```
 
-The old stdout marker path may exist for zsh/manual/debug use, but Codex parent sessions must use the writer script instead of marker blocks. This document intentionally does not describe the old marker format in detail.
+The old stdout marker path may exist for zsh/manual/debug use, but App Server parent sessions must use the writer script instead of marker blocks. This document intentionally does not describe the old marker format in detail.
 
 ## Child Status File Report
 
@@ -354,7 +348,7 @@ When a child task created from a parent request reports an attention-worthy stat
 .taskdeck/manager-inbox/<eventId>.ack.json
 ```
 
-The first MVP event type is `childStatusChanged` for child states `blocked`, `ready_for_review`, and `failed`. This inbox is intended for a future dedicated manager agent. It is not a push into the parent Codex task input, it is not a free-form child-to-parent chat channel, and it does not use platform-native sub-agent tooling.
+The first MVP event type is `childStatusChanged` for child states `blocked`, `ready_for_review`, and `failed`. This inbox is intended for a future dedicated manager agent. It is not a push into the parent task input, it is not a free-form child-to-parent chat channel, and it does not use platform-native sub-agent tooling.
 
 TaskDeck also generates manager-readable views from unread valid manager events:
 

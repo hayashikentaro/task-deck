@@ -33,10 +33,10 @@ import {
 describe("manager inbox event helpers", () => {
   it("creates a valid child status manager event", () => {
     const event = createManagerChildStatusEvent({
-      eventId: "child-status-codex-low-standby-ready",
+      eventId: "child-status-app-server-standby-ready",
       parentTaskId: "task_parent",
       childTaskId: "task_child",
-      workPackageId: "codex-low-standby",
+      workPackageId: "app-server-standby",
       state: "ready_for_review",
       summary: "Short child status summary.",
       artifacts: ["docs/example.md"],
@@ -48,10 +48,10 @@ describe("manager inbox event helpers", () => {
       kind: "taskDeckManagerEvent",
       version: 1,
       type: "childStatusChanged",
-      eventId: "child-status-codex-low-standby-ready",
+      eventId: "child-status-app-server-standby-ready",
       parentTaskId: "task_parent",
       childTaskId: "task_child",
-      workPackageId: "codex-low-standby",
+      workPackageId: "app-server-standby",
       state: "ready_for_review",
       summary: "Short child status summary.",
       artifacts: ["docs/example.md"],
@@ -100,7 +100,7 @@ describe("manager readable context helpers", () => {
       eventId: "child-status-readable-test",
       parentTaskId: "task_parent",
       childTaskId: "task_child",
-      workPackageId: "codex-low-standby",
+      workPackageId: "app-server-standby",
       state: "ready_for_review",
       summary: "Implementation is ready for review.",
       artifacts: ["docs/example.md"],
@@ -152,7 +152,7 @@ describe("manager readable context helpers", () => {
       eventId: "child-status-markdown-test",
       parentTaskId: "task_parent",
       childTaskId: "task_child",
-      workPackageId: "codex-low-standby",
+      workPackageId: "app-server-standby",
       state: "blocked",
       summary: "Need a decision.",
       artifacts: ["docs/example.md"],
@@ -246,7 +246,7 @@ describe("manager task metadata", () => {
   it("serializes manager task identity", () => {
     const task = createTask({
       title: "TaskDeck Manager session",
-      command: "codex",
+      command: "taskdeck-manager-app-server-placeholder",
       cwd: ".",
       agentProfileId: "taskdeck-manager",
       agentLabel: "TaskDeck Manager",
@@ -296,7 +296,7 @@ describe("read-manager-inbox script helpers", () => {
         eventId: "child-status-list-test",
         parentTaskId: "task_parent",
         childTaskId: "task_child",
-        workPackageId: "codex-low-standby",
+        workPackageId: "app-server-standby",
         state: "ready_for_review",
         summary: "Implementation is ready for review.",
         artifacts: ["docs/example.md"],
@@ -309,7 +309,7 @@ describe("read-manager-inbox script helpers", () => {
 
       expect(result.events).toEqual([event]);
       expect(output).toContain("Unread TaskDeck manager events: 1");
-      expect(output).toContain("[childStatusChanged] ready_for_review workPackage=codex-low-standby child=task_child");
+      expect(output).toContain("[childStatusChanged] ready_for_review workPackage=app-server-standby child=task_child");
       expect(output).toContain("Implementation is ready for review.");
       expect(output).toContain("- docs/example.md");
     } finally {

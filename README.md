@@ -1,6 +1,6 @@
 # TaskDeck
 
-TaskDeck is a local supervision UI for running and monitoring multiple AI agent tasks. Its Codex route is moving to the structured Codex App Server adapter so TaskDeck can supervise turns, approvals, command output, and user-input requests without treating a TUI transcript as the control protocol. Terminal-backed PTY profiles remain available as compatibility fallbacks.
+TaskDeck is a local supervision UI for running and monitoring multiple AI agent tasks. On this branch its Codex route uses the structured Codex App Server adapter so TaskDeck can supervise turns, approvals, command output, and user-input requests without treating a TUI transcript as the control protocol. Terminal-backed PTY profiles remain available for shell and non-Codex provider compatibility.
 
 ![TaskDeck screenshot](docs/assets/readme-attached-image.png)
 
@@ -71,7 +71,7 @@ Then edit `taskdeck.local.json`:
 
 ## Configure Agent Profiles
 
-TaskDeck ships with committed Codex App Server, Codex PTY fallback, Goose, Aider, Claude, and shell profiles that expect a Docker container named `ai-agent-sandbox-agent-1` with a `/workspace` directory. `Codex App Server` is the primary Codex work-session route and uses non-TTY stdio via `docker exec -i` so TaskDeck can exchange App Server JSON over pipes. The regular terminal-backed profiles use interactive `docker exec -it` commands and should be treated as fallbacks or provider-specific compatibility paths.
+TaskDeck ships with committed Codex App Server, Goose, Aider, Claude, and shell profiles that expect a Docker container named `ai-agent-sandbox-agent-1` with a `/workspace` directory. `Codex App Server` is the only committed Codex work-session route on this branch and uses non-TTY stdio via `docker exec -i` so TaskDeck can exchange App Server JSON over pipes. The regular terminal-backed profiles use interactive `docker exec -it` commands for non-Codex providers and shell compatibility.
 
 Keep normal fresh-clone project setup minimal by putting only `projectRoot` in `taskdeck.local.json`. If you need to override agent profiles, either add an `agentProfiles` array to `taskdeck.local.json`, copy `taskdeck.profiles.example.json` into another ignored local config file, or point `TASKDECK_CONFIG` at another config file.
 
@@ -81,7 +81,7 @@ For example:
 TASKDECK_CONFIG=/path/to/taskdeck.profiles.json npm run dev
 ```
 
-For TaskDeck-launched Codex PTY fallback sessions, TaskDeck adds `-c check_for_update_on_startup=false` to suppress Codex CLI startup update prompts in supervised PTY sessions. The App Server profile is not rewritten with TUI-only sandbox, reasoning, or startup flags.
+TaskDeck does not rewrite the App Server profile with Codex CLI/TUI sandbox, reasoning, startup, or resume flags. The committed route intentionally avoids interactive Codex CLI access; custom local profiles are outside the product route for this branch.
 
 Agent profiles merge by `id`: built-in defaults load first, then committed config, ignored local config, and finally `TASKDECK_CONFIG`.
 

@@ -462,10 +462,6 @@ dd {
   align-items: end;
 }
 
-.task-create-form.has-session-mode {
-  grid-template-columns: minmax(260px, 0.65fr) minmax(140px, 0.25fr) minmax(0, 1.25fr) auto;
-}
-
 .task-create-form label {
   display: grid;
   gap: 7px;
@@ -483,10 +479,7 @@ dd {
   padding: 0 16px;
 }
 
-.session-mode-field,
 .project-field,
-.codex-permission-field,
-.codex-reasoning-field,
 .agent-picker,
 .custom-resume-field,
 .custom-command-field {
@@ -1814,101 +1807,6 @@ dd {
   overflow: auto;
 }
 
-.codex-status-panel {
-  min-width: 0;
-  margin-top: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-}
-
-.codex-status-heading {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  align-items: center;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--line);
-}
-
-.codex-status-heading h2 {
-  color: var(--text-secondary);
-}
-
-.codex-status-heading .td-icon-button[data-loading="true"] svg {
-  animation: codex-status-spin 0.9s linear infinite;
-}
-
-@keyframes codex-status-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.codex-status-body {
-  display: grid;
-  gap: 8px;
-  padding: 12px;
-}
-
-.codex-status-row {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 48px minmax(24px, 1fr) 34px minmax(58px, auto);
-  gap: 7px;
-  align-items: center;
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
-.codex-status-label {
-  color: var(--status-muted);
-}
-
-.codex-status-meter {
-  height: 8px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface-input);
-}
-
-.codex-status-meter span {
-  height: 100%;
-  display: block;
-  border-radius: inherit;
-}
-
-.codex-status-meter[data-tone="green"] span {
-  background: var(--status-done);
-}
-
-.codex-status-meter[data-tone="yellow"] span {
-  background: var(--status-focus);
-}
-
-.codex-status-meter[data-tone="red"] span {
-  background: var(--status-failed);
-}
-
-.codex-status-meter[data-tone="empty"] span {
-  background: transparent;
-}
-
-.codex-status-percent {
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.codex-status-reset {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--status-muted);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .tools-panel {
   min-width: 0;
   margin-top: 12px;
@@ -2014,8 +1912,7 @@ dd {
   overflow: hidden;
 }
 
-.task-create-form,
-.task-create-form.has-session-mode {
+.task-create-form {
   display: grid;
   grid-template-columns: 1fr;
   gap: 12px;

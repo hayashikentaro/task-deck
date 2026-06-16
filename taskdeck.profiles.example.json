@@ -7,18 +7,6 @@
       "description": "Primary Codex route. Put machine-local profile commands in taskdeck.local.json or a TASKDECK_CONFIG file."
     },
     {
-      "id": "codex",
-      "label": "Codex PTY fallback",
-      "command": "replace with your fallback Codex TUI launch command",
-      "description": "Fallback profile for workflows that cannot use the App Server route yet."
-    },
-    {
-      "id": "taskdeck-manager",
-      "label": "TaskDeck Manager",
-      "command": "replace with your manager launch command",
-      "description": "Example placeholder for a dedicated manager session. Keep manager sessions rooted at the TaskDeck control/document root."
-    },
-    {
       "id": "zsh-host",
       "label": "zsh - host",
       "command": "zsh",

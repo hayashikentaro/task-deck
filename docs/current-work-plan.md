@@ -72,7 +72,7 @@ This does not mean manager-to-session messaging is implemented. It means the run
 
 ## Current phase: Codex App Server-first route
 
-TaskDeck's Codex work-session route should move toward the structured `codex app-server --listen stdio://` adapter instead of treating the Codex TUI transcript as the primary control surface.
+TaskDeck's Codex work-session route is the structured `codex app-server --listen stdio://` adapter, not the Codex TUI transcript.
 
 The intended direction is:
 
@@ -84,16 +84,16 @@ TaskDeck UI
   -> TaskDeck task state, logs, and supervision UI
 ```
 
-The committed `Codex App Server` profile is the default Codex work-session profile and runs inside `ai-agent-sandbox-agent-1` with `docker exec -i`, not `-it`, because the App Server path uses ordinary stdin/stdout pipes. The `Codex PTY fallback` profile remains available for cases where the App Server route cannot yet support a workflow.
+The committed `Codex App Server` profile is the only committed Codex work-session profile and runs inside `ai-agent-sandbox-agent-1` with `docker exec -i`, not `-it`, because the App Server path uses ordinary stdin/stdout pipes. Interactive Codex CLI/TUI profiles are intentionally absent from this branch to avoid mixing the old route with the App Server route.
 
 Implementation priorities for this phase:
 
-1. Keep App Server as the default Codex work-session profile.
-2. Preserve PTY-backed profiles as explicit compatibility fallbacks, not the product direction.
+1. Keep App Server as the only committed Codex work-session profile.
+2. Preserve PTY-backed profiles for non-Codex providers and shell compatibility, not for Codex work sessions.
 3. Keep App Server JSON hidden from normal task logs while rendering human-readable assistant text, command output, and request state.
 4. Route App Server approvals, user-input requests, and command decisions through TaskDeck UI controls rather than raw transcript prompts.
-5. Make child-session, saved-session, and manager-loop flows App Server-compatible before broadening feature work.
-6. Avoid adding new Codex TUI parsing unless it is a bounded fallback for explicit user-action prompts.
+5. Make child-session and manager-loop flows App Server-compatible before broadening feature work.
+6. Do not add Codex TUI parsing or committed Codex CLI/TUI launch profiles on this branch.
 
 ## Next phase: manager-mediated implementation loop (#64)
 

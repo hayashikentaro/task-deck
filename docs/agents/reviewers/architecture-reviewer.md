@@ -24,7 +24,7 @@ Pay special attention to these drift risks:
 - `attentionState` is not a full task lifecycle model.
 - `Needs you` / `Not now` is a supervision surface, not an invitation to add many user-facing buckets.
 - App Server status/request events and PTY output/repaint activity are process observations, not product identity.
-- Adapter-specific behavior should stay isolated enough that Codex App Server, Goose, Codex PTY fallback, and generic tuning do not accidentally rewrite each other.
+- Adapter-specific behavior should stay isolated enough that Codex App Server, Goose, and generic tuning do not accidentally rewrite each other.
 - Task/session identity and supervision urgency should not become competing full-card state systems.
 - Child-session launch should build commands from trusted local profiles, not raw parent output.
 

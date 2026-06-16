@@ -16,7 +16,7 @@ const requestDirectory = path.join(repoRoot, ".taskdeck", "requests", "child-mes
 function usage() {
   return `Usage:
   node scripts/write-child-session-message-request.mjs \\
-    --work-package codex-low-standby \\
+    --work-package app-server-standby \\
     --message "Please inspect issue #34 and report whether you need more context. Do not edit files."
 
 Options:

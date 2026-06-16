@@ -203,10 +203,10 @@ If a task-specific user instruction conflicts with this file, stop and report th
 - Treat `attentionState` as the supervision UI's primary signal for whether the user should look at a task.
 - Agent state should be driven primarily by TaskDeck events such as start, input, Codex App Server status/request events, PTY output activity, and exit.
 - Do not infer thinking from silence; quiet running PTYs should keep their last known supervisor state until a stronger signal arrives.
-- For Codex work sessions, prefer Codex App Server status/request events over Codex TUI transcript matching.
+- For Codex work sessions, use Codex App Server status/request events as the control signal.
 - Treat TUI text matching as a fallback for explicit user-action prompts only.
-- Do not add one-off Goose/Codex PTY fallback spinner phrases to infer thinking.
-- Keep agent state inference split by adapter (`codex-app-server`, `goose`, `codex-pty-fallback`, and `generic`).
+- Do not add one-off terminal spinner phrases to infer thinking.
+- Keep agent state inference split by adapter (`codex-app-server`, `goose`, and `generic`).
 - Approval prompts may override immediately, but input-prompt fallback should be gated by PTY activity.
 - PTY activity signals should remain in-memory process observations, not persisted task metadata.
 - Agent session metadata is best-effort and should not assume every agent exposes stable ids.

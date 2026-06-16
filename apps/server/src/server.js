@@ -109,20 +109,6 @@ const defaultAgentProfiles = [
     diagnosticWorkspace: "/workspace",
   },
   {
-    id: "codex",
-    label: "Codex PTY fallback",
-    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex'",
-    description: "Run the Codex TUI inside the AI agent sandbox container when the App Server route is not suitable",
-    diagnosticContainer: "ai-agent-sandbox-agent-1",
-    diagnosticWorkspace: "/workspace",
-    modelOptions: [
-      { id: "default", label: "Default" },
-      { id: "gpt-5.5", label: "gpt-5.5" },
-      { id: "gpt-5.5-thinking", label: "gpt-5.5 Thinking" },
-      { id: "gpt-5.4-codex", label: "gpt-5.4 Codex" },
-    ],
-  },
-  {
     id: "claude",
     label: "Claude",
     command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 claude",
@@ -160,20 +146,6 @@ const defaultAgentProfiles = [
     command: "zsh",
     description: "Run zsh on the host in the selected project cwd",
   },
-  {
-    id: managerAgentProfileId,
-    label: "TaskDeck Manager",
-    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex'",
-    description: "Run a dedicated Codex manager session for reading TaskDeck manager inbox and readable context files",
-    diagnosticContainer: "ai-agent-sandbox-agent-1",
-    diagnosticWorkspace: "/workspace",
-    modelOptions: [
-      { id: "default", label: "Default" },
-      { id: "gpt-5.5", label: "gpt-5.5" },
-      { id: "gpt-5.5-thinking", label: "gpt-5.5 Thinking" },
-      { id: "gpt-5.4-codex", label: "gpt-5.4 Codex" },
-    ],
-  },
 ];
 
 const app = express();
@@ -197,8 +169,6 @@ const maxLogLength = 250_000;
 const terminalEnter = "\r";
 const bracketedPasteStart = "\x1b[200~";
 const bracketedPasteEnd = "\x1b[201~";
-const codexInputHoldMs = 5000;
-const codexStatusRefreshTimeoutMs = 16_000;
 const inputPromptStabilizationMs = 750;
 const ptyActivityWindowMs = 3000;
 const maxPtyActivityFrames = 40;
@@ -260,25 +230,6 @@ app.get("/api/context", async (_request, response) => {
 
 app.get("/api/diagnostics", async (_request, response) => {
   response.json(await buildDiagnostics());
-});
-
-app.post("/api/codex-status/refresh", async (_request, response) => {
-  try {
-    response.json({
-      status: await refreshCodexStatusInHiddenSession(),
-    });
-  } catch (error) {
-    if (error instanceof CodexStatusRefreshError) {
-      console.warn("TaskDeck hidden Codex status refresh failed:", {
-        message: error.message,
-        ...error.debug,
-      });
-      response.status(500).json({ error: error.message, debug: error.debug });
-      return;
-    }
-    console.warn(`TaskDeck hidden Codex status refresh failed: ${error.message || error}`);
-    response.status(500).json({ error: error.message || "Unable to refresh Codex status." });
-  }
 });
 
 app.post("/api/diagnostics/containers/:containerName/start", async (request, response) => {
@@ -346,37 +297,6 @@ app.get("/api/tasks", (_request, response) => {
   });
 });
 
-app.get("/api/agent-sessions", async (_request, response) => {
-  response.json({
-    sessions: await listSavedCodexSessions(),
-  });
-});
-
-app.patch("/api/agent-sessions/:sessionKey/label", async (request, response) => {
-  const sessionKey = String(request.params.sessionKey || "").trim();
-  const label = String(request.body?.label || "").trim();
-
-  if (!label) {
-    response.status(400).json({ error: "TaskDeck display name is required." });
-    return;
-  }
-
-  const sessions = await listSavedCodexSessions();
-  if (!sessions.some((session) => session.key === sessionKey)) {
-    response.status(404).json({ error: "Saved session not found." });
-    return;
-  }
-
-  await renameSessionLabel(sessionKey, label);
-  broadcastTasks();
-
-  response.json({
-    ok: true,
-    sessions: await listSavedCodexSessions(),
-    tasks: listTasks(),
-  });
-});
-
 app.patch("/api/tasks/:taskId/title", async (request, response) => {
   const { taskId } = request.params;
   const task = tasks.get(taskId);
@@ -399,7 +319,6 @@ app.patch("/api/tasks/:taskId/title", async (request, response) => {
     ok: true,
     task: serializeTaskForClient(tasks.get(taskId)),
     tasks: listTasks(),
-    sessions: await listSavedCodexSessions(),
   });
 });
 
@@ -670,8 +589,6 @@ wss.on("connection", (socket) => {
           cwd: String(message.cwd || "").trim(),
           agentProfileId: String(message.agentProfileId || "").trim(),
           agentLabel: String(message.agentLabel || "").trim(),
-          agentPermissionLevel: String(message.agentPermissionLevel || "").trim(),
-          agentReasoningEffort: String(message.agentReasoningEffort || "").trim(),
           agentModel: String(message.agentModel || "").trim(),
           sessionMode: String(message.sessionMode || "").trim(),
           resumeCommand: String(message.resumeCommand || "").trim(),
@@ -834,17 +751,6 @@ function childSessionStartGroupKey({ childSessionRequestKey, parentSessionId, wo
   return requestKey ? `request:${requestKey}` : "";
 }
 
-function childSessionStartPreferenceScore({ agentReasoningEffort, command }) {
-  let score = 0;
-  if (String(agentReasoningEffort || "").trim()) {
-    score += 2;
-  }
-  if (String(command || "").includes("model_reasoning_effort")) {
-    score += 1;
-  }
-  return score;
-}
-
 function hasExistingChildForParentWorkPackage(parentSessionId, workPackageId) {
   const parentId = String(parentSessionId || "").trim();
   const packageId = String(workPackageId || "").trim();
@@ -898,27 +804,19 @@ function scheduleChildSessionStart(startInput, socket) {
   }
 
   const existing = pendingChildSessionStarts.get(groupKey);
-  const preferenceScore = childSessionStartPreferenceScore(startInput);
 
   if (existing) {
     for (const dedupeKey of dedupeKeys) {
       existing.dedupeKeys.add(dedupeKey);
     }
 
-    if (preferenceScore > existing.preferenceScore) {
-      existing.startInput = startInput;
-      existing.socket = socket;
-      existing.preferenceScore = preferenceScore;
-    } else {
-      rejectDuplicateChildSessionStart(socket);
-    }
+    rejectDuplicateChildSessionStart(socket);
     return;
   }
 
   const pending = {
     startInput,
     socket,
-    preferenceScore,
     dedupeKeys: new Set(dedupeKeys),
     timeout: null,
   };
@@ -970,8 +868,6 @@ async function startTaskNow({
   cwd,
   agentProfileId,
   agentLabel,
-  agentPermissionLevel,
-  agentReasoningEffort,
   agentModel,
   sessionMode,
   resumeCommand,
@@ -1004,7 +900,6 @@ async function startTaskNow({
     command: effectiveCommand,
     initialInstruction,
   });
-  const detectedAgentSession = detectInitialAgentSession(effectiveCommand, agentProfileId, agentLabel);
   const explicitAgentSession = normalizeExplicitAgentSession({
     agentSessionProvider,
     agentSessionId,
@@ -1020,8 +915,6 @@ async function startTaskNow({
     cwd: resolvedCwd,
     agentProfileId,
     agentLabel,
-    agentPermissionLevel,
-    agentReasoningEffort,
     agentModel: agentModel || modelFromCommand(effectiveCommand),
     sessionMode,
     resumeCommand,
@@ -1032,7 +925,6 @@ async function startTaskNow({
     workPackageId,
     filesLikelyToChange,
     isManager: isManagerLaunch,
-    ...detectedAgentSession,
     ...explicitAgentSession,
   });
   const childStatusFile = await ensureChildStatusFilePath(baseTask);
@@ -1090,7 +982,6 @@ async function startTaskNow({
         return;
       }
       appendLog(task.id, data);
-      updateAgentSessionFromOutput(task.id, data);
       updateAgentStateFromPtyOutput(activePty, data);
       broadcast({ type: "output", taskId: task.id, data });
     });
@@ -1248,10 +1139,7 @@ async function buildChildSessionFileStartInputs(request, parentTask) {
       return { ok: false, error: `unknown agentProfileId "${session.agentProfileId}"` };
     }
 
-    const isCodex = isCodexProfile(profile);
-    const agentPermissionLevel = isCodex ? (session.agentPermissionLevel || "full_access") : (session.agentPermissionLevel || "");
-    const agentReasoningEffort = isCodex ? normalizeCodexReasoningEffort(session.agentReasoningEffort) : "";
-    const command = buildServerLaunchCommand(profile, agentPermissionLevel, agentReasoningEffort);
+    const command = String(profile.command || "").trim();
 
     if (!command) {
       return { ok: false, error: `empty launch command for agentProfileId "${session.agentProfileId}"` };
@@ -1263,8 +1151,6 @@ async function buildChildSessionFileStartInputs(request, parentTask) {
       cwd: session.cwd,
       agentProfileId: profile.id,
       agentLabel: profile.label,
-      agentPermissionLevel,
-      agentReasoningEffort,
       sessionMode: "new",
       initialInstruction: session.initialInstruction,
       parentSessionId: parentTask.id,
@@ -1434,94 +1320,6 @@ async function fileExists(filePath) {
   }
 }
 
-function isCodexProfile(profile) {
-  if (String(profile.id || "").trim() === codexAppServerAgentProfileId) {
-    return false;
-  }
-  return (
-    String(profile.id || "").includes("codex") ||
-    String(profile.label || "").toLowerCase().includes("codex") ||
-    /\bcodex\b/.test(String(profile.command || ""))
-  );
-}
-
-function buildServerLaunchCommand(profile, codexPermissionLevel, codexReasoningEffort) {
-  const command = String(profile.command || "").trim();
-  if (!isCodexProfile(profile)) {
-    return command;
-  }
-
-  return applyCodexTaskDeckStartupArgsToCommand(
-    applyCodexReasoningEffortToCommand(
-      applyCodexPermissionToCommand(command, codexPermissionLevel),
-      codexReasoningEffort,
-    ),
-  );
-}
-
-const codexCommandTokenPattern = /(^|[^-\w])codex(?![-\w])/i;
-const codexCommandWithPermissionPattern =
-  /(^|[^-\w])codex(?![-\w])(?:(?:\s+--dangerously-bypass-approvals-and-sandbox)|(?:\s+--sandbox\s+(?:read-only|workspace-write|danger-full-access)))*/i;
-const codexReasoningEffortArgPattern = /\s+-c\s+model_reasoning_effort=(?:"[^"]*"|'[^']*'|[^\s]+)/gi;
-const codexStartupUpdateCheckArgPattern = /\s+-c\s+check_for_update_on_startup=(?:"[^"]*"|'[^']*'|[^\s]+)/gi;
-const codexReasoningEfforts = new Set(["low", "medium", "high", "xhigh"]);
-const codexStartupUpdateCheckArgs = "-c check_for_update_on_startup=false";
-
-function normalizeCodexReasoningEffort(value) {
-  return codexReasoningEfforts.has(value) ? value : "";
-}
-
-function codexPermissionArgs(permissionLevel) {
-  if (permissionLevel === "workspace_write") return "--sandbox workspace-write";
-  if (permissionLevel === "read_only") return "--sandbox read-only";
-  return "--dangerously-bypass-approvals-and-sandbox";
-}
-
-function codexReasoningEffortArgs(reasoningEffort) {
-  const normalizedReasoningEffort = normalizeCodexReasoningEffort(reasoningEffort);
-  return normalizedReasoningEffort ? `-c model_reasoning_effort="${normalizedReasoningEffort}"` : "";
-}
-
-function codexTaskDeckStartupArgs() {
-  return codexStartupUpdateCheckArgs;
-}
-
-function applyCodexPermissionToCommand(command, permissionLevel) {
-  if (!command) {
-    return command;
-  }
-
-  const args = codexPermissionArgs(permissionLevel);
-  return command.replace(codexCommandWithPermissionPattern, (match, prefix) => {
-    return `${prefix}codex ${args}`;
-  });
-}
-
-function applyCodexReasoningEffortToCommand(command, reasoningEffort) {
-  if (!command) {
-    return command;
-  }
-
-  const args = codexReasoningEffortArgs(reasoningEffort);
-  if (!args) {
-    return command;
-  }
-
-  return command
-    .replace(codexReasoningEffortArgPattern, "")
-    .replace(codexCommandTokenPattern, (_match, prefix) => `${prefix}codex ${args}`);
-}
-
-function applyCodexTaskDeckStartupArgsToCommand(command) {
-  if (!command) {
-    return command;
-  }
-
-  return command
-    .replace(codexStartupUpdateCheckArgPattern, "")
-    .replace(codexCommandTokenPattern, (_match, prefix) => `${prefix}codex ${codexTaskDeckStartupArgs()}`);
-}
-
 function assignTaskIdentityColorSlot() {
   const slotUseCounts = Array.from({ length: TASK_IDENTITY_COLOR_SLOT_COUNT }, () => 0);
 
@@ -1544,12 +1342,11 @@ function assignTaskIdentityColorSlot() {
 }
 
 function createActivePty(task, process) {
-  const inputHoldUntil = isCodexLikeTask(task) ? Date.now() + codexInputHoldMs : 0;
   const activePty = {
     taskId: task.id,
     process,
     createdAt: Date.now(),
-    inputHoldUntil,
+    inputHoldUntil: 0,
     inputQueue: [],
     flushTimer: null,
     activity: createPtyActivity(),
@@ -4079,248 +3876,6 @@ function normalizeTerminalInput(input) {
   return String(input).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
-async function refreshCodexStatusInHiddenSession() {
-  const profile = await findCodexStatusProfile();
-  if (!profile) {
-    throw new Error("No Codex container profile is configured.");
-  }
-
-  const status = await queryCodexStatusWithHiddenPty(profile.command);
-  return {
-    ...status,
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-async function findCodexStatusProfile() {
-  const profiles = await loadAgentProfiles();
-  return (
-    profiles.find((profile) => profile.id === "codex" && isCodexStatusProfile(profile)) ??
-    profiles.find((profile) => isCodexStatusProfile(profile)) ??
-    null
-  );
-}
-
-function isCodexStatusProfile(profile) {
-  const haystack = `${profile.id || ""} ${profile.label || ""} ${profile.command || ""}`.toLowerCase();
-  return Boolean(profile.diagnosticContainer) && /\bcodex\b/.test(haystack) && /\bdocker\b[\s\S]*\bexec\b/.test(profile.command || "");
-}
-
-class CodexStatusRefreshError extends Error {
-  constructor(message, debug) {
-    super(message);
-    this.name = "CodexStatusRefreshError";
-    this.debug = debug;
-  }
-}
-
-function queryCodexStatusWithHiddenPty(command) {
-  return new Promise((resolve, reject) => {
-    let output = "";
-    let settled = false;
-    let terminalProcess;
-    let exited = false;
-    let timedOut = false;
-    let sentStatusCount = 0;
-    const timers = [];
-
-    const buildDebug = () => codexStatusDebug(output, {
-      sentStatusCount,
-      exited,
-      timedOut,
-    });
-
-    const settle = (error, status) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timeoutTimer);
-      timers.forEach((timer) => clearTimeout(timer));
-      if (terminalProcess) {
-        try {
-          terminalProcess.kill();
-        } catch {
-          // Hidden status sessions are best-effort and may already have exited.
-        }
-      }
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve(status);
-    };
-
-    const timeoutTimer = setTimeout(() => {
-      timedOut = true;
-      settle(new CodexStatusRefreshError("Codex status refresh timed out.", buildDebug()));
-    }, codexStatusRefreshTimeoutMs);
-
-    try {
-      terminalProcess = pty.spawn(shell, ["-lc", command], {
-        name: "xterm-256color",
-        cols: 100,
-        rows: 28,
-        cwd: repoRoot,
-        env: {
-          ...process.env,
-          TERM: "xterm-256color",
-        },
-      });
-    } catch (error) {
-      settle(new CodexStatusRefreshError(error.message || "Unable to start hidden Codex status session.", buildDebug()));
-      return;
-    }
-
-    const sendStatus = (reason) => {
-      if (settled || !terminalProcess || sentStatusCount >= 2) {
-        return;
-      }
-      sentStatusCount += 1;
-      if (inputDebugEnabled) {
-        console.log(`[TaskDeck codex-status] sent /status reason=${reason} count=${sentStatusCount}`);
-      }
-      terminalProcess.write(formatAgentInputForPty("/status"));
-    };
-
-    terminalProcess.onData((data) => {
-      output = `${output}${data}`.slice(-16_000);
-      const status = parseCodexStatusOutput(output);
-      if (status?.fiveHour && status?.weekly) {
-        settle(null, status);
-        return;
-      }
-      if (sentStatusCount === 0 && hiddenCodexOutputLooksReady(output)) {
-        sendStatus("ready-output");
-      }
-    });
-
-    terminalProcess.onExit(() => {
-      exited = true;
-      const status = parseCodexStatusOutput(output);
-      if (status?.fiveHour && status?.weekly) {
-        settle(null, status);
-        return;
-      }
-      settle(new CodexStatusRefreshError("Codex status output was unavailable.", buildDebug()));
-    });
-
-    timers.push(
-      setTimeout(() => sendStatus("startup-fallback"), 3_000),
-      setTimeout(() => {
-        if (!parseCodexStatusOutput(output)) {
-          sendStatus("retry-no-status");
-        }
-      }, 8_000),
-    );
-  });
-}
-
-function hiddenCodexOutputLooksReady(output) {
-  const text = normalizeCodexStatusOutput(output).toLowerCase();
-  return (
-    /\bcodex\b/.test(text) &&
-    (/(input|prompt|type|enter|ready)/.test(text) || /(?:^|\n)\s*[>›]\s*$/.test(text) || text.length > 800)
-  );
-}
-
-function codexStatusDebug(output, details) {
-  const normalizedOutput = normalizeCodexStatusOutput(output);
-  return {
-    outputTail: normalizedOutput.slice(-1500),
-    sawFiveHour: /5h\s+limit\s*:/i.test(normalizedOutput),
-    sawWeekly: /weekly\s+limit\s*:/i.test(normalizedOutput),
-    sentStatusCount: details.sentStatusCount,
-    exited: details.exited,
-    timedOut: details.timedOut,
-  };
-}
-
-function normalizeCodexStatusOutput(output) {
-  return stripTerminalControlSequences(String(output))
-    .split("\n")
-    .map((line) => removeTerminalBoxDrawing(line).replace(/\s+/g, " ").trim())
-    .filter(Boolean)
-    .join("\n");
-}
-
-function parseCodexStatusOutput(output) {
-  const statusBlock = latestCompleteCodexStatusBlock(output);
-  if (!statusBlock) {
-    return null;
-  }
-
-  const fiveHour = parseCodexStatusLine(statusBlock.fiveHourLine, "5h limit");
-  const weekly = parseCodexStatusLine(statusBlock.weeklyLine, "Weekly limit");
-
-  return {
-    ...(fiveHour ? { fiveHour: { remainingPercent: fiveHour.percent, resetLabel: fiveHour.resetLabel } } : {}),
-    ...(weekly ? { weekly: { remainingPercent: weekly.percent, resetLabel: weekly.resetLabel } } : {}),
-  };
-}
-
-function latestCompleteCodexStatusBlock(output) {
-  const lines = normalizeCodexStatusOutput(output).split("\n").filter(Boolean);
-
-  for (let weeklyIndex = lines.length - 1; weeklyIndex >= 0; weeklyIndex -= 1) {
-    if (!statusLineHasLabel(lines[weeklyIndex], "Weekly limit")) {
-      continue;
-    }
-
-    const fiveHourIndex = findPreviousStatusLineIndex(lines, weeklyIndex - 1, "5h limit");
-    if (fiveHourIndex === -1) {
-      continue;
-    }
-
-    return {
-      fiveHourLine: lines[fiveHourIndex],
-      weeklyLine: lines[weeklyIndex],
-    };
-  }
-
-  return null;
-}
-
-function findPreviousStatusLineIndex(lines, startIndex, label) {
-  for (let index = startIndex; index >= 0; index -= 1) {
-    if (statusLineHasLabel(lines[index], label)) {
-      return index;
-    }
-  }
-  return -1;
-}
-
-function statusLineHasLabel(line, label) {
-  return new RegExp(`${labelPatternForRegex(label)}\\s*:`, "i").test(line);
-}
-
-function parseCodexStatusLine(line, label) {
-  const labelPattern = labelPatternForRegex(label);
-  const match = line.match(new RegExp(`${labelPattern}\\s*:\\s*.*?(\\d{1,3})%\\s+left(?:\\s+\\(resets\\s+([^)]+)\\))?`, "i"));
-  if (!match) {
-    return null;
-  }
-  return {
-    percent: clampPercent(Number(match[1])),
-    resetLabel: String(match[2] || "").trim(),
-  };
-}
-
-function labelPatternForRegex(label) {
-  return label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
-}
-
-function removeTerminalBoxDrawing(value) {
-  return String(value).replace(/[\u2500-\u257f]/g, " ");
-}
-
-function clampPercent(value) {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-  return Math.min(100, Math.max(0, Math.round(value)));
-}
-
 function modelFromCommand(command) {
   const match = String(command || "").match(/(?:^|\s)(?:--model|-m)\s+(?:"([^"]+)"|'([^']+)'|([^\s]+))/);
   return match?.[1] || match?.[2] || match?.[3] || "";
@@ -4621,24 +4176,13 @@ async function serverAccessiblePathForHostCwd(hostCwd) {
 }
 
 function normalizeStoredTaskAgentState(task) {
-  const normalizedTask = {
+  return {
     ...task,
     agentModel: String(task.agentModel || ""),
     isManager: normalizeBoolean(task.isManager) || isManagerAgentProfileId(task.agentProfileId),
     agentState: task.agentState ?? inferAgentStateFromStatus(task),
     attachments: normalizeTaskAttachmentsForServer(task.attachments),
   };
-  if (normalizedTask.agentSessionId && isCodexLikeTask(normalizedTask)) {
-    const agentSessionResumeCommand =
-      normalizedTask.agentSessionResumeCommand || buildCodexSessionResumeCommand(normalizedTask, normalizedTask.agentSessionId);
-    const nextTask = {
-      ...normalizedTask,
-      agentSessionProvider: normalizedTask.agentSessionProvider || "codex",
-      agentSessionResumeCommand,
-    };
-    return withDetectedResumeCommand(nextTask, agentSessionResumeCommand);
-  }
-  return normalizedTask;
 }
 
 function normalizePendingAttachmentRefs(attachments) {
@@ -4756,27 +4300,6 @@ function isSafeAttachmentId(id) {
   return /^[0-9a-f-]{36}$/i.test(id);
 }
 
-function detectInitialAgentSession(command, agentProfileId, agentLabel) {
-  if (!isCodexLikeTask({ command, agentProfileId, agentLabel })) {
-    return {};
-  }
-
-  const explicitResumeId = extractCodexResumeId(command);
-  if (!explicitResumeId) {
-    return {};
-  }
-
-  const agentSessionResumeCommand = buildCodexSessionResumeCommand({ command, agentProfileId }, explicitResumeId);
-  return withDetectedResumeCommand({
-    agentSessionId: explicitResumeId,
-    agentSessionSource: "codex resume command",
-    agentSessionProvider: "codex",
-    agentSessionDetectedAt: new Date().toISOString(),
-    agentSessionResumeCommand,
-    resumeCommand: "",
-  }, agentSessionResumeCommand);
-}
-
 function normalizeExplicitAgentSession({
   agentSessionProvider,
   agentSessionId,
@@ -4788,37 +4311,13 @@ function normalizeExplicitAgentSession({
     return {};
   }
 
-  return withDetectedResumeCommand({
+  return {
     agentSessionProvider,
     agentSessionId,
     agentSessionSource,
     agentSessionDetectedAt,
     agentSessionResumeCommand,
-  }, agentSessionResumeCommand);
-}
-
-function updateAgentSessionFromOutput(taskId, data) {
-  const task = tasks.get(taskId);
-  if (!task || task.agentSessionId || !isCodexLikeTask(task)) {
-    return;
-  }
-
-  const sessionId = extractCodexSessionIdFromOutput(data);
-  if (!sessionId) {
-    return;
-  }
-
-  const agentSessionResumeCommand = buildCodexSessionResumeCommand(task, sessionId);
-  setTask(withDetectedResumeCommand({
-    ...task,
-    agentSessionId: sessionId,
-    agentSessionSource: "codex output",
-    agentSessionProvider: "codex",
-    agentSessionDetectedAt: new Date().toISOString(),
-    agentSessionResumeCommand,
-    updatedAt: new Date().toISOString(),
-  }, agentSessionResumeCommand));
-  broadcastTasks();
+  };
 }
 
 function updateAgentStateFromTaskDeckEvent(taskId, agentState, metadata = {}) {
@@ -5071,22 +4570,11 @@ function getAgentStateInferenceAdapter(task) {
     return gooseAgentStateAdapter;
   }
 
-  if (isCodexLikeTask(task)) {
-    return codexAgentStateAdapter;
-  }
-
   return genericAgentStateAdapter;
 }
 
 const gooseAgentStateAdapter = {
   id: "goose",
-  infer({ recentOutput, latestOutput, activity, activePty }) {
-    return inferWithExplicitPromptFallback({ recentOutput, latestOutput, activity, activePty, agentKind: this.id });
-  },
-};
-
-const codexAgentStateAdapter = {
-  id: "codex",
   infer({ recentOutput, latestOutput, activity, activePty }) {
     return inferWithExplicitPromptFallback({ recentOutput, latestOutput, activity, activePty, agentKind: this.id });
   },
@@ -5326,94 +4814,6 @@ function stripTerminalControlSequences(value) {
     .replace(/\r/g, "\n");
 }
 
-function extractCodexSessionIdFromOutput(data) {
-  const text = stripTerminalControlSequences(String(data));
-  const patterns = [
-    /\b(?:codex\s+)?session(?:\s+id)?\s*[:=]\s*([A-Za-z0-9][A-Za-z0-9_.:-]{5,})/i,
-    /\bconversation(?:\s+id)?\s*[:=]\s*([A-Za-z0-9][A-Za-z0-9_.:-]{5,})/i,
-    /\bresume\s+([A-Za-z0-9][A-Za-z0-9_.:-]{5,})\b/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    const sessionId = normalizeDetectedSessionId(match?.[1]);
-    if (sessionId) {
-      return sessionId;
-    }
-  }
-
-  return "";
-}
-
-function extractCodexResumeId(command) {
-  const match = String(command).match(/\bcodex\b[\s\S]*?\bresume\s+([^\s"';&|()]+)/i);
-  return normalizeDetectedSessionId(match?.[1]);
-}
-
-function buildCodexSessionResumeCommand(task, sessionId, options = {}) {
-  const command = String(task.command || "");
-  const codexCommand = `codex ${codexPermissionArgsForTask(task)} ${codexTaskDeckStartupArgs()} resume ${sessionId}`;
-  const dockerWorkdir = String(options.containerCwd || extractDockerExecWorkdir(command) || "/workspace").trim();
-  if (task.agentProfileId === "ai-dev-container-codex" || /\bdocker\b[\s\S]*\bai-agent-sandbox-agent-1\b/.test(command)) {
-    return `docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w ${quoteShellToken(dockerWorkdir)} ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color ${codexCommand}'`;
-  }
-  if (/\bdocker\b[\s\S]*\bai-agent-sandbox-codex-1\b/.test(command)) {
-    return `docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w ${quoteShellToken(dockerWorkdir)} ai-agent-sandbox-codex-1 sh -lc 'TERM=xterm-256color ${codexCommand}'`;
-  }
-  return codexCommand;
-}
-
-function codexPermissionArgsForTask(task) {
-  const permissionLevel = String(task.agentPermissionLevel || "").trim();
-  if (permissionLevel === "workspace_write") {
-    return "--sandbox workspace-write";
-  }
-  if (permissionLevel === "read_only") {
-    return "--sandbox read-only";
-  }
-  if (permissionLevel === "full_access") {
-    return "--dangerously-bypass-approvals-and-sandbox";
-  }
-
-  const command = String(task.command || task.agentSessionResumeCommand || task.resumeCommand || "");
-  const explicitSandbox = command.match(/\bcodex\b[\s\S]*?(--sandbox\s+(?:read-only|workspace-write|danger-full-access))/i);
-  if (explicitSandbox) {
-    return explicitSandbox[1];
-  }
-  if (/\bcodex\b[\s\S]*?--dangerously-bypass-approvals-and-sandbox\b/i.test(command)) {
-    return "--dangerously-bypass-approvals-and-sandbox";
-  }
-  return "--dangerously-bypass-approvals-and-sandbox";
-}
-
-function withDetectedResumeCommand(task, agentSessionResumeCommand) {
-  if (!agentSessionResumeCommand || !canReplaceResumeCommand(task.resumeCommand)) {
-    return task;
-  }
-  return {
-    ...task,
-    resumeCommand: agentSessionResumeCommand,
-  };
-}
-
-function canReplaceResumeCommand(resumeCommand) {
-  const command = String(resumeCommand || "").trim();
-  return !command || /\bcodex\b[\s\S]*?\bresume\s+--last\b/i.test(command);
-}
-
-function normalizeDetectedSessionId(value) {
-  const sessionId = String(value || "").trim().replace(/[),.;\]]+$/, "");
-  if (!sessionId || sessionId.startsWith("-") || sessionId.toLowerCase() === "last") {
-    return "";
-  }
-  return sessionId;
-}
-
-function isCodexLikeTask(task) {
-  const haystack = `${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command || ""}`.toLowerCase();
-  return /\bcodex\b/.test(haystack);
-}
-
 function isGooseLikeTask(task) {
   const haystack = `${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command || ""}`.toLowerCase();
   return /\bgoose\b/.test(haystack);
@@ -5552,304 +4952,6 @@ function codexAppServerRequestCanDecline(pendingRequest) {
   );
 }
 
-async function listSavedCodexSessions() {
-  const sessionsByKey = new Map();
-
-  for (const task of tasks.values()) {
-    const session = await savedCodexSessionFromTask(task);
-    if (!session) {
-      continue;
-    }
-    const current = sessionsByKey.get(session.key);
-    if (!current || timestampForSort(session.updatedAt) > timestampForSort(current.updatedAt)) {
-      sessionsByKey.set(session.key, session);
-    }
-  }
-
-  for (const session of await listCodexStorageSessions()) {
-    const current = sessionsByKey.get(session.key);
-    if (!current || timestampForSort(session.updatedAt) > timestampForSort(current.updatedAt)) {
-      sessionsByKey.set(session.key, session);
-    }
-  }
-
-  return Array.from(sessionsByKey.values()).sort((left, right) => timestampForSort(right.updatedAt) - timestampForSort(left.updatedAt));
-}
-
-async function listCodexStorageSessions() {
-  const profiles = (await loadAgentProfiles()).filter((profile) =>
-    isCodexLikeTask({ agentProfileId: profile.id, agentLabel: profile.label, command: profile.command }) && profile.diagnosticContainer,
-  );
-  const sessions = [];
-
-  for (const profile of profiles) {
-    sessions.push(...(await listCodexStorageSessionsForProfile(profile)));
-  }
-
-  return sessions;
-}
-
-async function listCodexStorageSessionsForProfile(profile) {
-  const containerName = String(profile.diagnosticContainer || "").trim();
-  if (!isSafeContainerName(containerName)) {
-    return [];
-  }
-
-  try {
-    const [storageOutput, mounts] = await Promise.all([
-      readCodexStorageSessionMetadata(containerName),
-      inspectContainerMounts(containerName),
-    ]);
-    const sessions = [];
-    for (const line of storageOutput.split("\n")) {
-      const session = codexStorageSessionFromLine(line, profile, mounts);
-      if (session) {
-        sessions.push(session);
-      }
-    }
-    return sessions;
-  } catch (_error) {
-    return [];
-  }
-}
-
-async function readCodexStorageSessionMetadata(containerName) {
-  const script =
-    "find /home/dev/.codex/sessions -maxdepth 6 -type f -name '*.jsonl' 2>/dev/null | sort | " +
-    "while IFS= read -r file; do " +
-    "first_line=$(sed -n '1p' \"$file\"); " +
-    "user_line=$(grep -m 1 '\"type\":\"user_message\"' \"$file\" || true); " +
-    "printf '%s\\t%s\\t%s\\n' \"$file\" \"$first_line\" \"$user_line\"; " +
-    "done";
-  const { stdout } = await execFileAsync("docker", ["exec", containerName, "sh", "-lc", script], {
-    maxBuffer: 5 * 1024 * 1024,
-    timeout: 5000,
-  });
-  return stdout;
-}
-
-async function inspectContainerMounts(containerName) {
-  const { stdout } = await execFileAsync("docker", ["inspect", containerName, "--format", "{{json .Mounts}}"], {
-    maxBuffer: 1024 * 1024,
-    timeout: 3000,
-  });
-  return JSON.parse(stdout);
-}
-
-function codexStorageSessionFromLine(line, profile, mounts) {
-  const separatorIndex = line.indexOf("\t");
-  if (separatorIndex === -1) {
-    return null;
-  }
-
-  const filePath = line.slice(0, separatorIndex);
-  const remainder = line.slice(separatorIndex + 1);
-  const secondSeparatorIndex = remainder.indexOf("\t");
-  const jsonText = secondSeparatorIndex === -1 ? remainder : remainder.slice(0, secondSeparatorIndex);
-  const userJsonText = secondSeparatorIndex === -1 ? "" : remainder.slice(secondSeparatorIndex + 1);
-  let event;
-  try {
-    event = JSON.parse(jsonText);
-  } catch (_error) {
-    return null;
-  }
-
-  if (event?.type !== "session_meta") {
-    return null;
-  }
-
-  const sessionId = normalizeDetectedSessionId(event?.payload?.id);
-  if (!sessionId || isLikelySyntheticSession({ agentSessionSource: "codex storage" }, sessionId)) {
-    return null;
-  }
-
-  const provider = "codex";
-  const agentProfileId = String(profile.id || "codex");
-  const agentLabel = String(profile.label || "Codex");
-  const commandEnvironment = codexCommandEnvironment({ command: profile.command, agentProfileId });
-  const detectedAt = String(event?.payload?.timestamp || timestampFromCodexSessionPath(filePath) || "");
-  const containerCwd = String(event?.payload?.cwd || "/workspace");
-  const resumeCommand = buildCodexSessionResumeCommand(
-    { command: profile.command, agentProfileId },
-    sessionId,
-    { containerCwd },
-  );
-  const cwd = mapContainerPathToHostPath(containerCwd, mounts) || repoRoot;
-  const key = `${provider}:${agentProfileId}:${commandEnvironment}:${sessionId}`;
-  const title = sessionLabelForKey(key) || titleFromCodexStorageUserEvent(userJsonText) || "Codex storage session";
-
-  return {
-    key,
-    provider,
-    sessionId,
-    source: "codex storage",
-    resumeCommand,
-    title,
-    cwd,
-    agentProfileId,
-    agentLabel,
-    commandEnvironment,
-    detectedAt,
-    updatedAt: detectedAt,
-  };
-}
-
-function titleFromCodexStorageUserEvent(userJsonText) {
-  if (!userJsonText) {
-    return "";
-  }
-  try {
-    const event = JSON.parse(userJsonText);
-    const message = String(event?.payload?.message || "").trim().replace(/^›\s*/, "");
-    return message.length > 72 ? `${message.slice(0, 69)}...` : message;
-  } catch (_error) {
-    return "";
-  }
-}
-
-function timestampFromCodexSessionPath(filePath) {
-  const match = String(filePath).match(/rollout-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})/);
-  if (!match) {
-    return "";
-  }
-  return `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}.000Z`;
-}
-
-function mapContainerPathToHostPath(containerPath, mounts) {
-  const normalizedContainerPath = path.posix.normalize(String(containerPath || ""));
-  const matchingMounts = Array.isArray(mounts)
-    ? mounts
-        .filter((mount) => mount?.Type === "bind" && mount?.Source && mount?.Destination)
-        .sort((left, right) => String(right.Destination).length - String(left.Destination).length)
-    : [];
-
-  for (const mount of matchingMounts) {
-    const destination = path.posix.normalize(String(mount.Destination));
-    if (normalizedContainerPath !== destination && !normalizedContainerPath.startsWith(`${destination}/`)) {
-      continue;
-    }
-    const relativePath = normalizedContainerPath.slice(destination.length).replace(/^\/+/, "");
-    return path.join(String(mount.Source), relativePath);
-  }
-
-  return "";
-}
-
-async function mapKnownContainerPathToHostPath(containerPath) {
-  const normalizedContainerPath = path.posix.normalize(String(containerPath || ""));
-  if (!normalizedContainerPath || normalizedContainerPath === ".") {
-    return "";
-  }
-
-  const projectRoots = await resolveProjectRoots();
-  for (const projectRoot of projectRoots) {
-    const containerProjectRoot = serverAccessibleProjectRootForHostRoot(projectRoot).split(path.sep).join(path.posix.sep);
-    const normalizedContainerProjectRoot = path.posix.normalize(containerProjectRoot);
-    if (
-      normalizedContainerPath !== normalizedContainerProjectRoot &&
-      !normalizedContainerPath.startsWith(`${normalizedContainerProjectRoot}/`)
-    ) {
-      continue;
-    }
-    const relativePath = normalizedContainerPath.slice(normalizedContainerProjectRoot.length).replace(/^\/+/, "");
-    return path.join(projectRoot, relativePath);
-  }
-
-  return "";
-}
-
-async function hostCwdForSavedSessionTask(task) {
-  const cwd = String(task.cwd || "").trim();
-  if (!cwd) {
-    const projectRoots = await resolveProjectRoots();
-    return hostProjectPathForRepoRoot(projectRoots[0] || repoRoot);
-  }
-
-  const mappedCwd = await mapKnownContainerPathToHostPath(cwd);
-  return mappedCwd || cwd;
-}
-
-async function savedCodexSessionFromTask(task) {
-  if (task.agentSessionProvider !== "codex" || !String(task.agentSessionId || "").trim()) {
-    return null;
-  }
-
-  const resumeCommand = savedCodexResumeCommandForTask(task);
-  if (!resumeCommand) {
-    return null;
-  }
-
-  const provider = String(task.agentSessionProvider).trim();
-  const sessionId = String(task.agentSessionId).trim();
-  if (isLikelySyntheticSession(task, sessionId)) {
-    return null;
-  }
-
-  const agentProfileId = String(task.agentProfileId || "codex");
-  const agentLabel = String(task.agentLabel || "Codex");
-  const commandEnvironment = codexCommandEnvironment(task);
-  const key = `${provider}:${agentProfileId}:${commandEnvironment}:${sessionId}`;
-  return {
-    key,
-    provider,
-    sessionId,
-    source: String(task.agentSessionSource || ""),
-    resumeCommand,
-    title: sessionLabelForKey(key) || normalizeSavedSessionTitle(task.title),
-    cwd: await hostCwdForSavedSessionTask(task),
-    agentProfileId,
-    agentLabel,
-    commandEnvironment,
-    detectedAt: String(task.agentSessionDetectedAt || ""),
-    updatedAt: String(task.updatedAt || task.agentSessionDetectedAt || task.createdAt || ""),
-  };
-}
-
-function savedCodexResumeCommandForTask(task) {
-  const resumeCommand = String(task.agentSessionResumeCommand || task.resumeCommand || "").trim();
-  if (!resumeCommand) {
-    return "";
-  }
-
-  const resumeWorkdir = extractDockerExecWorkdir(resumeCommand);
-  const taskWorkdir = extractDockerExecWorkdir(task.command);
-  if (resumeWorkdir === "/workspace" && taskWorkdir && taskWorkdir !== resumeWorkdir) {
-    return replaceDockerExecWorkdir(resumeCommand, taskWorkdir);
-  }
-
-  return resumeCommand;
-}
-
-function isLikelySyntheticSession(task, sessionId) {
-  const source = String(task.agentSessionSource || "");
-  return /(?:^|[^a-z0-9])(e2e|smoke|fake|test|fixture|example|mock|manual-codex)(?:$|[^a-z0-9])/i.test(sessionId) || source === "manual session id";
-}
-
-function normalizeSavedSessionTitle(title) {
-  const normalizedTitle = String(title || "").trim().replace(/^(?:Resume saved:\s*)+/i, "");
-  return normalizedTitle || "Codex session";
-}
-
-function codexCommandEnvironment(task) {
-  const command = String(task.command || task.agentSessionResumeCommand || task.resumeCommand || "").toLowerCase();
-  const agentProfileId = String(task.agentProfileId || "").toLowerCase();
-
-  if (agentProfileId === "ai-dev-container-codex" || /\bdocker\b[\s\S]*\bai-agent-sandbox-agent-1\b/.test(command)) {
-    return "ai-agent-sandbox-agent-1";
-  }
-
-  if (/\bdocker\b[\s\S]*\bai-agent-sandbox-codex-1\b/.test(command)) {
-    return "ai-agent-sandbox-codex-1";
-  }
-
-  return "local";
-}
-
-function timestampForSort(value) {
-  const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) ? timestamp : 0;
-}
-
 function appendLog(taskId, data) {
   const nextLog = `${logs.get(taskId) || ""}${data}`;
   logs.set(taskId, nextLog.slice(-maxLogLength));
@@ -5917,12 +5019,7 @@ function taskSessionLabelKey(task) {
     return "";
   }
   const agentProfileId = String(task.agentProfileId || provider);
-  const commandEnvironment = codexCommandEnvironment(task);
-  return `${provider}:${agentProfileId}:${commandEnvironment}:${sessionId}`;
-}
-
-function sessionLabelForKey(sessionKey) {
-  return String(sessionLabels.get(sessionKey)?.label || "").trim();
+  return `${provider}:${agentProfileId}:${sessionId}`;
 }
 
 function broadcastTasks() {

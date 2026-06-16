@@ -340,11 +340,11 @@ Add and maintain this actor protocol document. Reference it from `AGENTS.md` so 
 
 Use a branch worktree to verify that child status changes emit valid manager inbox events.
 
-### Phase 3: Add a dedicated manager agent profile/session
+### Phase 3: Add an App Server-backed manager session
 
 Introduce a way to run a global manager session whose job is to read manager inbox events and generated readable context across all projects.
 
-The first implementation uses a built-in `TaskDeck Manager` profile. It must launch from the TaskDeck control/document root, not from a selected project workspace.
+This branch intentionally does not ship a built-in Codex TUI `TaskDeck Manager` profile. A future manager route should use the App Server path and must launch from the TaskDeck control/document root, not from a selected project workspace.
 
 ### Phase 4: Add manager-readable context
 
