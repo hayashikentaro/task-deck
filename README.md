@@ -85,6 +85,37 @@ For TaskDeck-launched Codex sessions, TaskDeck adds `-c check_for_update_on_star
 
 Agent profiles merge by `id`: built-in defaults load first, then committed config, ignored local config, and finally `TASKDECK_CONFIG`.
 
+### Codex App Server development auth persistence
+
+The experimental `codex-app-server` profile uses the normal Codex ChatGPT login flow. To avoid repeating device-code login after TaskDeck development restarts, run that profile with a stable local `CODEX_HOME` and Codex's file-backed credential store. Do not use `OPENAI_API_KEY`, `CODEX_ACCESS_TOKEN`, copied tokens, or any login bypass for this path.
+
+Create a local Codex home outside the repository:
+
+```bash
+mkdir -p "$HOME/.taskdeck-codex-home"
+chmod 700 "$HOME/.taskdeck-codex-home"
+printf '%s\n' 'cli_auth_credentials_store = "file"' > "$HOME/.taskdeck-codex-home/config.toml"
+CODEX_HOME="$HOME/.taskdeck-codex-home" codex login --device-auth
+CODEX_HOME="$HOME/.taskdeck-codex-home" codex login status
+```
+
+Then override the App Server profile in ignored local config, such as `taskdeck.local.json` or a file pointed to by `TASKDECK_CONFIG`:
+
+```json
+{
+  "agentProfiles": [
+    {
+      "id": "codex-app-server",
+      "label": "Codex App Server (persistent auth)",
+      "command": "sh -lc 'export CODEX_HOME=\"$HOME/.taskdeck-codex-home\"; mkdir -p \"$CODEX_HOME\"; exec codex app-server --listen stdio://'",
+      "description": "Codex App Server using a stable CODEX_HOME for development auth persistence."
+    }
+  ]
+}
+```
+
+The auth cache stays in `$HOME/.taskdeck-codex-home` and must remain local and ignored. Restart TaskDeck with the same profile command and confirm the App Server starts without a new device-code login.
+
 ## Branch Worktree Lifecycle
 
 TaskDeck branch work uses `git worktree`. Use the main repository as the base development checkout and create one worktree per branch and purpose.

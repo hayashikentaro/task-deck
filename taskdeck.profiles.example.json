@@ -17,6 +17,12 @@
       "label": "zsh - host",
       "command": "zsh",
       "description": "Run zsh on the host in the selected project cwd."
+    },
+    {
+      "id": "codex-app-server",
+      "label": "Codex App Server (persistent auth)",
+      "command": "sh -lc 'export CODEX_HOME=\"$HOME/.taskdeck-codex-home\"; mkdir -p \"$CODEX_HOME\"; exec codex app-server --listen stdio://'",
+      "description": "Development example: run Codex App Server with a stable local CODEX_HOME so normal ChatGPT login auth can persist across TaskDeck restarts."
     }
   ]
 }
