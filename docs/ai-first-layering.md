@@ -98,7 +98,7 @@ Examples:
 
 - Task cards;
 - child badges;
-- TaskInfoPane metadata;
+- expanded task-card metadata;
 - action buttons;
 - CSS and visual emphasis.
 

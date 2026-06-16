@@ -681,7 +681,6 @@ dd {
 
 .task-list,
 .terminal-pane,
-.info-pane,
 .diff-pane {
   min-width: 0;
   border: 1px solid var(--line);
@@ -1411,39 +1410,6 @@ dd {
   grid-template-rows: auto minmax(0, 1fr);
   gap: 14px;
   overflow: hidden;
-}
-
-.info-pane {
-  overflow: hidden;
-}
-
-.info-grid {
-  display: grid;
-  gap: 14px;
-  margin: 0;
-  padding: 14px;
-}
-
-.info-section-label {
-  padding-top: 4px;
-  border-top: 1px solid var(--line);
-  color: var(--text-secondary);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.info-section-label:first-child {
-  padding-top: 0;
-  border-top: 0;
-}
-
-.task-action-error {
-  margin: 0;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--line);
-  color: var(--status-failed);
-  font-size: 13px;
 }
 
 .diff-pane {
