@@ -1651,6 +1651,7 @@ function sendCodexAppServerThreadStart(activeAppServer) {
       sendCodexAppServerRequest(activeAppServer, "thread/start", {
         cwd,
         ephemeral: true,
+        sandbox: "danger-full-access",
       });
     })
     .catch((error) => {

@@ -81,7 +81,7 @@ For example:
 TASKDECK_CONFIG=/path/to/taskdeck.profiles.json npm run dev
 ```
 
-The committed App Server profile passes `--sandbox danger-full-access` to the Codex CLI because the App Server already runs inside the configured Docker container and nested Codex sandboxing is not available there. TaskDeck does not otherwise synthesize Codex CLI/TUI reasoning, startup, or resume flags for this profile. The committed route intentionally avoids interactive Codex CLI access; custom local profiles are outside the product route for this branch.
+The committed App Server route uses `danger-full-access` inside the configured Docker container because the container is the outer sandbox and nested Codex sandboxing is not available there. TaskDeck passes that sandbox mode both to the Codex CLI App Server process and to App Server `thread/start`. TaskDeck does not otherwise synthesize Codex CLI/TUI reasoning, startup, or resume flags for this profile. The committed route intentionally avoids interactive Codex CLI access; custom local profiles are outside the product route for this branch.
 
 Agent profiles merge by `id`: built-in defaults load first, then committed config, ignored local config, and finally `TASKDECK_CONFIG`.
 
