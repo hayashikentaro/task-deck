@@ -83,7 +83,7 @@ The server persists local runtime state under `.taskdeck/`, which is intentional
 ## Domain Concepts
 
 - Task: The central supervision unit. It owns process status, command/cwd, agent profile metadata, session metadata, attachments, logs, risk, `agentState`, `attentionState`, and timing.
-- Agent profile: A configured launch profile such as Codex App Server, Goose, zsh, or another Docker-backed command. Profiles merge from built-in defaults, committed config, ignored local config, and `TASKDECK_CONFIG`.
+- Agent profile: A configured launch profile. On this branch, the exposed committed profile is Codex App Server running directly in the TaskDeck server environment. Profiles merge from built-in defaults, committed config, ignored local config, and `TASKDECK_CONFIG`.
 - Session mode: How an agent starts. The committed App Server route starts new sessions; legacy stored tasks may still carry older session mode values.
 - Attention state: The primary operator signal for `Needs you` / `Not now`. It should remain conservative and false-positive tolerant.
 - Agent state: A process/supervision state such as starting, working, waiting input, review ready, done, or failed. It is related to but not identical to attention.
@@ -132,9 +132,9 @@ For maintainer environments, user-specific paths such as `/Users/hayashikentarou
 
 Agent profiles can be changed without editing application code. TaskDeck merges profiles by `id`: built-in defaults are loaded first, then `taskdeck.config.json`, then ignored `taskdeck.local.json`, then `TASKDECK_CONFIG`. Later files override matching ids and append new ids, and the server exposes the merged profile list.
 
-Each profile supports `id`, `label`, `command`, `description`, optional `diagnosticContainer`, optional `diagnosticWorkspace`, and optional `modelOptions`. The diagnostics panel uses the diagnostic fields to inspect/start configured Docker containers and check whether expected container workspace directories exist. Profiles without diagnostic container fields, such as host shell profiles, are launchable but omitted from container diagnostics. The committed container profiles run inside `ai-agent-sandbox-agent-1`.
+Each profile supports `id`, `label`, `command`, `description`, optional `diagnosticContainer`, optional `diagnosticWorkspace`, and optional `modelOptions`. The diagnostics panel uses the diagnostic fields to inspect/start configured Docker containers and check whether expected container workspace directories exist. Profiles without diagnostic container fields are launchable but omitted from container diagnostics. The committed App Server profile has no diagnostic container because it runs in the TaskDeck server environment.
 
-Codex App Server launches through `docker exec -i ... codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://` so TaskDeck can communicate over ordinary stdin/stdout pipes. The committed route uses `danger-full-access` inside the configured Docker container to avoid nested Codex sandbox setup there, and TaskDeck also passes full-access/no-approval overrides when starting App Server threads and turns. TaskDeck does not otherwise synthesize Codex CLI/TUI reasoning, startup, or resume flags for this profile. Prefer machine-readable or non-TUI agent modes when an agent exposes one; keep the PTY path for shell and non-Codex provider compatibility.
+Codex App Server launches through `codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://` so TaskDeck can communicate over ordinary stdin/stdout pipes. The committed route uses `danger-full-access` in the TaskDeck server environment, and TaskDeck also passes full-access/no-approval overrides when starting App Server threads and turns. TaskDeck does not otherwise synthesize Codex CLI/TUI reasoning, startup, or resume flags for this profile. If a local machine needs Docker wrapping, use ignored local config to override the profile command.
 
 ## Where To Change What
 

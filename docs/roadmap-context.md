@@ -42,7 +42,7 @@ Codex supervision should move away from transcript-driven TUI control and toward
 The current route is:
 
 - use `Codex App Server` as the default Codex work-session profile;
-- run the App Server inside `ai-agent-sandbox-agent-1` with `docker exec -i`;
+- run the App Server directly in the TaskDeck server environment with stdio JSON;
 - keep raw App Server JSON out of normal logs;
 - render assistant text, command output, and App Server status as TaskDeck task output;
 - surface user-input requests through TaskDeck controls;

@@ -98,6 +98,7 @@ const localConfigPath = path.join(repoRoot, "taskdeck.local.json");
 const envConfigPath = process.env.TASKDECK_CONFIG ? path.resolve(process.env.TASKDECK_CONFIG) : "";
 const managerAgentProfileId = "taskdeck-manager";
 const codexAppServerAgentProfileId = "codex-app-server";
+const codexAppServerCommand = "codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://";
 const codexAppServerOnlyTaskError =
   "TaskDeck now only starts Codex App Server tasks while the App Server thread model is being rebuilt.";
 const fileProtocolChildSessionsDisabledError =
@@ -108,10 +109,8 @@ const defaultAgentProfiles = [
   {
     id: codexAppServerAgentProfileId,
     label: "Codex App Server",
-    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -i -w /workspace ai-agent-sandbox-agent-1 sh -lc 'exec codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://'",
-    description: "Run the primary Codex App Server adapter inside the AI agent sandbox container",
-    diagnosticContainer: "ai-agent-sandbox-agent-1",
-    diagnosticWorkspace: "/workspace",
+    command: codexAppServerCommand,
+    description: "Run the primary Codex App Server adapter in the TaskDeck server environment",
   },
 ];
 
@@ -2814,11 +2813,7 @@ function childStatusFilePathForTask(task) {
 }
 
 function defaultChildStatusFilePath(task) {
-  if (isManagerTask(task)) {
-    return path.join(dataRoot, "statuses", `${task.id}.json`);
-  }
-  const taskCwd = path.resolve(repoRoot, String(task.cwd || ""));
-  return path.join(taskCwd, ".taskdeck", "statuses", `${task.id}.json`);
+  return path.join(dataRoot, "statuses", `${task.id}.json`);
 }
 
 async function initialInstructionForTaskLaunch({ isManagerLaunch, command, initialInstruction }) {

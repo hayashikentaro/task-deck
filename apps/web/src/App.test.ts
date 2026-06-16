@@ -4,7 +4,7 @@ import type { ChildSessionBatchRequest } from "./childSessionRequests";
 import type { TaskDeckContext } from "./types";
 
 const appServerCommand =
-  "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -i -w /workspace ai-agent-sandbox-agent-1 sh -lc 'exec codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://'";
+  "codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://";
 
 const context: TaskDeckContext = {
   repoRoot: "/workspace/task-deck",
@@ -21,7 +21,7 @@ const context: TaskDeckContext = {
       id: "codex-app-server",
       label: "Codex App Server",
       command: appServerCommand,
-      description: "Run Codex App Server inside the AI agent sandbox container",
+      description: "Run Codex App Server in the TaskDeck server environment",
     },
   ],
 };
