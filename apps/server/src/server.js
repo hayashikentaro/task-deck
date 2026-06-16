@@ -2279,6 +2279,16 @@ function rememberCodexAppServerRequest(activeAppServer, message, kind, targetTas
   });
   activeAppServer.currentServerRequestId = message.id;
   activeAppServer.currentServerRequestIdByTaskId.set(targetTaskId, message.id);
+  appendCodexAppServerStatus(
+    activeAppServer,
+    `[TaskDeck diagnostic] Codex App Server request remembered: ${codexAppServerRequestDiagnosticFields(activeAppServer, {
+      requestId: message.id,
+      method: String(message.method || ""),
+      params: message.params ?? {},
+      targetTaskId,
+    })}\n`,
+    targetTaskId,
+  );
 }
 
 function normalizeCodexAppServerRequestId(value) {
@@ -2302,21 +2312,41 @@ function codexAppServerRequestKind(method) {
 function resolveCodexAppServerRequest(taskId, requestId, action) {
   const activeAppServer = findActiveCodexAppServerForTask(taskId);
   if (!activeAppServer) {
+    appendCodexAppServerResolutionDiagnosticWithoutServer(taskId, requestId, action, "no-active-app-server");
     return { ok: false, error: "No active Codex App Server task is available." };
   }
+  appendCodexAppServerStatus(
+    activeAppServer,
+    `[TaskDeck diagnostic] Codex App Server UI request resolution received: ${codexAppServerResolutionDiagnosticFields(activeAppServer, {
+      taskId,
+      requestId,
+      action,
+    })}\n`,
+    taskId,
+  );
   if (requestId === null) {
+    appendCodexAppServerResolutionFailureDiagnostic(activeAppServer, taskId, requestId, action, "invalid-request-id");
     return { ok: false, error: "Codex App Server request id is invalid." };
   }
   const pendingRequest = activeAppServer.pendingServerRequests.get(requestId);
   if (!pendingRequest) {
+    appendCodexAppServerResolutionFailureDiagnostic(activeAppServer, taskId, requestId, action, "not-pending");
     return { ok: false, error: "Codex App Server request is no longer pending." };
   }
   if (pendingRequest.targetTaskId && pendingRequest.targetTaskId !== taskId) {
+    appendCodexAppServerResolutionFailureDiagnostic(
+      activeAppServer,
+      taskId,
+      requestId,
+      action,
+      `target-mismatch:${pendingRequest.targetTaskId}`,
+    );
     return { ok: false, error: "Codex App Server request belongs to a different task." };
   }
 
   const result = codexAppServerRequestResolution(pendingRequest, action);
   if (!result.ok) {
+    appendCodexAppServerResolutionFailureDiagnostic(activeAppServer, taskId, requestId, action, result.error || "resolution-failed");
     return result;
   }
 
@@ -2325,6 +2355,17 @@ function resolveCodexAppServerRequest(taskId, requestId, action) {
   appendCodexAppServerStatus(
     activeAppServer,
     `[TaskDeck] Codex App Server request ${requestId} resolved: ${codexAppServerActionLabel(action)}.\n`,
+    taskId,
+  );
+  appendCodexAppServerStatus(
+    activeAppServer,
+    `[TaskDeck diagnostic] Codex App Server request resolution applied: ${codexAppServerResolutionDiagnosticFields(activeAppServer, {
+      taskId,
+      requestId,
+      action,
+      pendingRequest,
+      responseSent: true,
+    })}\n`,
     taskId,
   );
   updateAgentStateFromTaskDeckEvent(taskId, AgentState.WORKING, {
@@ -2472,6 +2513,121 @@ function newestCodexAppServerPendingRequestId(activeAppServer, targetTaskId = ""
   return requestIds.length > 0 ? requestIds[requestIds.length - 1] : null;
 }
 
+function codexAppServerPendingRequestIds(activeAppServer, targetTaskId = "") {
+  return Array.from(activeAppServer.pendingServerRequests.entries())
+    .filter(([, pendingRequest]) => !targetTaskId || pendingRequest.targetTaskId === targetTaskId)
+    .map(([requestId]) => requestId);
+}
+
+function codexAppServerCurrentRequestIdForTask(activeAppServer, taskId) {
+  return (
+    activeAppServer.currentServerRequestIdByTaskId.get(taskId) ??
+    (taskId === activeAppServer.taskId ? activeAppServer.currentServerRequestId : null)
+  );
+}
+
+function codexAppServerRequestDiagnosticFields(activeAppServer, { requestId, method, params, targetTaskId }) {
+  const threadId = String(params?.threadId || "").trim();
+  return [
+    `requestId=${codexAppServerFormatRequestId(requestId)}`,
+    `method=${codexAppServerLogValue(method)}`,
+    `targetTaskId=${codexAppServerLogValue(targetTaskId)}`,
+    `threadId=${codexAppServerLogValue(threadId)}`,
+    `command=${codexAppServerLogValue(codexAppServerRequestCommandForLog(params))}`,
+    codexAppServerPendingRequestDiagnosticFields(activeAppServer, targetTaskId),
+  ].join(" ");
+}
+
+function codexAppServerResolutionDiagnosticFields(
+  activeAppServer,
+  { taskId, requestId, action, pendingRequest = null, responseSent = null },
+) {
+  const fields = [
+    `taskId=${codexAppServerLogValue(taskId)}`,
+    `requestId=${codexAppServerFormatRequestId(requestId)}`,
+    `action=${codexAppServerLogValue(action)}`,
+  ];
+  if (pendingRequest) {
+    fields.push(`method=${codexAppServerLogValue(pendingRequest.method)}`);
+    fields.push(`command=${codexAppServerLogValue(codexAppServerRequestCommandForLog(pendingRequest.params))}`);
+  }
+  if (responseSent !== null) {
+    fields.push(`responseSent=${responseSent ? "true" : "false"}`);
+  }
+  fields.push(codexAppServerPendingRequestDiagnosticFields(activeAppServer, taskId));
+  return fields.join(" ");
+}
+
+function codexAppServerPendingRequestDiagnosticFields(activeAppServer, taskId = "") {
+  const currentRequestId = taskId ? codexAppServerCurrentRequestIdForTask(activeAppServer, taskId) : activeAppServer.currentServerRequestId;
+  const taskPendingIds = taskId ? codexAppServerPendingRequestIds(activeAppServer, taskId) : [];
+  const fields = [
+    `currentRequestId=${codexAppServerFormatRequestId(currentRequestId)}`,
+    `pendingIds=${codexAppServerFormatRequestIdList(codexAppServerPendingRequestIds(activeAppServer))}`,
+  ];
+  if (taskId) {
+    fields.push(`taskPendingIds=${codexAppServerFormatRequestIdList(taskPendingIds)}`);
+  }
+  return fields.join(" ");
+}
+
+function appendCodexAppServerResolutionFailureDiagnostic(activeAppServer, taskId, requestId, action, reason) {
+  appendCodexAppServerStatus(
+    activeAppServer,
+    `[TaskDeck diagnostic] Codex App Server request resolution failed: ${codexAppServerResolutionDiagnosticFields(activeAppServer, {
+      taskId,
+      requestId,
+      action,
+    })} reason=${codexAppServerLogValue(reason)}\n`,
+    taskId,
+  );
+}
+
+function appendCodexAppServerResolutionDiagnosticWithoutServer(taskId, requestId, action, reason) {
+  if (!tasks.has(taskId)) {
+    return;
+  }
+  appendAndBroadcast(
+    taskId,
+    `[TaskDeck diagnostic] Codex App Server request resolution failed: taskId=${codexAppServerLogValue(taskId)} requestId=${codexAppServerFormatRequestId(requestId)} action=${codexAppServerLogValue(action)} reason=${codexAppServerLogValue(reason)}\n`,
+  );
+}
+
+function codexAppServerFormatRequestId(requestId) {
+  if (requestId === null) {
+    return "null";
+  }
+  if (requestId === undefined) {
+    return "undefined";
+  }
+  if (typeof requestId === "string") {
+    return `${JSON.stringify(requestId)}(string)`;
+  }
+  if (typeof requestId === "number") {
+    return `${requestId}(number)`;
+  }
+  return `${codexAppServerLogValue(requestId)}(${typeof requestId})`;
+}
+
+function codexAppServerFormatRequestIdList(requestIds) {
+  return `[${requestIds.map((requestId) => codexAppServerFormatRequestId(requestId)).join(",")}]`;
+}
+
+function codexAppServerRequestCommandForLog(params) {
+  if (typeof params?.command === "string") {
+    return compactCodexAppServerCommand(params.command);
+  }
+  if (Array.isArray(params?.command)) {
+    return compactCodexAppServerCommand(params.command.join(" "));
+  }
+  return "";
+}
+
+function codexAppServerLogValue(value) {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  return text ? JSON.stringify(text.slice(0, 160)) : "-";
+}
+
 function codexAppServerActionLabel(action) {
   if (action === "approve") return "approved";
   if (action === "decline") return "declined";
@@ -2614,12 +2770,33 @@ function handleCodexAppServerNotification(activeAppServer, message) {
 function handleCodexAppServerRequestResolved(activeAppServer, params) {
   const requestId = normalizeCodexAppServerRequestId(params?.requestId);
   if (requestId === null) {
+    appendCodexAppServerStatus(
+      activeAppServer,
+      "[TaskDeck diagnostic] Codex App Server request resolved notification ignored: requestId=null reason=invalid-request-id\n",
+    );
     return;
   }
   if (!activeAppServer.pendingServerRequests.has(requestId)) {
+    appendCodexAppServerStatus(
+      activeAppServer,
+      `[TaskDeck diagnostic] Codex App Server request resolved notification ignored: requestId=${codexAppServerFormatRequestId(requestId)} reason=not-pending ${codexAppServerPendingRequestDiagnosticFields(activeAppServer)}\n`,
+    );
     return;
   }
+  const pendingRequest = activeAppServer.pendingServerRequests.get(requestId);
+  const targetTaskId = pendingRequest?.targetTaskId || activeAppServer.taskId;
   clearCodexAppServerPendingRequest(activeAppServer, requestId);
+  appendCodexAppServerStatus(
+    activeAppServer,
+    `[TaskDeck diagnostic] Codex App Server request resolved notification applied: ${codexAppServerResolutionDiagnosticFields(activeAppServer, {
+      taskId: targetTaskId,
+      requestId,
+      action: "app-server-resolved",
+      pendingRequest,
+      responseSent: false,
+    })}\n`,
+    targetTaskId,
+  );
   broadcastTasks();
 }
 
