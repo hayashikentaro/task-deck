@@ -2095,7 +2095,9 @@ function resolveCodexAppServerRequest(taskId, requestId, action) {
   }
   const pendingRequest = activeAppServer.pendingServerRequests.get(requestId);
   if (!pendingRequest) {
-    return { ok: false, error: "Codex App Server request is no longer pending." };
+    clearStaleCodexAppServerRequest(activeAppServer, requestId);
+    broadcastTasks();
+    return { ok: true };
   }
 
   const result = codexAppServerRequestResolution(pendingRequest, action);
@@ -2119,6 +2121,15 @@ function resolveCodexAppServerRequest(taskId, requestId, action) {
     attentionConfidence: AgentStateConfidence.HIGH,
   });
   return { ok: true };
+}
+
+function clearStaleCodexAppServerRequest(activeAppServer, requestId) {
+  if (
+    activeAppServer.currentServerRequestId === requestId ||
+    String(activeAppServer.currentServerRequestId ?? "") === String(requestId ?? "")
+  ) {
+    activeAppServer.currentServerRequestId = newestCodexAppServerPendingRequestId(activeAppServer);
+  }
 }
 
 function codexAppServerRequestResolution(pendingRequest, action) {
