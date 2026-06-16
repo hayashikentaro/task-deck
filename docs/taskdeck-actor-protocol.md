@@ -40,7 +40,7 @@ flowchart TD
   ControlRoot --> ReadModel[Global Manager Readable Context]
   ControlRoot --> Manager[Global Manager Agent]
 
-  Server -->|validated session/process operation| Runtime[Runtime / PTY Sessions]
+  Server -->|validated session/process operation| Runtime[Runtime / App Server and PTY Sessions]
   Runtime --> ProjectA[Project A Worker Sessions]
   Runtime --> ProjectB[Project B Worker Sessions]
   Runtime --> ProjectC[Project C Worker Sessions]

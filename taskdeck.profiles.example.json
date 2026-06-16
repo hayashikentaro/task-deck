@@ -1,10 +1,16 @@
 {
   "agentProfiles": [
     {
+      "id": "codex-app-server",
+      "label": "Codex App Server",
+      "command": "replace with your Codex App Server launch command, usually codex app-server --listen stdio:// in the intended container or host environment",
+      "description": "Primary Codex route. Put machine-local profile commands in taskdeck.local.json or a TASKDECK_CONFIG file."
+    },
+    {
       "id": "codex",
-      "label": "Codex",
-      "command": "replace with your Codex launch command",
-      "description": "Example placeholder. Put machine-local profile commands in taskdeck.local.json or a TASKDECK_CONFIG file."
+      "label": "Codex PTY fallback",
+      "command": "replace with your fallback Codex TUI launch command",
+      "description": "Fallback profile for workflows that cannot use the App Server route yet."
     },
     {
       "id": "taskdeck-manager",

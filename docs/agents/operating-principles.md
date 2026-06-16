@@ -31,7 +31,7 @@ Examples:
 
 - Workers write append-only status/result/request files instead of mutating canonical TaskDeck state.
 - Manager write operations go through `taskdeckctl`.
-- TaskDeck server validates, dedupes, logs, executes mutations, and coordinates PTY/session effects.
+- TaskDeck server validates, dedupes, logs, executes mutations, and coordinates App Server, PTY, and session effects.
 - Generated runtime action guides expose only actions supported by the running server and CLI.
 
 ## Runtime Capabilities

@@ -37,7 +37,7 @@ const managerProfile: AgentProfile = {
 
 const codexAppServerProfile: AgentProfile = {
   id: "codex-app-server",
-  label: "Codex App Server (experimental)",
+  label: "Codex App Server",
   command:
     "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -i -w /workspace ai-agent-sandbox-agent-1 sh -lc 'exec codex app-server --listen stdio://'",
   description: "Run Codex App Server inside the AI agent sandbox container",

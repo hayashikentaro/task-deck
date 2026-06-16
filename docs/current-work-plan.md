@@ -10,8 +10,9 @@ GitHub Issues remain the source of truth for actionable work, open/closed state,
 2. Read-only global manager MVP: complete.
 3. Minimum manager action/write path through `taskdeckctl`: implemented for ack, review, and close.
 4. Manager action discoverability and runtime action guide: implemented enough to support real manager sessions.
-5. Current phase: build the manager-mediated main/sub-session implementation loop tracked in #64.
-6. Resume broader product work such as Electron packaging, Claude support, external configuration, and external Decision Workspace integration only after the local implementation loop is stable.
+5. Current phase: move Codex work sessions to the App Server-first route.
+6. Next phase: continue the manager-mediated main/sub-session implementation loop tracked in #64 on top of the structured App Server route where possible.
+7. Resume broader product work such as Electron packaging, Claude support, external configuration, and external Decision Workspace integration only after the local implementation loop is stable.
 
 ## Completed read-only manager MVP
 
@@ -69,9 +70,36 @@ The completed or established scope includes:
 
 This does not mean manager-to-session messaging is implemented. It means the runtime capability surface is ready to expose that command only after the server and `taskdeckctl` support it end-to-end.
 
-## Current phase: manager-mediated implementation loop (#64)
+## Current phase: Codex App Server-first route
 
-The current product goal is to make TaskDeck support a real implementation loop with these roles:
+TaskDeck's Codex work-session route should move toward the structured `codex app-server --listen stdio://` adapter instead of treating the Codex TUI transcript as the primary control surface.
+
+The intended direction is:
+
+```text
+TaskDeck UI
+  -> TaskDeck server
+  -> Codex App Server process over stdio JSON
+  -> structured turns / approvals / command output / user-input requests
+  -> TaskDeck task state, logs, and supervision UI
+```
+
+The committed `Codex App Server` profile is the default Codex work-session profile and runs inside `ai-agent-sandbox-agent-1` with `docker exec -i`, not `-it`, because the App Server path uses ordinary stdin/stdout pipes. The `Codex PTY fallback` profile remains available for cases where the App Server route cannot yet support a workflow.
+
+Implementation priorities for this phase:
+
+1. Keep App Server as the default Codex work-session profile.
+2. Preserve PTY-backed profiles as explicit compatibility fallbacks, not the product direction.
+3. Keep App Server JSON hidden from normal task logs while rendering human-readable assistant text, command output, and request state.
+4. Route App Server approvals, user-input requests, and command decisions through TaskDeck UI controls rather than raw transcript prompts.
+5. Make child-session, saved-session, and manager-loop flows App Server-compatible before broadening feature work.
+6. Avoid adding new Codex TUI parsing unless it is a bounded fallback for explicit user-action prompts.
+
+## Next phase: manager-mediated implementation loop (#64)
+
+The manager-mediated implementation loop remains the next product workflow goal. It should build on the App Server-first Codex route where that route supports the needed interaction, while preserving the same TaskDeck actor boundaries.
+
+The goal is to make TaskDeck support a real implementation loop with these roles:
 
 ```text
 User
@@ -139,7 +167,8 @@ manager acknowledges / reviews / closes as appropriate
 
 ## Why this order
 
-- The current architectural focus is the local TaskDeck implementation loop, not provider expansion, desktop packaging, or external decision services.
+- The current architectural focus is the App Server-first local TaskDeck implementation loop, not provider expansion, desktop packaging, or external decision services.
+- The App Server route gives TaskDeck structured Codex turns, approvals, command output, and user-input requests instead of relying on Codex TUI transcript interpretation.
 - Worker agents should continue to communicate through append-only files and bounded status/reporting surfaces.
 - Worker sessions are project-bound; the manager session is a global TaskDeck supervisor launched from the TaskDeck control/document root.
 - Manager reads are file-based and global across projects: manager inbox, generated readable views, and file change notifications.
@@ -151,6 +180,7 @@ manager acknowledges / reviews / closes as appropriate
 ## Current constraints
 
 - Do not use Codex TUI or terminal transcript output as machine control data.
+- Do not add new Codex TUI parsing when the same behavior belongs in the App Server adapter path.
 - Do not use platform-native multi-agent/sub-agent tools as TaskDeck child sessions.
 - TaskDeck branch work uses `git worktree`: one worktree, one branch, one purpose.
 - Do not create disposable full clones for TaskDeck branch work.

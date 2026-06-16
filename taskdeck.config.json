@@ -1,10 +1,18 @@
 {
   "agentProfiles": [
     {
+      "id": "codex-app-server",
+      "label": "Codex App Server",
+      "command": "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -i -w /workspace ai-agent-sandbox-agent-1 sh -lc 'exec codex app-server --listen stdio://'",
+      "description": "Run the primary Codex App Server adapter inside the AI agent sandbox container",
+      "diagnosticContainer": "ai-agent-sandbox-agent-1",
+      "diagnosticWorkspace": "/workspace"
+    },
+    {
       "id": "codex",
-      "label": "Codex",
+      "label": "Codex PTY fallback",
       "command": "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex'",
-      "description": "Run Codex inside the AI agent sandbox container",
+      "description": "Run the Codex TUI inside the AI agent sandbox container when the App Server route is not suitable",
       "diagnosticContainer": "ai-agent-sandbox-agent-1",
       "diagnosticWorkspace": "/workspace",
       "modelOptions": [

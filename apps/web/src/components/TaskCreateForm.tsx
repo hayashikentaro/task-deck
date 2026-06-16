@@ -20,7 +20,7 @@ type TaskCreateFormProps = {
   onCreateTask: (input: CreateTaskInput) => boolean;
 };
 
-const defaultAgentProfileId = "codex";
+const defaultAgentProfileId = "codex-app-server";
 
 export function TaskCreateForm({ context, disabled, savedCodexSessions, onCreateTask }: TaskCreateFormProps) {
   const [selectedAgentId, setSelectedAgentId] = useState(defaultAgentProfileId);

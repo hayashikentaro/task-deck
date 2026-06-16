@@ -101,10 +101,18 @@ const managerAgentProfileId = "taskdeck-manager";
 const codexAppServerAgentProfileId = "codex-app-server";
 const defaultAgentProfiles = [
   {
+    id: codexAppServerAgentProfileId,
+    label: "Codex App Server",
+    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -i -w /workspace ai-agent-sandbox-agent-1 sh -lc 'exec codex app-server --listen stdio://'",
+    description: "Run the primary Codex App Server adapter inside the AI agent sandbox container",
+    diagnosticContainer: "ai-agent-sandbox-agent-1",
+    diagnosticWorkspace: "/workspace",
+  },
+  {
     id: "codex",
-    label: "Codex",
+    label: "Codex PTY fallback",
     command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex'",
-    description: "Run Codex CLI inside the AI agent sandbox container",
+    description: "Run the Codex TUI inside the AI agent sandbox container when the App Server route is not suitable",
     diagnosticContainer: "ai-agent-sandbox-agent-1",
     diagnosticWorkspace: "/workspace",
     modelOptions: [
@@ -113,14 +121,6 @@ const defaultAgentProfiles = [
       { id: "gpt-5.5-thinking", label: "gpt-5.5 Thinking" },
       { id: "gpt-5.4-codex", label: "gpt-5.4 Codex" },
     ],
-  },
-  {
-    id: codexAppServerAgentProfileId,
-    label: "Codex App Server (experimental)",
-    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -i -w /workspace ai-agent-sandbox-agent-1 sh -lc 'exec codex app-server --listen stdio://'",
-    description: "Run the experimental server-side Codex App Server adapter inside the AI agent sandbox container",
-    diagnosticContainer: "ai-agent-sandbox-agent-1",
-    diagnosticWorkspace: "/workspace",
   },
   {
     id: "claude",

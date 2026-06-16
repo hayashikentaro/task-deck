@@ -284,7 +284,7 @@ The old stdout marker path may exist for zsh/manual/debug use, but Codex parent 
 
 Child-to-TaskDeck reporting is constrained to latest-status reporting.
 
-TaskDeck provides these environment variables to launched PTYs:
+TaskDeck provides these environment variables to launched task processes, including App Server and PTY-backed profiles:
 
 - `TASKDECK_TASK_ID`: current task id.
 - `TASKDECK_PARENT_TASK_ID`: parent task id when the task was spawned from a parent request.
@@ -334,7 +334,7 @@ JSON
 mv "$tmp" "$TASKDECK_STATUS_FILE"
 ```
 
-TaskDeck polls status files, ignores `.tmp` files, validates JSON shape, and stores only the latest reported state on the task. A child reporting `done` does not automatically stop or delete the task. A child reporting `failed` does not automatically kill the PTY.
+TaskDeck polls status files, ignores `.tmp` files, validates JSON shape, and stores only the latest reported state on the task. A child reporting `done` does not automatically stop or delete the task. A child reporting `failed` does not automatically kill the active process.
 
 Supervision behavior:
 
@@ -354,7 +354,7 @@ When a child task created from a parent request reports an attention-worthy stat
 .taskdeck/manager-inbox/<eventId>.ack.json
 ```
 
-The first MVP event type is `childStatusChanged` for child states `blocked`, `ready_for_review`, and `failed`. This inbox is intended for a future dedicated manager agent. It is not a push into the parent Codex terminal, it is not a free-form child-to-parent chat channel, and it does not use platform-native sub-agent tooling.
+The first MVP event type is `childStatusChanged` for child states `blocked`, `ready_for_review`, and `failed`. This inbox is intended for a future dedicated manager agent. It is not a push into the parent Codex task input, it is not a free-form child-to-parent chat channel, and it does not use platform-native sub-agent tooling.
 
 TaskDeck also generates manager-readable views from unread valid manager events:
 
