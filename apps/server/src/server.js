@@ -2236,7 +2236,7 @@ function handleCodexAppServerRequest(activeAppServer, message) {
   const targetTaskId = codexAppServerTaskIdForThreadId(activeAppServer, threadId) || activeAppServer.taskId;
   if (isCodexAppServerApprovalRequest(method)) {
     rememberCodexAppServerRequest(activeAppServer, message, "approval", targetTaskId);
-    updateAgentStateFromTaskDeckEvent(targetTaskId, AgentState.WAITING_APPROVAL, {
+    const didBroadcast = updateAgentStateFromTaskDeckEvent(targetTaskId, AgentState.WAITING_APPROVAL, {
       reason: "Codex App Server requested approval.",
       source: AgentStateSource.PROCESS,
       confidence: AgentStateConfidence.HIGH,
@@ -2245,12 +2245,15 @@ function handleCodexAppServerRequest(activeAppServer, message) {
       attentionSource: AgentStateSource.PROCESS,
       attentionConfidence: AgentStateConfidence.HIGH,
     });
+    if (!didBroadcast) {
+      broadcastTasks();
+    }
     appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server approval request is waiting for user handling: ${method}\n`, targetTaskId);
     return;
   }
   if (isCodexAppServerUserInputRequest(method)) {
     rememberCodexAppServerRequest(activeAppServer, message, codexAppServerRequestKind(method), targetTaskId);
-    updateAgentStateFromTaskDeckEvent(targetTaskId, AgentState.WAITING_INPUT, {
+    const didBroadcast = updateAgentStateFromTaskDeckEvent(targetTaskId, AgentState.WAITING_INPUT, {
       reason: "Codex App Server requested user input.",
       source: AgentStateSource.PROCESS,
       confidence: AgentStateConfidence.HIGH,
@@ -2259,6 +2262,9 @@ function handleCodexAppServerRequest(activeAppServer, message) {
       attentionSource: AgentStateSource.PROCESS,
       attentionConfidence: AgentStateConfidence.HIGH,
     });
+    if (!didBroadcast) {
+      broadcastTasks();
+    }
     appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server user-input request is waiting for user handling: ${method}\n`, targetTaskId);
     return;
   }
@@ -2368,15 +2374,7 @@ function resolveCodexAppServerRequest(taskId, requestId, action) {
     })}\n`,
     taskId,
   );
-  updateAgentStateFromTaskDeckEvent(taskId, AgentState.WORKING, {
-    reason: "Codex App Server request was resolved.",
-    source: AgentStateSource.TASKDECK_EVENT,
-    confidence: AgentStateConfidence.HIGH,
-    attentionState: AttentionState.NONE,
-    attentionReason: "Codex App Server request was resolved.",
-    attentionSource: AgentStateSource.TASKDECK_EVENT,
-    attentionConfidence: AgentStateConfidence.HIGH,
-  });
+  updateCodexAppServerTaskStateAfterRequestResolution(activeAppServer, taskId);
   return { ok: true };
 }
 
@@ -2504,6 +2502,72 @@ function clearCodexAppServerPendingRequest(activeAppServer, requestId) {
   if (activeAppServer.currentServerRequestId === requestId) {
     activeAppServer.currentServerRequestId = newestCodexAppServerPendingRequestId(activeAppServer);
   }
+}
+
+function updateCodexAppServerTaskStateAfterRequestResolution(activeAppServer, taskId) {
+  const pendingRequest = codexAppServerCurrentPendingRequestForTask(activeAppServer, taskId);
+  const nextState = pendingRequest
+    ? codexAppServerAgentStateForPendingRequest(pendingRequest)
+    : {
+        agentState: AgentState.WORKING,
+        metadata: {
+          reason: "Codex App Server request was resolved.",
+          source: AgentStateSource.TASKDECK_EVENT,
+          confidence: AgentStateConfidence.HIGH,
+          attentionState: AttentionState.NONE,
+          attentionReason: "Codex App Server request was resolved.",
+          attentionSource: AgentStateSource.TASKDECK_EVENT,
+          attentionConfidence: AgentStateConfidence.HIGH,
+        },
+      };
+  const didBroadcast = updateAgentStateFromTaskDeckEvent(taskId, nextState.agentState, nextState.metadata);
+  if (!didBroadcast) {
+    broadcastTasks();
+  }
+}
+
+function codexAppServerCurrentPendingRequestForTask(activeAppServer, taskId) {
+  const currentRequestId = codexAppServerCurrentRequestIdForTask(activeAppServer, taskId);
+  if (currentRequestId === null || currentRequestId === undefined) {
+    return null;
+  }
+  const pendingRequest = activeAppServer.pendingServerRequests.get(currentRequestId);
+  if (!pendingRequest) {
+    return null;
+  }
+  if (pendingRequest.targetTaskId && pendingRequest.targetTaskId !== taskId) {
+    return null;
+  }
+  return pendingRequest;
+}
+
+function codexAppServerAgentStateForPendingRequest(pendingRequest) {
+  if (pendingRequest.kind === "approval") {
+    return {
+      agentState: AgentState.WAITING_APPROVAL,
+      metadata: {
+        reason: "Codex App Server requested approval.",
+        source: AgentStateSource.PROCESS,
+        confidence: AgentStateConfidence.HIGH,
+        attentionState: AttentionState.NEEDS_APPROVAL,
+        attentionReason: "Codex App Server requested approval.",
+        attentionSource: AgentStateSource.PROCESS,
+        attentionConfidence: AgentStateConfidence.HIGH,
+      },
+    };
+  }
+  return {
+    agentState: AgentState.WAITING_INPUT,
+    metadata: {
+      reason: "Codex App Server requested user input.",
+      source: AgentStateSource.PROCESS,
+      confidence: AgentStateConfidence.HIGH,
+      attentionState: AttentionState.NEEDS_INPUT,
+      attentionReason: "Codex App Server requested user input.",
+      attentionSource: AgentStateSource.PROCESS,
+      attentionConfidence: AgentStateConfidence.HIGH,
+    },
+  };
 }
 
 function newestCodexAppServerPendingRequestId(activeAppServer, targetTaskId = "") {
@@ -2797,7 +2861,7 @@ function handleCodexAppServerRequestResolved(activeAppServer, params) {
     })}\n`,
     targetTaskId,
   );
-  broadcastTasks();
+  updateCodexAppServerTaskStateAfterRequestResolution(activeAppServer, targetTaskId);
 }
 
 function handleCodexAppServerThreadStarted(activeAppServer, params) {
