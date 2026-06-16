@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLaunchCommand, executionCwdForAgentProfile, isTaskDeckManagerProfile } from "./agentLaunch";
+import { buildLaunchCommand, executionCwdForAgentProfile, isCodexProfile, isTaskDeckManagerProfile } from "./agentLaunch";
 import {
   applyCodexPermissionToCommand,
   applyCodexReasoningEffortToCommand,
@@ -33,6 +33,14 @@ const managerProfile: AgentProfile = {
   label: "TaskDeck Manager",
   command: codexProfile.command,
   description: "Run TaskDeck manager",
+};
+
+const codexAppServerProfile: AgentProfile = {
+  id: "codex-app-server",
+  label: "Codex App Server (experimental)",
+  command:
+    "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -i -w /workspace ai-agent-sandbox-agent-1 sh -lc 'exec codex app-server --listen stdio://'",
+  description: "Run Codex App Server inside the AI agent sandbox container",
 };
 
 describe("Codex launch command generation", () => {
@@ -85,6 +93,18 @@ describe("Codex launch command generation", () => {
 
   it("keeps non-Codex commands unchanged", () => {
     expect(buildLaunchCommand(shellProfile, "new", null, "full_access", "high").command).toBe("zsh");
+  });
+
+  it("keeps the Codex App Server profile as a stdio app-server command", () => {
+    const command = buildLaunchCommand(codexAppServerProfile, "new", null, "full_access", "high").command;
+
+    expect(isCodexProfile(codexAppServerProfile)).toBe(false);
+    expect(command).toBe(codexAppServerProfile.command);
+    expect(command).toContain("docker exec -i -w /workspace ai-agent-sandbox-agent-1");
+    expect(command).toContain("codex app-server --listen stdio://");
+    expect(command).not.toContain("docker exec -it");
+    expect(command).not.toContain("--dangerously-bypass-approvals-and-sandbox");
+    expect(command).not.toContain("model_reasoning_effort");
   });
 
   it("applies reasoning effort to resume-last commands generated from the selected Codex profile", () => {

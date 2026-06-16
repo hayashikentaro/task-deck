@@ -71,7 +71,7 @@ Then edit `taskdeck.local.json`:
 
 ## Configure Agent Profiles
 
-TaskDeck ships with committed Codex and Goose profiles that expect a Docker container named `ai-agent-sandbox-agent-1` with a `/workspace` directory.
+TaskDeck ships with committed Codex, Codex App Server, Goose, Aider, Claude, and shell profiles that expect a Docker container named `ai-agent-sandbox-agent-1` with a `/workspace` directory. The regular terminal-backed profiles use an interactive `docker exec` command; the `Codex App Server (experimental)` profile uses non-TTY stdio via `docker exec -i` so TaskDeck can exchange App Server JSON over pipes.
 
 Keep normal fresh-clone project setup minimal by putting only `projectRoot` in `taskdeck.local.json`. If you need to override agent profiles, either add an `agentProfiles` array to `taskdeck.local.json`, copy `taskdeck.profiles.example.json` into another ignored local config file, or point `TASKDECK_CONFIG` at another config file.
 
