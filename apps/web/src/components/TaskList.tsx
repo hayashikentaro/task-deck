@@ -452,6 +452,11 @@ function isChildSession(task: Task) {
 }
 
 function childSessionTitle(task: Task) {
+  if (task.agentSessionSource === "codex_app_server_native_subagent") {
+    return task.parentSessionId
+      ? `Codex App Server native subagent from parent ${task.parentSessionId}`
+      : "Codex App Server native subagent";
+  }
   if (task.parentSessionId) {
     return `Child session from parent ${task.parentSessionId}`;
   }

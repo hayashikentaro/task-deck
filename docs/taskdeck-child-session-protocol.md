@@ -29,6 +29,8 @@ This is already file-based and remains the supported child-to-TaskDeck reporting
 
 Platform-native multi-agent or sub-agent tools, including `multi_agent_v1.spawn_agent`, are not TaskDeck transports. Do not use them to create TaskDeck child sessions or to send parent-to-child instructions.
 
+Codex App Server may still report native collaboration subagents through structured events such as `collabAgentToolCall`. TaskDeck may show those as read-only native subagent cards for supervision, but they are not file-protocol TaskDeck child sessions: TaskDeck does not launch them, does not assign `spawnedFromParentRequest`, and cannot route parent-to-child instructions to them through the child-session message protocol.
+
 ### Deprecated / debug-only stdout marker transport
 
 Stdout marker blocks are not the App Server parent control path.

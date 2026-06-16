@@ -1493,6 +1493,7 @@ function createActiveCodexAppServer(task, process, launchCommand) {
     activeTurnId: "",
     turnActive: false,
     assistantMessageOpen: false,
+    assistantMessageOpenTaskIds: new Set(),
     accountReady: false,
     authFailureDetected: false,
     loginInProgress: false,
@@ -1503,6 +1504,7 @@ function createActiveCodexAppServer(task, process, launchCommand) {
     tokenUsage: null,
     rateLimits: null,
     pendingInputs: [],
+    nativeSubagentTaskIdsByThreadId: new Map(),
   };
 }
 
@@ -2259,6 +2261,11 @@ function handleCodexAppServerNotification(activeAppServer, message) {
     return;
   }
   if (method === "thread/status/changed") {
+    const threadId = String(message.params?.threadId || "").trim();
+    if (isCodexAppServerNativeSubagentThread(activeAppServer, threadId)) {
+      updateCodexAppServerNativeSubagentStatus(activeAppServer, threadId, message.params?.status);
+      return;
+    }
     updateCodexAppServerStatus(activeAppServer, message.params?.status);
     return;
   }
@@ -2270,6 +2277,11 @@ function handleCodexAppServerNotification(activeAppServer, message) {
     return;
   }
   if (method === "turn/started") {
+    const threadId = String(message.params?.threadId || "").trim();
+    if (isCodexAppServerNativeSubagentThread(activeAppServer, threadId)) {
+      updateCodexAppServerNativeSubagentWorking(activeAppServer, threadId, "Codex App Server native subagent turn started.");
+      return;
+    }
     activeAppServer.turnActive = true;
     activeAppServer.assistantMessageOpen = false;
     updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WORKING, {
@@ -2311,6 +2323,11 @@ function handleCodexAppServerNotification(activeAppServer, message) {
     return;
   }
   if (method === "turn/completed") {
+    const threadId = String(message.params?.threadId || message.params?.turn?.threadId || "").trim();
+    if (isCodexAppServerNativeSubagentThread(activeAppServer, threadId)) {
+      completeCodexAppServerNativeSubagent(activeAppServer, threadId);
+      return;
+    }
     activeAppServer.activeTurnId = "";
     activeAppServer.turnActive = false;
     activeAppServer.assistantMessageOpen = false;
@@ -2358,7 +2375,26 @@ function handleCodexAppServerRequestResolved(activeAppServer, params) {
 }
 
 function handleCodexAppServerThreadStarted(activeAppServer, params) {
-  const threadId = String(params?.thread?.id || "").trim();
+  const thread = params?.thread;
+  const threadId = String(thread?.id || "").trim();
+  const parentThreadId = String(thread?.parentThreadId || "").trim();
+  if (threadId && parentThreadId && parentThreadId === activeAppServer.threadId) {
+    const taskId = materializeCodexAppServerNativeSubagent(activeAppServer, threadId, {
+      model: thread?.modelProvider || "",
+      prompt: thread?.agentRole || thread?.agentNickname || "",
+      reasoningEffort: "",
+    });
+    if (taskId) {
+      updateCodexAppServerNativeSubagentState(
+        activeAppServer,
+        threadId,
+        AgentState.READY,
+        "Codex App Server native subagent thread started.",
+      );
+      broadcastTasks();
+    }
+    return;
+  }
   if (threadId && !activeAppServer.threadId) {
     activeAppServer.threadId = threadId;
   }
@@ -2389,8 +2425,19 @@ function handleCodexAppServerMcpStatusUpdated(activeAppServer, params) {
 }
 
 function handleCodexAppServerItemStarted(activeAppServer, params) {
+  const threadId = String(params?.threadId || "").trim();
+  if (isCodexAppServerNativeSubagentThread(activeAppServer, threadId)) {
+    handleCodexAppServerNativeSubagentItemStarted(activeAppServer, threadId, params);
+    return;
+  }
+
   const item = params?.item;
   const itemType = String(item?.type || "");
+  if (isCodexAppServerNativeSubagentSpawnItem(item)) {
+    updateCodexAppServerWorking(activeAppServer, "Codex App Server started a native subagent.");
+    appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server native subagent spawn started.\n");
+    return;
+  }
   if (itemType === "reasoning") {
     updateCodexAppServerWorking(activeAppServer, "Codex App Server started reasoning.");
     return;
@@ -2403,45 +2450,68 @@ function handleCodexAppServerItemStarted(activeAppServer, params) {
 }
 
 function handleCodexAppServerAgentMessageDelta(activeAppServer, params) {
+  const threadId = String(params?.threadId || "").trim();
+  if (
+    isCodexAppServerNativeSubagentThread(activeAppServer, threadId) &&
+    !activeAppServer.nativeSubagentTaskIdsByThreadId.has(threadId)
+  ) {
+    return;
+  }
+  const taskId = codexAppServerTaskIdForThread(activeAppServer, threadId);
   const delta = String(params?.delta || "");
   if (!delta) {
     return;
   }
-  appendAndBroadcast(activeAppServer.taskId, formatCodexAppServerAssistantText(activeAppServer, delta));
+  appendAndBroadcast(taskId, formatCodexAppServerAssistantText(activeAppServer, delta, taskId));
 }
 
-function formatCodexAppServerAssistantText(activeAppServer, delta) {
-  if (activeAppServer.assistantMessageOpen) {
+function formatCodexAppServerAssistantText(activeAppServer, delta, taskId = activeAppServer.taskId) {
+  const assistantMessageOpen = isCodexAppServerAssistantMessageOpen(activeAppServer, taskId);
+  if (assistantMessageOpen) {
     return `${codexAppServerAssistantStyleStart}${delta}${codexAppServerAssistantStyleEnd}`;
   }
-  activeAppServer.assistantMessageOpen = true;
-  const currentLog = logs.get(activeAppServer.taskId) || "";
+  setCodexAppServerAssistantMessageOpen(activeAppServer, taskId, true);
+  const currentLog = logs.get(taskId) || "";
   const prefix = currentLog && !currentLog.endsWith("\n") ? "\n" : "";
   return `${prefix}[Assistant]\n${codexAppServerAssistantStyleStart}${delta}${codexAppServerAssistantStyleEnd}`;
 }
 
 function appendCodexAppServerStatus(activeAppServer, data) {
-  activeAppServer.assistantMessageOpen = false;
-  const taskId = activeAppServer.taskId;
+  appendCodexAppServerStatusForTask(activeAppServer, activeAppServer.taskId, data);
+}
+
+function appendCodexAppServerStatusForTask(activeAppServer, taskId, data) {
+  setCodexAppServerAssistantMessageOpen(activeAppServer, taskId, false);
   const currentLog = logs.get(taskId) || "";
   const prefix = currentLog && !currentLog.endsWith("\n") ? "\n" : "";
   const suffix = data.endsWith("\n") ? "" : "\n";
   appendAndBroadcast(taskId, `${prefix}${data}${suffix}`);
 }
 
-function appendCodexAppServerCommandOutput(activeAppServer, output) {
+function appendCodexAppServerCommandOutput(activeAppServer, output, taskId = activeAppServer.taskId) {
   const normalizedOutput = String(output || "").trimEnd();
   if (!normalizedOutput) {
     return;
   }
-  appendCodexAppServerStatus(
+  appendCodexAppServerStatusForTask(
     activeAppServer,
+    taskId,
     `[TaskDeck] Codex App Server command output:\n${normalizedOutput}\n`
   );
 }
 
 function handleCodexAppServerItemCompleted(activeAppServer, params) {
+  const threadId = String(params?.threadId || "").trim();
+  if (isCodexAppServerNativeSubagentThread(activeAppServer, threadId)) {
+    handleCodexAppServerNativeSubagentItemCompleted(activeAppServer, threadId, params);
+    return;
+  }
+
   const item = params?.item;
+  if (isCodexAppServerNativeSubagentSpawnItem(item)) {
+    materializeCodexAppServerNativeSubagents(activeAppServer, item);
+    return;
+  }
   if (item?.type !== "commandExecution") {
     return;
   }
@@ -2450,6 +2520,233 @@ function handleCodexAppServerItemCompleted(activeAppServer, params) {
     return;
   }
   appendCodexAppServerCommandOutput(activeAppServer, output);
+}
+
+function isCodexAppServerAssistantMessageOpen(activeAppServer, taskId) {
+  if (taskId === activeAppServer.taskId) {
+    return activeAppServer.assistantMessageOpen;
+  }
+  return activeAppServer.assistantMessageOpenTaskIds.has(taskId);
+}
+
+function setCodexAppServerAssistantMessageOpen(activeAppServer, taskId, isOpen) {
+  if (taskId === activeAppServer.taskId) {
+    activeAppServer.assistantMessageOpen = isOpen;
+    return;
+  }
+  if (isOpen) {
+    activeAppServer.assistantMessageOpenTaskIds.add(taskId);
+    return;
+  }
+  activeAppServer.assistantMessageOpenTaskIds.delete(taskId);
+}
+
+function isCodexAppServerNativeSubagentSpawnItem(item) {
+  return item?.type === "collabAgentToolCall" && item.tool === "spawnAgent";
+}
+
+function isCodexAppServerNativeSubagentThread(activeAppServer, threadId) {
+  return Boolean(threadId && activeAppServer.threadId && threadId !== activeAppServer.threadId);
+}
+
+function codexAppServerTaskIdForThread(activeAppServer, threadId) {
+  if (isCodexAppServerNativeSubagentThread(activeAppServer, threadId)) {
+    return activeAppServer.nativeSubagentTaskIdsByThreadId.get(threadId) || activeAppServer.taskId;
+  }
+  return activeAppServer.taskId;
+}
+
+function materializeCodexAppServerNativeSubagents(activeAppServer, item) {
+  const receiverThreadIds = normalizeStringArray(item?.receiverThreadIds);
+  if (receiverThreadIds.length === 0) {
+    appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server native subagent spawn completed without a thread id.\n");
+    return;
+  }
+
+  const createdTaskIds = [];
+  for (const threadId of receiverThreadIds) {
+    const taskId = materializeCodexAppServerNativeSubagent(activeAppServer, threadId, item);
+    if (taskId) {
+      createdTaskIds.push(taskId);
+    }
+  }
+
+  const threadSummary = receiverThreadIds.map(shortCodexAppServerThreadId).join(", ");
+  appendCodexAppServerStatus(
+    activeAppServer,
+    `[TaskDeck] Codex App Server native subagent spawn completed: ${threadSummary}.\n`,
+  );
+  if (createdTaskIds.length > 0) {
+    broadcastTasks();
+  }
+}
+
+function materializeCodexAppServerNativeSubagent(activeAppServer, threadId, item) {
+  const existingTaskId = activeAppServer.nativeSubagentTaskIdsByThreadId.get(threadId);
+  if (existingTaskId) {
+    return "";
+  }
+
+  const parentTask = tasks.get(activeAppServer.taskId);
+  if (!parentTask) {
+    return "";
+  }
+
+  const detectedAt = new Date().toISOString();
+  const subagentTask = markTaskTerminalInputLocked(
+    markTaskAgentState(
+      markTaskRunning(createTask({
+        title: codexAppServerNativeSubagentTitle(item, threadId),
+        command: `Codex App Server native subagent ${threadId}`,
+        cwd: parentTask.cwd,
+        agentProfileId: parentTask.agentProfileId,
+        agentLabel: `${parentTask.agentLabel || "Codex App Server"} subagent`,
+        agentModel: String(item?.model || parentTask.agentModel || ""),
+        agentReasoningEffort: String(item?.reasoningEffort || ""),
+        sessionMode: "subagent",
+        initialInstruction: String(item?.prompt || ""),
+        agentSessionProvider: "codex-app-server",
+        agentSessionId: threadId,
+        agentSessionSource: "codex_app_server_native_subagent",
+        agentSessionDetectedAt: detectedAt,
+        parentSessionId: parentTask.id,
+        spawnedFromParentRequest: false,
+        identityColorSlot: assignTaskIdentityColorSlot(),
+      })),
+      AgentState.STARTING,
+      {
+        reason: "Codex App Server spawned a native subagent.",
+        source: AgentStateSource.PROCESS,
+        confidence: AgentStateConfidence.HIGH,
+        attentionState: AttentionState.NONE,
+        attentionReason: "Codex App Server native subagent started.",
+        attentionSource: AgentStateSource.PROCESS,
+        attentionConfidence: AgentStateConfidence.HIGH,
+      },
+    ),
+    detectedAt,
+  );
+
+  tasks.set(subagentTask.id, subagentTask);
+  logs.set(subagentTask.id, "");
+  activeAppServer.nativeSubagentTaskIdsByThreadId.set(threadId, subagentTask.id);
+  persistTasks();
+  writeTaskLog(
+    subagentTask.id,
+    `[TaskDeck] Codex App Server native subagent materialized from ${parentTask.title || parentTask.id}: ${threadId}.\n`,
+  );
+  logs.set(
+    subagentTask.id,
+    `[TaskDeck] Codex App Server native subagent materialized from ${parentTask.title || parentTask.id}: ${threadId}.\n`,
+  );
+  return subagentTask.id;
+}
+
+function codexAppServerNativeSubagentTitle(item, threadId) {
+  const prompt = String(item?.prompt || "").trim().replace(/\s+/g, " ");
+  if (prompt) {
+    return `Codex subagent: ${prompt.slice(0, 72)}`;
+  }
+  return `Codex subagent ${shortCodexAppServerThreadId(threadId)}`;
+}
+
+function shortCodexAppServerThreadId(threadId) {
+  return String(threadId || "").trim().slice(0, 8) || "unknown";
+}
+
+function updateCodexAppServerNativeSubagentStatus(activeAppServer, threadId, status) {
+  const statusType = String(status?.type || "");
+  if (statusType === "active") {
+    updateCodexAppServerNativeSubagentWorking(activeAppServer, threadId, "Codex App Server native subagent is active.");
+    return;
+  }
+  if (statusType === "idle") {
+    updateCodexAppServerNativeSubagentState(activeAppServer, threadId, AgentState.READY, "Codex App Server native subagent is idle.");
+    return;
+  }
+  if (statusType === "systemError") {
+    updateCodexAppServerNativeSubagentState(activeAppServer, threadId, AgentState.FAILED, "Codex App Server native subagent reported a system error.", {
+      attentionState: AttentionState.FAILED,
+      attentionReason: "Codex App Server native subagent reported a system error.",
+    });
+  }
+}
+
+function updateCodexAppServerNativeSubagentWorking(activeAppServer, threadId, reason) {
+  updateCodexAppServerNativeSubagentState(activeAppServer, threadId, AgentState.WORKING, reason);
+}
+
+function updateCodexAppServerNativeSubagentState(activeAppServer, threadId, agentState, reason, attention = {}) {
+  const taskId = activeAppServer.nativeSubagentTaskIdsByThreadId.get(threadId);
+  if (!taskId) {
+    return false;
+  }
+  return updateAgentStateFromTaskDeckEvent(taskId, agentState, {
+    reason,
+    source: AgentStateSource.PROCESS,
+    confidence: AgentStateConfidence.HIGH,
+    attentionState: attention.attentionState ?? AttentionState.NONE,
+    attentionReason: attention.attentionReason ?? reason,
+    attentionSource: AgentStateSource.PROCESS,
+    attentionConfidence: AgentStateConfidence.HIGH,
+  });
+}
+
+function handleCodexAppServerNativeSubagentItemStarted(activeAppServer, threadId, params) {
+  const item = params?.item;
+  const itemType = String(item?.type || "");
+  if (itemType === "reasoning") {
+    updateCodexAppServerNativeSubagentWorking(activeAppServer, threadId, "Codex App Server native subagent started reasoning.");
+    return;
+  }
+  if (itemType === "commandExecution") {
+    updateCodexAppServerNativeSubagentWorking(activeAppServer, threadId, "Codex App Server native subagent started a command.");
+    const taskId = activeAppServer.nativeSubagentTaskIdsByThreadId.get(threadId);
+    const command = compactCodexAppServerCommand(String(item.command || ""));
+    if (taskId) {
+      appendCodexAppServerStatusForTask(
+        activeAppServer,
+        taskId,
+        `[TaskDeck] Codex App Server native subagent command started${command ? `: ${command}` : "."}\n`,
+      );
+    }
+  }
+}
+
+function handleCodexAppServerNativeSubagentItemCompleted(activeAppServer, threadId, params) {
+  const item = params?.item;
+  if (item?.type !== "commandExecution") {
+    return;
+  }
+  const taskId = activeAppServer.nativeSubagentTaskIdsByThreadId.get(threadId);
+  if (!taskId) {
+    return;
+  }
+  appendCodexAppServerCommandOutput(activeAppServer, String(item.aggregatedOutput || ""), taskId);
+}
+
+function completeCodexAppServerNativeSubagent(activeAppServer, threadId) {
+  const taskId = activeAppServer.nativeSubagentTaskIdsByThreadId.get(threadId);
+  if (!taskId) {
+    return false;
+  }
+  const task = tasks.get(taskId);
+  if (!task || task.status !== TaskStatus.RUNNING) {
+    return false;
+  }
+  const completedTask = {
+    ...markTaskExited(task, { exitCode: 0, signal: null }),
+    agentStateReason: "Codex App Server native subagent turn completed.",
+    attentionStateReason: "Codex App Server native subagent completed successfully.",
+  };
+  setTask(completedTask);
+  appendCodexAppServerStatusForTask(
+    activeAppServer,
+    taskId,
+    "[TaskDeck] Codex App Server native subagent turn completed.\n",
+  );
+  broadcastTasks();
+  return true;
 }
 
 function updateCodexAppServerReady(activeAppServer, reason) {
