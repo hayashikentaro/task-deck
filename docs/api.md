@@ -33,7 +33,7 @@ DELETE /api/presets
 
 `GET /api/diagnostics` returns Docker reachability, merged agent-profile config sources, configured agent-container status, and configured container workspace checks. The right-rail Agent Diagnostics panel surfaces this server diagnostics API in the UI.
 
-`POST /api/diagnostics/containers/:containerName/start` starts a configured diagnostic container when it exists but is stopped. Agent Diagnostics can also start dedicated Codex auth tasks for container-side `codex logout` and `codex login --device-auth`, so auth commands do not get typed into an already-running agent TUI.
+`POST /api/diagnostics/containers/:containerName/start` starts a configured diagnostic container when it exists but is stopped. Agent Diagnostics can also start dedicated Codex auth tasks for container-side `codex logout` and `codex login --device-auth`, so auth commands do not get typed into an already-running agent task or TUI fallback.
 
 ## Cwd Validation
 

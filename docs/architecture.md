@@ -144,7 +144,7 @@ Codex App Server launches through `docker exec -i ... codex app-server --listen 
 - Agent profiles: Built-in profile definitions and profile merge/sanitize logic in `apps/server/src/server.js`; frontend profile types in `apps/web/src/types.ts`; launch-command shaping in `TaskCreateForm.tsx` and `apps/web/src/codexPermissions.ts`.
 - App Server and PTY lifecycle and input/output: Task creation, App Server spawn/stdin/stdout handling, PTY spawn, resize, queued input, log append, and WebSocket output handling in `apps/server/src/server.js`; terminal rendering in `TerminalPane.tsx`; composer behavior in `InputComposer.tsx`.
 - Attention/supervision logic: Adapter selection, process/activity observation, explicit TUI prompt fallback, quiet timers, and task state marking in `apps/server/src/server.js`; task-card display in `apps/web/src/components/TaskList.tsx`.
-- Terminal UI: `apps/web/src/components/TerminalPane.tsx`, `InputComposer.tsx`, related terminal/composer CSS in `apps/web/src/styles.css`.
+- Output and terminal UI: `apps/web/src/components/TerminalPane.tsx`, `InputComposer.tsx`, related output/composer CSS in `apps/web/src/styles.css`.
 - Saved sessions: Codex session detection, resume command construction, session label storage, `/api/agent-sessions`, and saved-session picker behavior in `apps/server/src/server.js` and `TaskCreateForm.tsx`.
 - Diagnostics: `/api/diagnostics` plus container inspection/start helpers in `apps/server/src/server.js`; existing tool panes use related profile/container metadata, and a dedicated diagnostics UI would be future work.
 

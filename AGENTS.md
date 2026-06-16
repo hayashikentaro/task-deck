@@ -198,14 +198,15 @@ If a task-specific user instruction conflicts with this file, stop and report th
 
 - Task persistence must keep old stored tasks loadable.
 - Logs can grow; avoid moving terminal output into unbounded React state.
-- PTY process lifecycle, interrupts, server restarts, and task clearing should remain predictable.
-- WebSocket task updates should keep task lists, selected task behavior, terminal output, and session metadata in sync.
+- App Server and PTY process lifecycle, interrupts, server restarts, and task clearing should remain predictable.
+- WebSocket task updates should keep task lists, selected task behavior, task output, and session metadata in sync.
 - Treat `attentionState` as the supervision UI's primary signal for whether the user should look at a task.
-- Agent state should be driven primarily by TaskDeck events such as start, input, PTY output activity, and exit.
+- Agent state should be driven primarily by TaskDeck events such as start, input, Codex App Server status/request events, PTY output activity, and exit.
 - Do not infer thinking from silence; quiet running PTYs should keep their last known supervisor state until a stronger signal arrives.
+- For Codex work sessions, prefer Codex App Server status/request events over Codex TUI transcript matching.
 - Treat TUI text matching as a fallback for explicit user-action prompts only.
-- Do not add one-off Goose/Codex spinner phrases to infer thinking.
-- Keep agent state inference split by adapter (`goose`, `codex`, and `generic`).
+- Do not add one-off Goose/Codex PTY fallback spinner phrases to infer thinking.
+- Keep agent state inference split by adapter (`codex-app-server`, `goose`, `codex-pty-fallback`, and `generic`).
 - Approval prompts may override immediately, but input-prompt fallback should be gated by PTY activity.
 - PTY activity signals should remain in-memory process observations, not persisted task metadata.
 - Agent session metadata is best-effort and should not assume every agent exposes stable ids.
