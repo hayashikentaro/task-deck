@@ -84,15 +84,17 @@ TaskDeck UI
   -> TaskDeck task state, logs, and supervision UI
 ```
 
-The committed `Codex App Server` profile is the only committed Codex work-session profile and runs inside `ai-agent-sandbox-agent-1` with `docker exec -i`, not `-it`, because the App Server path uses ordinary stdin/stdout pipes. It uses `danger-full-access` and `approvalPolicy: "never"` for the App Server process, App Server threads, and App Server turns to avoid nested Codex sandbox setup and command approval prompts inside the Docker container. Interactive Codex CLI/TUI profiles are intentionally absent from this branch to avoid mixing the old route with the App Server route.
+The committed `Codex App Server` profile is the only exposed task launch profile on this branch and runs inside `ai-agent-sandbox-agent-1` with `docker exec -i`, not `-it`, because the App Server path uses ordinary stdin/stdout pipes. It uses `danger-full-access` and `approvalPolicy: "never"` for the App Server process, App Server threads, and App Server turns to avoid nested Codex sandbox setup and command approval prompts inside the Docker container. Interactive Codex CLI/TUI profiles, non-Codex providers, shell profiles, and file-protocol TaskDeck child-session launches are intentionally disabled while the App Server thread model is rebuilt.
+
+During this App Server-only migration slice, TaskDeck may still render Codex native subagent events as read-only native subagent cards. Those cards are not TaskDeck file-protocol child sessions and must not rely on `spawnedFromParentRequest`, `TASKDECK_CHILD_SESSION_REQUEST_DIR`, or parent-to-child PTY input routing.
 
 Implementation priorities for this phase:
 
 1. Keep App Server as the only committed Codex work-session profile.
-2. Preserve PTY-backed profiles for non-Codex providers and shell compatibility, not for Codex work sessions.
+2. Keep App Server as the only exposed task launch profile until the App Server thread/session model is stable.
 3. Keep App Server JSON hidden from normal task logs while rendering human-readable assistant text, command output, and request state.
 4. Route App Server user-input requests through TaskDeck UI controls rather than raw transcript prompts.
-5. Make child-session and manager-loop flows App Server-compatible before broadening feature work.
+5. Make native subagent rendering and manager-loop flows App Server-compatible before broadening feature work.
 6. Do not add Codex TUI parsing or committed Codex CLI/TUI launch profiles on this branch.
 
 ## Next phase: manager-mediated implementation loop (#64)

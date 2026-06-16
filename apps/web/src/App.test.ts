@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildChildTaskInputs } from "./childSessionTaskInputs";
+import { buildChildTaskInputs, fileProtocolChildSessionsDisabledMessage } from "./childSessionTaskInputs";
 import type { ChildSessionBatchRequest } from "./childSessionRequests";
 import type { TaskDeckContext } from "./types";
 
@@ -23,13 +23,6 @@ const context: TaskDeckContext = {
       command: appServerCommand,
       description: "Run Codex App Server inside the AI agent sandbox container",
     },
-    {
-      id: "zsh",
-      label: "zsh",
-      command:
-        "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 zsh",
-      description: "Plain shell",
-    },
   ],
 };
 
@@ -52,39 +45,12 @@ function request(overrides: Partial<ChildSessionBatchRequest["sessions"][number]
 }
 
 describe("buildChildTaskInputs", () => {
-  it("builds an App Server child create task input without rewriting the profile command", () => {
+  it("rejects file-protocol child session starts on the App Server-only route", () => {
     const result = buildChildTaskInputs("parent-task", request(), context, "request-key");
 
-    expect(result.status).toBe("ready");
-    if (result.status !== "ready") return;
-    expect(result.inputs).toHaveLength(1);
-    expect(result.inputs[0]).toMatchObject({
-      parentSessionId: "parent-task",
-      spawnedFromParentRequest: true,
-      childSessionRequestKey: "request-key:0",
-      workPackageId: "child-work",
-      filesLikelyToChange: ["README.md"],
-      initialInstruction: "Read AGENTS.md, then report status.",
-      agentProfileId: "codex-app-server",
-      agentLabel: "Codex App Server",
-      command: appServerCommand,
+    expect(result).toEqual({
+      status: "rejected",
+      error: fileProtocolChildSessionsDisabledMessage,
     });
-    expect(result.inputs[0].command).toContain("codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://");
-    expect(result.inputs[0].command).not.toContain("docker exec -it");
-  });
-
-  it("keeps non-App-Server child profiles unchanged", () => {
-    const result = buildChildTaskInputs(
-      "parent-task",
-      request({
-        agentProfileId: "zsh",
-      }),
-      context,
-      "request-key",
-    );
-
-    expect(result.status).toBe("ready");
-    if (result.status !== "ready") return;
-    expect(result.inputs[0].command).toBe(context.agentProfiles[1].command);
   });
 });

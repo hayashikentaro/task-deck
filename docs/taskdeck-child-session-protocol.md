@@ -1,8 +1,10 @@
 # TaskDeck Child Session Protocol
 
-This document describes the supported file-based protocol for TaskDeck parent/child session coordination.
+This document describes the legacy file-based protocol for TaskDeck parent/child session coordination.
 
-The active control path for App Server parent sessions is file-based. Parent agents run TaskDeck writer scripts with ordinary CLI arguments. The writer scripts build JSON with fixed code, write request files under `.taskdeck/requests/`, and TaskDeck server reads those files.
+On the App Server-only route, file-protocol child session starts and parent-to-child message requests are disabled. TaskDeck server may still validate old request files and write rejected result files for compatibility, but it does not launch child tasks, route parent-to-child PTY input, or advertise `TASKDECK_CHILD_SESSION_REQUEST_DIR` / `TASKDECK_CHILD_SESSION_MESSAGE_REQUEST_DIR` to launched sessions.
+
+The protocol shape remains documented here as legacy context for a possible future reintroduction. Do not teach App Server parent agents to use these writer scripts until the App Server-native thread/session model is rebuilt and this document is updated.
 
 Parent agents must not hand-write protocol JSON. Parent agents must not print stdout marker blocks as the App Server control path.
 
@@ -12,9 +14,9 @@ Parent agents must not use platform-native multi-agent or sub-agent tools such a
 
 ### Parent to TaskDeck: file-based request files
 
-Use file-based request files for App Server parent control operations.
+File-based request files are currently disabled for App Server parent control operations.
 
-Currently implemented:
+Currently rejected:
 
 - create child session requests via `scripts/write-child-session-request.mjs`.
 - send follow-up messages from a parent session to an existing child session via a file-based message request writer.
@@ -39,7 +41,7 @@ They may remain available for zsh/manual/debug smoke tests, but docs should not 
 
 ## Create Child Session Request
 
-An App Server parent should create a child session by running the writer script:
+This operation is disabled on the App Server-only route. The historical writer command looked like this:
 
 ```sh
 node scripts/write-child-session-request.mjs \
@@ -48,7 +50,7 @@ node scripts/write-child-session-request.mjs \
   --instruction "You are working on hayashikentaro/task-deck. First read AGENTS.md. Do not edit files yet. Report that you are ready and wait for a scoped parent instruction."
 ```
 
-Do not use `multi_agent_v1.spawn_agent` or any other platform-native sub-agent tool for this operation. Creating a TaskDeck child session means writing a TaskDeck child-session request file through this writer script.
+Do not use this command for current App Server parent sessions. TaskDeck will reject the resulting request file.
 
 Defaults:
 
@@ -58,7 +60,7 @@ Defaults:
 - `--file` may be repeated for `filesLikelyToChange`.
 
 The writer reads `TASKDECK_TASK_ID` from the parent task environment and includes it as `parentTaskId` when available.
-When `TASKDECK_CHILD_SESSION_REQUEST_DIR` is present, the writer writes the request file to that directory. TaskDeck sets this environment variable for launched tasks so App Server sessions write to the same request directory that the server polls, including container-mapped paths.
+When `TASKDECK_CHILD_SESSION_REQUEST_DIR` is present, the writer writes the request file to that directory. TaskDeck no longer sets this environment variable for App Server-only launched sessions.
 
 The writer creates:
 
@@ -71,14 +73,14 @@ It writes to a `.tmp` file first, then atomically renames to `.request.json`.
 The writer may print a short human-readable summary and file path. It must not print `TASKDECK_CHILD_SESSION_BATCH_REQUEST` marker blocks.
 TaskDeck reports accepted or rejected request results in the parent task log after the server processes the request; parent agents should not poll result files with shell commands during normal operation.
 
-TaskDeck server polls the request directory, validates request files, launches valid child session requests through trusted local agent profiles, and writes one result file:
+TaskDeck server polls the request directory for compatibility, validates request files, rejects them on the App Server-only route, and writes one result file:
 
 ```text
 .taskdeck/requests/child-session/<requestId>.accepted.json
 .taskdeck/requests/child-session/<requestId>.rejected.json
 ```
 
-Accepted result shape:
+Historical accepted result shape:
 
 ```json
 {
@@ -194,7 +196,7 @@ Parent agents request `workPackageId` and `filesLikelyToChange`, but they do not
 
 ## Parent-To-Child Message Request
 
-An App Server parent should send follow-up instructions to an existing child session by running the writer script:
+This operation is disabled on the App Server-only route. The historical writer command looked like this:
 
 ```sh
 node scripts/write-child-session-message-request.mjs \
@@ -202,7 +204,7 @@ node scripts/write-child-session-message-request.mjs \
   --message "Please inspect issue #34 and report whether you need more context. Do not edit files."
 ```
 
-Do not use `multi_agent_v1.spawn_agent` or any other platform-native sub-agent tool for this operation. TaskDeck can route parent-to-child instructions only to TaskDeck child tasks created through the file-based request protocol.
+Do not use this command for current App Server parent sessions. TaskDeck will reject the resulting request file.
 
 Target one child by either:
 
@@ -215,7 +217,7 @@ Defaults:
 - `--request-id` may be provided for an explicit idempotency key.
 
 The writer reads `TASKDECK_TASK_ID` from the parent task environment and includes it as `parentTaskId` when available.
-When `TASKDECK_CHILD_SESSION_MESSAGE_REQUEST_DIR` is present, the writer writes the message request file to that directory. TaskDeck sets this environment variable for launched tasks so App Server sessions write to the same message request directory that the server polls, including container-mapped paths.
+When `TASKDECK_CHILD_SESSION_MESSAGE_REQUEST_DIR` is present, the writer writes the message request file to that directory. TaskDeck no longer sets this environment variable for App Server-only launched sessions.
 
 The writer creates:
 
@@ -228,14 +230,14 @@ It writes to a `.tmp` file first, then atomically renames to `.request.json`.
 The writer may print a short human-readable summary and file path. It must not print `TASKDECK_CHILD_SESSION_MESSAGE_REQUEST` marker blocks.
 TaskDeck reports accepted or rejected message results in the parent task log after the server processes the request; parent agents should not poll result files with shell commands during normal operation.
 
-TaskDeck server polls the request directory, validates request files, resolves the target against child sessions owned by the parent task, sends valid messages through the existing task input path, and writes one result file:
+TaskDeck server polls the request directory for compatibility, validates request files, rejects them on the App Server-only route, and writes one result file:
 
 ```text
 .taskdeck/requests/child-message/<requestId>.accepted.json
 .taskdeck/requests/child-message/<requestId>.rejected.json
 ```
 
-Accepted result shape:
+Historical accepted result shape:
 
 ```json
 {
@@ -278,20 +280,18 @@ The writer creates JSON like this. Parent agents should not hand-write this file
 }
 ```
 
-The old stdout marker path may exist for zsh/manual/debug use, but App Server parent sessions must use the writer script instead of marker blocks. This document intentionally does not describe the old marker format in detail.
+The old stdout marker path is not part of the App Server-only route. This document intentionally does not describe the old marker format in detail.
 
 ## Child Status File Report
 
 Child-to-TaskDeck reporting is constrained to latest-status reporting.
 
-TaskDeck provides these environment variables to launched task processes, including App Server and PTY-backed profiles:
+TaskDeck provides these environment variables to launched task processes:
 
 - `TASKDECK_TASK_ID`: current task id.
 - `TASKDECK_PARENT_TASK_ID`: parent task id when the task was spawned from a parent request.
 - `TASKDECK_WORK_PACKAGE_ID`: work package id when available.
 - `TASKDECK_STATUS_FILE`: absolute path where the child should write its latest status report.
-- `TASKDECK_CHILD_SESSION_REQUEST_DIR`: absolute path where a parent should write child session request files through `scripts/write-child-session-request.mjs`.
-- `TASKDECK_CHILD_SESSION_MESSAGE_REQUEST_DIR`: absolute path where a parent should write child message request files through `scripts/write-child-session-message-request.mjs`.
 
 Child sessions should not infer the status path. They should write the exact file indicated by `TASKDECK_STATUS_FILE`.
 

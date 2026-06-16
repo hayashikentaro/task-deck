@@ -56,7 +56,7 @@ Owns machine-readable boundaries between agents, TaskDeck, and runtime flows.
 
 Examples:
 
-- `TASKDECK_CHILD_SESSION_BATCH_REQUEST`;
+- legacy `TASKDECK_CHILD_SESSION_BATCH_REQUEST` marker blocks;
 - forbidden fields;
 - validation rules;
 - child result/report formats;

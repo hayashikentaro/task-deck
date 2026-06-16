@@ -41,7 +41,6 @@ import {
   validateChildSessionFileRequest,
 } from "@taskdeck/core/child-session-file-requests";
 import {
-  buildChildSessionMessageDelivery,
   childSessionMessageFileRequestResultFilenames,
   createChildSessionMessageRequestResult,
   validateChildSessionMessageFileRequest,
@@ -99,6 +98,12 @@ const localConfigPath = path.join(repoRoot, "taskdeck.local.json");
 const envConfigPath = process.env.TASKDECK_CONFIG ? path.resolve(process.env.TASKDECK_CONFIG) : "";
 const managerAgentProfileId = "taskdeck-manager";
 const codexAppServerAgentProfileId = "codex-app-server";
+const codexAppServerOnlyTaskError =
+  "TaskDeck now only starts Codex App Server tasks while the App Server thread model is being rebuilt.";
+const fileProtocolChildSessionsDisabledError =
+  "TaskDeck file-protocol child session starts are disabled on the App Server-only route; use Codex native subagents instead.";
+const fileProtocolChildMessagesDisabledError =
+  "TaskDeck file-protocol child session messages are disabled on the App Server-only route; use Codex native subagents instead.";
 const defaultAgentProfiles = [
   {
     id: codexAppServerAgentProfileId,
@@ -107,44 +112,6 @@ const defaultAgentProfiles = [
     description: "Run the primary Codex App Server adapter inside the AI agent sandbox container",
     diagnosticContainer: "ai-agent-sandbox-agent-1",
     diagnosticWorkspace: "/workspace",
-  },
-  {
-    id: "claude",
-    label: "Claude",
-    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 claude",
-    description: "Run Claude inside the AI agent sandbox container",
-    diagnosticContainer: "ai-agent-sandbox-agent-1",
-    diagnosticWorkspace: "/workspace",
-  },
-  {
-    id: "aider",
-    label: "Aider",
-    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 aider",
-    description: "Run Aider inside the AI agent sandbox container",
-    diagnosticContainer: "ai-agent-sandbox-agent-1",
-    diagnosticWorkspace: "/workspace",
-  },
-  {
-    id: "goose",
-    label: "Goose",
-    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 goose",
-    description: "Run Goose inside the AI agent sandbox container",
-    diagnosticContainer: "ai-agent-sandbox-agent-1",
-    diagnosticWorkspace: "/workspace",
-  },
-  {
-    id: "zsh",
-    label: "zsh",
-    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'if command -v zsh >/dev/null 2>&1; then exec zsh; elif command -v bash >/dev/null 2>&1; then exec bash; else exec sh; fi'",
-    description: "Plain interactive zsh shell",
-    diagnosticContainer: "ai-agent-sandbox-agent-1",
-    diagnosticWorkspace: "/workspace",
-  },
-  {
-    id: "zsh-host",
-    label: "zsh - host",
-    command: "zsh",
-    description: "Run zsh on the host in the selected project cwd",
   },
 ];
 
@@ -175,7 +142,6 @@ const maxPtyActivityFrames = 40;
 const quietAttentionMs = 5000;
 const childStatusPollIntervalMs = 2000;
 const childSessionRequestPollIntervalMs = 1000;
-const childSessionStartCoalesceMs = 200;
 const defaultContainerWorkspaceRoot = "/workspace";
 const protectedContainerCleanupPids = new Set(["1", "7", "8", "130"]);
 const imageAttachmentMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
@@ -186,8 +152,6 @@ const imageAttachmentExtensions = new Map([
 ]);
 const activePtys = new Map();
 const activeCodexAppServers = new Map();
-const startedChildSessionRequestKeys = new Set();
-const pendingChildSessionStarts = new Map();
 const processedChildSessionMessageRequestIds = new Set();
 const processedManagerActionIds = new Set();
 const childStatusFileSnapshots = new Map();
@@ -722,124 +686,10 @@ function buildUniqueNewSessionTitle(title, sessionMode) {
   return candidate;
 }
 
-function childSessionStartDedupeKeys({ childSessionRequestKey, parentSessionId, workPackageId }) {
-  const keys = [];
-  const requestKey = String(childSessionRequestKey || "").trim();
-  const parentId = String(parentSessionId || "").trim();
-  const packageId = String(workPackageId || "").trim();
-
-  if (requestKey) {
-    keys.push(`request:${requestKey}`);
-  }
-
-  if (parentId && packageId) {
-    keys.push(`parent-work-package:${parentId}:${packageId}`);
-  }
-
-  return keys;
-}
-
-function childSessionStartGroupKey({ childSessionRequestKey, parentSessionId, workPackageId }) {
-  const parentId = String(parentSessionId || "").trim();
-  const packageId = String(workPackageId || "").trim();
-  const requestKey = String(childSessionRequestKey || "").trim();
-
-  if (parentId && packageId) {
-    return `parent-work-package:${parentId}:${packageId}`;
-  }
-
-  return requestKey ? `request:${requestKey}` : "";
-}
-
-function hasExistingChildForParentWorkPackage(parentSessionId, workPackageId) {
-  const parentId = String(parentSessionId || "").trim();
-  const packageId = String(workPackageId || "").trim();
-
-  if (!parentId || !packageId) {
-    return false;
-  }
-
-  return Array.from(tasks.values()).some((task) => {
-    return Boolean(
-      task.spawnedFromParentRequest &&
-        task.parentSessionId === parentId &&
-        task.workPackageId === packageId,
-    );
-  });
-}
-
-function hasStartedChildSessionDedupeKey(dedupeKeys) {
-  return dedupeKeys.some((dedupeKey) => startedChildSessionRequestKeys.has(dedupeKey));
-}
-
-function rejectDuplicateChildSessionStart(socket) {
-  send(socket, { type: "error", message: "Duplicate child session request ignored." });
-}
-
-function reserveChildSessionDedupeKeys(dedupeKeys) {
-  for (const dedupeKey of dedupeKeys) {
-    startedChildSessionRequestKeys.add(dedupeKey);
-  }
-}
-
-function childSessionStartIsDuplicate(startInput) {
-  const dedupeKeys = childSessionStartDedupeKeys(startInput);
-  return (
-    hasStartedChildSessionDedupeKey(dedupeKeys) ||
-    hasExistingChildForParentWorkPackage(startInput.parentSessionId, startInput.workPackageId)
-  );
-}
-
-function scheduleChildSessionStart(startInput, socket) {
-  const dedupeKeys = childSessionStartDedupeKeys(startInput);
-  if (childSessionStartIsDuplicate(startInput)) {
-    rejectDuplicateChildSessionStart(socket);
-    return;
-  }
-
-  const groupKey = childSessionStartGroupKey(startInput);
-  if (!groupKey) {
-    rejectDuplicateChildSessionStart(socket);
-    return;
-  }
-
-  const existing = pendingChildSessionStarts.get(groupKey);
-
-  if (existing) {
-    for (const dedupeKey of dedupeKeys) {
-      existing.dedupeKeys.add(dedupeKey);
-    }
-
-    rejectDuplicateChildSessionStart(socket);
-    return;
-  }
-
-  const pending = {
-    startInput,
-    socket,
-    dedupeKeys: new Set(dedupeKeys),
-    timeout: null,
-  };
-  pending.timeout = setTimeout(() => {
-    pendingChildSessionStarts.delete(groupKey);
-
-    if (
-      hasStartedChildSessionDedupeKey(Array.from(pending.dedupeKeys)) ||
-      hasExistingChildForParentWorkPackage(pending.startInput.parentSessionId, pending.startInput.workPackageId)
-    ) {
-      rejectDuplicateChildSessionStart(pending.socket);
-      return;
-    }
-
-    reserveChildSessionDedupeKeys(Array.from(pending.dedupeKeys));
-    startTaskNow(pending.startInput, pending.socket);
-  }, childSessionStartCoalesceMs);
-  pendingChildSessionStarts.set(groupKey, pending);
-}
-
 async function startTask(startInput, socket) {
   const {
     command,
+    agentProfileId,
     spawnedFromParentRequest,
     childSessionRequestKey,
   } = startInput;
@@ -849,13 +699,18 @@ async function startTask(startInput, socket) {
     return;
   }
 
+  if (!isCodexAppServerAgentProfileId(agentProfileId)) {
+    send(socket, { type: "error", message: codexAppServerOnlyTaskError });
+    return;
+  }
+
   if (spawnedFromParentRequest && !childSessionRequestKey) {
     send(socket, { type: "error", message: "Child session request key is required." });
     return;
   }
 
   if (spawnedFromParentRequest) {
-    scheduleChildSessionStart(startInput, socket);
+    send(socket, { type: "error", message: fileProtocolChildSessionsDisabledError });
     return;
   }
 
@@ -884,6 +739,16 @@ async function startTaskNow({
   initialInstruction,
   attachments = [],
 }, socket) {
+  if (!isCodexAppServerAgentProfileId(agentProfileId)) {
+    send(socket, { type: "error", message: codexAppServerOnlyTaskError });
+    return { ok: false, error: codexAppServerOnlyTaskError };
+  }
+
+  if (spawnedFromParentRequest) {
+    send(socket, { type: "error", message: fileProtocolChildSessionsDisabledError });
+    return { ok: false, error: fileProtocolChildSessionsDisabledError };
+  }
+
   const isManagerLaunch = isManagerAgentProfileId(agentProfileId);
   const launchCwd = await cwdForTaskLaunch({ cwd, isManagerLaunch });
   const cwdValidation = await validateCwd(launchCwd);
@@ -1103,79 +968,11 @@ async function processChildSessionRequestFile(filePath) {
     return;
   }
 
-  const buildResult = await buildChildSessionFileStartInputs(request, parentTask);
-  if (!buildResult.ok) {
-    await writeChildSessionRequestResult(request.requestId, {
-      state: "rejected",
-      error: buildResult.error,
-    });
-    notifyChildSessionRequestRejected(parentTask.id, request.requestId, buildResult.error);
-    return;
-  }
-
-  const createdTaskIds = [];
-  for (const input of buildResult.inputs) {
-    const startResult = await startChildTaskFromFileRequest(input);
-    if (!startResult.ok) {
-      await writeChildSessionRequestResult(request.requestId, {
-        state: "rejected",
-        error: startResult.error,
-      });
-      notifyChildSessionRequestRejected(parentTask.id, request.requestId, startResult.error);
-      return;
-    }
-    createdTaskIds.push(startResult.taskId);
-  }
-
   await writeChildSessionRequestResult(request.requestId, {
-    state: "accepted",
-    createdTaskIds,
+    state: "rejected",
+    error: fileProtocolChildSessionsDisabledError,
   });
-  notifyChildSessionRequestAccepted(parentTask.id, request.requestId, createdTaskIds);
-}
-
-async function buildChildSessionFileStartInputs(request, parentTask) {
-  const profiles = await loadAgentProfiles();
-  const inputs = [];
-
-  for (const [sessionIndex, session] of request.sessions.entries()) {
-    const profile = profiles.find((agentProfile) => agentProfile.id === session.agentProfileId);
-    if (!profile) {
-      return { ok: false, error: `unknown agentProfileId "${session.agentProfileId}"` };
-    }
-
-    const command = String(profile.command || "").trim();
-
-    if (!command) {
-      return { ok: false, error: `empty launch command for agentProfileId "${session.agentProfileId}"` };
-    }
-
-    inputs.push({
-      title: session.title,
-      command,
-      cwd: session.cwd,
-      agentProfileId: profile.id,
-      agentLabel: profile.label,
-      sessionMode: "new",
-      initialInstruction: session.initialInstruction,
-      parentSessionId: parentTask.id,
-      spawnedFromParentRequest: true,
-      childSessionRequestKey: `file:${request.requestId}:${sessionIndex}`,
-      workPackageId: session.workPackageId,
-      filesLikelyToChange: session.filesLikelyToChange,
-    });
-  }
-
-  return { ok: true, inputs };
-}
-
-async function startChildTaskFromFileRequest(input) {
-  if (childSessionStartIsDuplicate(input)) {
-    return { ok: false, error: "Duplicate child session request ignored." };
-  }
-
-  reserveChildSessionDedupeKeys(childSessionStartDedupeKeys(input));
-  return startTaskNow(input, null);
+  notifyChildSessionRequestRejected(parentTask.id, request.requestId, fileProtocolChildSessionsDisabledError);
 }
 
 async function childSessionRequestResultExists(requestId) {
@@ -1199,14 +996,6 @@ async function writeChildSessionRequestResult(requestId, { state, createdTaskIds
   await fs.mkdir(childSessionRequestRoot, { recursive: true });
   await fs.writeFile(tempPath, `${JSON.stringify(result, null, 2)}\n`);
   await fs.rename(tempPath, filePath);
-}
-
-function notifyChildSessionRequestAccepted(parentTaskId, requestId, createdTaskIds) {
-  const taskIds = normalizeStringArray(createdTaskIds);
-  appendTaskDeckResultStatus(
-    parentTaskId,
-    `Child session request accepted: ${requestId}${taskIds.length ? `; created tasks: ${taskIds.join(", ")}` : ""}. No shell check is required.`,
-  );
 }
 
 function notifyChildSessionRequestRejected(parentTaskId, requestId, error) {
@@ -1287,39 +1076,14 @@ async function processChildSessionMessageRequestFile(filePath) {
 
   const request = validation.request;
   const parentTask = tasks.get(request.parentTaskId);
-  const buildResult = buildChildSessionMessageDelivery({
-    parentTask,
-    request,
-    tasks,
-    formatInput: formatParentInstructionInputForPty,
-  });
-  if (!buildResult.ok) {
-    await writeChildSessionMessageRequestResult(request.requestId, {
-      state: "rejected",
-      error: buildResult.error,
-    });
-    if (parentTask) {
-      notifyChildSessionMessageRequestRejected(parentTask.id, request.requestId, buildResult.error);
-    }
-    return;
-  }
-
-  const sendResult = sendTaskInputToPty(buildResult.childTask.id, buildResult.data, "parent-instruction-file");
-  if (!sendResult.ok) {
-    const error = childSessionMessageInputError(buildResult.childTask, sendResult.reason);
-    await writeChildSessionMessageRequestResult(request.requestId, {
-      state: "rejected",
-      error,
-    });
-    notifyChildSessionMessageRequestRejected(parentTask.id, request.requestId, error);
-    return;
-  }
-
   await writeChildSessionMessageRequestResult(request.requestId, {
-    state: "accepted",
-    targetTaskId: buildResult.childTask.id,
+    state: "rejected",
+    error: fileProtocolChildMessagesDisabledError,
   });
-  notifyChildSessionMessageRequestAccepted(parentTask.id, request.requestId, buildResult.childTask.id);
+  if (parentTask) {
+    notifyChildSessionMessageRequestRejected(parentTask.id, request.requestId, fileProtocolChildMessagesDisabledError);
+  }
+  return;
 }
 
 async function childSessionMessageRequestResultExists(requestId) {
@@ -1343,13 +1107,6 @@ async function writeChildSessionMessageRequestResult(requestId, { state, targetT
   await fs.mkdir(childSessionMessageRequestRoot, { recursive: true });
   await fs.writeFile(tempPath, `${JSON.stringify(result, null, 2)}\n`);
   await fs.rename(tempPath, filePath);
-}
-
-function notifyChildSessionMessageRequestAccepted(parentTaskId, requestId, targetTaskId) {
-  appendTaskDeckResultStatus(
-    parentTaskId,
-    `Child session message accepted: ${requestId}; delivered to ${targetTaskId}. No shell check is required.`,
-  );
 }
 
 function notifyChildSessionMessageRequestRejected(parentTaskId, requestId, error) {
@@ -2937,19 +2694,6 @@ function appendAndBroadcast(taskId, data) {
   broadcast({ type: "output", taskId, data });
 }
 
-function childSessionMessageInputError(childTask, reason) {
-  if (reason === "terminal-input-locked") {
-    return `target child session "${childTask.title || childTask.id}" has terminal input locked.`;
-  }
-  return `target child session "${childTask.title || childTask.id}" is not accepting input.`;
-}
-
-function formatParentInstructionInputForPty(parentTask, message) {
-  const parentLabel = parentTask.title || parentTask.id;
-  const text = normalizeTerminalInput(`Parent instruction from ${parentLabel}:\n${message}`);
-  return `${bracketedPasteStart}${text}${bracketedPasteEnd}${terminalEnter}`;
-}
-
 function scheduleQueuedPtyInputFlush(activePty) {
   const waitMs = activePty.inputHoldUntil - Date.now();
   if (waitMs <= 0 || activePty.flushTimer) {
@@ -3115,15 +2859,12 @@ async function buildManagerBootstrapInstruction(command) {
 
 async function taskDeckEnvironmentForTask(task, command, hostStatusFile) {
   const childStatusFile = await childVisibleStatusFilePathForTask(task, command, hostStatusFile);
-  const childSessionRequestPaths = await childSessionRequestVisiblePathsForTask(command);
   const managerReadablePaths = await managerReadableVisiblePathsForTask(command);
   return {
     TASKDECK_TASK_ID: task.id,
     ...(task.parentSessionId ? { TASKDECK_PARENT_TASK_ID: task.parentSessionId } : {}),
     ...(task.workPackageId ? { TASKDECK_WORK_PACKAGE_ID: task.workPackageId } : {}),
     TASKDECK_STATUS_FILE: childStatusFile,
-    TASKDECK_CHILD_SESSION_REQUEST_DIR: childSessionRequestPaths.requestDir,
-    TASKDECK_CHILD_SESSION_MESSAGE_REQUEST_DIR: childSessionRequestPaths.messageRequestDir,
     ...(isManagerTask(task)
       ? {
           TASKDECK_MANAGER_ROLE: "manager",
@@ -3138,15 +2879,6 @@ async function taskDeckEnvironmentForTask(task, command, hostStatusFile) {
           TASKDECK_MANAGER_ACTION_HISTORY_FILE: managerReadablePaths.actionHistoryFile,
         }
       : {}),
-  };
-}
-
-async function childSessionRequestVisiblePathsForTask(command) {
-  const visibleDataRoot = await taskVisibleHostPath(command, dataRoot);
-  const joinVisiblePath = extractDockerExecWorkdir(command) ? path.posix.join : path.join;
-  return {
-    requestDir: joinVisiblePath(visibleDataRoot, "requests", "child-session"),
-    messageRequestDir: joinVisiblePath(visibleDataRoot, "requests", "child-message"),
   };
 }
 
@@ -5736,11 +5468,13 @@ async function loadAgentProfileConfig() {
     }
   }
 
+  mergedProfiles = mergedProfiles.filter(isCodexAppServerAgentProfile);
+
   if (loadedSources.length === 0) {
     return {
       source: "built-in",
       path: "",
-      message: `Using ${mergedProfiles.length} built-in agent profiles.`,
+      message: "Using the built-in Codex App Server profile.",
       profiles: mergedProfiles,
     };
   }
@@ -5748,11 +5482,15 @@ async function loadAgentProfileConfig() {
   return {
     source: loadedSources.map((source) => source.source).join(" + "),
     path: loadedSources.map((source) => source.path).join(", "),
-    message: `Merged ${mergedProfiles.length} agent profiles from built-in defaults and ${loadedSources
+    message: `Merged agent profiles from built-in defaults and ${loadedSources
       .map((source) => `${source.source} (${source.count})`)
-      .join(", ")}.`,
+      .join(", ")}; exposing Codex App Server only.`,
     profiles: mergedProfiles,
   };
+}
+
+function isCodexAppServerAgentProfile(profile) {
+  return isCodexAppServerAgentProfileId(profile?.id);
 }
 
 function mergeAgentProfiles(baseProfiles, overrideProfiles = []) {

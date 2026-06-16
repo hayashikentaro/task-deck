@@ -6,7 +6,7 @@ This document is a navigation map for contributors and AI-agent sessions. It des
 
 TaskDeck is a task-centric supervision UI for AI-agent work. It is not a chatbot UI, and it is not merely a prettier terminal.
 
-For Codex work sessions, TaskDeck's product route is App Server-only on this branch. The Codex App Server adapter gives TaskDeck structured turns, command output, and user-input requests. PTY/TUI handling remains part of the runtime for shell sessions and non-Codex providers, but committed Codex CLI/TUI access is intentionally absent.
+For work sessions on this branch, TaskDeck's product route is Codex App Server-only. The Codex App Server adapter gives TaskDeck structured turns, command output, and user-input requests. PTY/TUI handling remains in the codebase as a legacy/fallback runtime path, but the committed task launch surface exposes only Codex App Server while the App Server thread model is being rebuilt.
 
 In the current session-identity-first card design, the primary card-level visual question is which task maps to the terminal/session the operator is viewing or about to resume. `Needs you` / `Not now` remains the primary supervision signal for sorting, badges, and action prompts, but it should not dominate the whole card surface or compete with stable task/session identity as a full-card color system.
 
@@ -16,22 +16,22 @@ In the current session-identity-first card design, the primary card-level visual
 - `apps/web`: React/Vite frontend for task cards, task output rendering, terminal fallback rendering, task creation, tools, diagnostics, composer input, App Server request controls, and API/WebSocket state handling.
 - `packages/core`: Shared task-state primitives and task serialization helpers used by server and web code.
 - `.taskdeck/`: Ignored local runtime state. It stores persisted tasks, logs, presets, session labels, attachments, and other local data that may be sensitive.
-- Config files: `taskdeck.config.json` is committed config and currently still contains default agent profile assumptions; ignored `taskdeck.local.json`, `TASKDECK_CONFIG`, `TASKDECK_PROJECT_ROOT`, and `TASKDECK_PROJECT_ROOTS` carry machine-local overrides. `taskdeck.local.example.json` is the public example for local setup.
+- Config files: `taskdeck.config.json` is committed config and exposes only the Codex App Server task profile on this branch; ignored `taskdeck.local.json`, `TASKDECK_CONFIG`, `TASKDECK_PROJECT_ROOT`, and `TASKDECK_PROJECT_ROOTS` carry machine-local overrides. `taskdeck.local.example.json` is the public example for local setup.
 
 ## Runtime Data Flow
 
 1. The web app loads `/api/context`, opens the WebSocket, and receives task snapshots and output updates over WebSocket.
-2. The New Agent Session form creates a task from an agent profile and selected project.
-3. The server launches the selected command. `codex-app-server` tasks run as a stdio App Server subprocess; terminal-backed profiles run in a PTY.
+2. The New Agent Session form creates a Codex App Server task for the selected project.
+3. The server launches the Codex App Server command as a stdio App Server subprocess. Legacy terminal-backed profile launch code remains present but is not exposed on the App Server-only route.
 4. App Server messages are reduced to human-readable task output, pending request state, and task state updates. PTY output is appended to bounded in-memory and persisted logs, broadcast over WebSocket, and rendered by xterm.js in the terminal pane.
 5. Server-side lifecycle observations, App Server status events, and adapter-specific fallback signals update `agentState` and `attentionState` without treating silence as thinking.
 6. Task, log, preset, session-label, and attachment state is persisted under `.taskdeck/`.
 7. Focused REST calls handle actions such as task renaming, log reload, attachments, and diagnostics queries when a UI path calls them.
 8. UI state updates from REST responses and WebSocket messages keep the task list, selected task, terminal output, composer availability, and tools in sync.
 
-## #29 Child Session Auto-Launch Ownership
+## Legacy #29 Child Session Auto-Launch Ownership
 
-Issue #29 adds a narrow parent-output-to-child-task flow:
+Issue #29 previously added a narrow parent-output-to-child-task flow:
 
 ```text
 parent output
@@ -47,7 +47,9 @@ parent output
   -> later parent/integration workflow handles merging
 ```
 
-This flow follows the AI-first layer model in `docs/ai-first-layering.md` and the request contract in `docs/taskdeck-child-session-protocol.md`.
+This flow is disabled on the App Server-only route. TaskDeck no longer scans the Web UI output path for stdout child-session marker blocks, no longer exposes file-protocol child-session request directories to launched App Server sessions, and rejects file-protocol child session starts while the App Server-native thread/session model is being rebuilt.
+
+The legacy ownership map remains useful if this protocol is reintroduced:
 
 - Protocol owns the request block shape, required and optional fields, forbidden fields, validation semantics, parser/validator behavior, and protocol docs. Typical files are `docs/taskdeck-child-session-protocol.md` and `apps/web/src/childSessionRequests.ts`. Protocol work must not introduce raw launch commands or UI workflow decisions.
 - App Flow owns scanning parent task output/logs, calling the parser, deduping processed request blocks, resolving trusted local agent profiles, mapping valid requests to `CreateTaskInput`, invoking the existing task creation flow, and surfacing concise created/rejected status. Typical files are `apps/web/src/App.tsx` and `apps/web/src/agentLaunch.ts`.
@@ -56,7 +58,7 @@ This flow follows the AI-first layer model in `docs/ai-first-layering.md` and th
 - Core owns parent/child task metadata semantics and persisted compatibility for fields such as `parentSessionId`, `spawnedFromParentRequest`, `workPackageId`, and `filesLikelyToChange` when those semantics change.
 - Integration owns collecting pushed child branches after child sessions finish, choosing merge order, merging into the parent or integration branch, and running checks. Integration is not part of the auto-launch runtime itself; use `docs/agents/roles/integration.md` for that workflow.
 
-#29 must not execute raw commands from parent output. Parent requests may name an agent profile, cwd, permission, title, work package, file hints, and an initial instruction, but TaskDeck builds the actual launch command from trusted local profile configuration.
+#29 must not execute raw commands from parent output if reintroduced. Parent requests may name an agent profile, cwd, permission, title, work package, file hints, and an initial instruction, but TaskDeck must build the actual launch command from trusted local profile configuration.
 
 #29 is also not worktree management, branch management, dependency graph execution, automatic merge, parent-to-child follow-up instruction routing, or child completion result tracking. Follow-up instruction routing belongs to #30. Child completion/result tracking and integration handoff should be handled by later workflows/issues such as #40 and the integration role guide.
 

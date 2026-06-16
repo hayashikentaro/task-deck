@@ -3,7 +3,6 @@ import {
   buildLaunchCommand,
   buildTaskTitle,
   executionCwdForAgentProfile,
-  isTaskDeckManagerProfile,
 } from "../agentLaunch";
 import type { AgentProfile, CreateTaskInput, ProjectSuggestion, TaskDeckContext } from "../types";
 import { Button } from "./ui/Button";
@@ -18,7 +17,6 @@ type TaskCreateFormProps = {
 const defaultAgentProfileId = "codex-app-server";
 
 export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFormProps) {
-  const [selectedAgentId, setSelectedAgentId] = useState(defaultAgentProfileId);
   const [selectedProjectPath, setSelectedProjectPath] = useState("");
 
   const projectSuggestions = useMemo(() => buildProjectSuggestions(context), [context]);
@@ -32,26 +30,18 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
     }
   }, [context?.defaultCwd, projectSuggestions, selectedProjectPath]);
 
-  const agentProfiles = context?.agentProfiles ?? [];
-  const selectedAgent =
-    agentProfiles.find((profile) => profile.id === selectedAgentId) ??
-    findDefaultAgentProfile(agentProfiles);
-  const selectedAgentIsManager = isTaskDeckManagerProfile(selectedAgent);
-  const launchCommand = selectedAgent ? buildLaunchCommand(selectedAgent) : { command: "", resumeCommand: "" };
+  const codexAppServerProfile = findCodexAppServerProfile(context?.agentProfiles ?? []);
+  const launchCommand = codexAppServerProfile
+    ? buildLaunchCommand(codexAppServerProfile)
+    : { command: "", resumeCommand: "" };
   const command = launchCommand.command;
   const effectiveCwd = executionCwdForAgentProfile(
-    selectedAgent,
+    codexAppServerProfile,
     selectedProjectPath,
     context?.controlRoot,
     context?.defaultCwd,
   );
-  const canStart = !disabled && Boolean(selectedAgent) && Boolean(effectiveCwd) && Boolean(command);
-
-  useEffect(() => {
-    if (!agentProfiles.some((profile) => profile.id === selectedAgentId)) {
-      setSelectedAgentId(findDefaultAgentProfile(agentProfiles)?.id ?? "");
-    }
-  }, [agentProfiles, selectedAgentId]);
+  const canStart = !disabled && Boolean(codexAppServerProfile) && Boolean(effectiveCwd) && Boolean(command);
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -60,13 +50,11 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
     }
 
     onCreateTask({
-      title: selectedAgentIsManager
-        ? "TaskDeck Manager"
-        : buildTaskTitle(selectedAgent?.label || "Agent", effectiveCwd),
+      title: buildTaskTitle(codexAppServerProfile?.label || "Codex App Server", effectiveCwd),
       command,
       cwd: effectiveCwd,
-      agentProfileId: selectedAgent?.id || "",
-      agentLabel: selectedAgent?.label || "Agent",
+      agentProfileId: codexAppServerProfile?.id || defaultAgentProfileId,
+      agentLabel: codexAppServerProfile?.label || "Codex App Server",
       sessionMode: "new",
     });
   };
@@ -75,31 +63,11 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
     <section className="task-create-panel" aria-label="New agent session">
       <form className="task-create-form" onSubmit={handleSubmit}>
         <SelectField
-          className="agent-picker"
-          disabled={!agentProfiles.length}
-          label="Agent"
-          value={selectedAgent?.id ?? ""}
-          onChange={setSelectedAgentId}
-        >
-          {agentProfiles.map((profile) => (
-            <option key={profile.id} value={profile.id}>
-              {profile.label}
-            </option>
-          ))}
-        </SelectField>
-        <SelectField
           className="project-field"
-          disabled={selectedAgentIsManager}
-          hint={selectedAgentIsManager ? "Global manager sessions use the document/control root." : undefined}
-          label={selectedAgentIsManager ? "Control root" : "Project"}
-          value={selectedAgentIsManager ? effectiveCwd : selectedProjectPath}
+          label="Project"
+          value={selectedProjectPath}
           onChange={setSelectedProjectPath}
         >
-          {selectedAgentIsManager ? (
-            <option value={effectiveCwd}>
-              Global · {basename(effectiveCwd) || "TaskDeck"}
-            </option>
-          ) : null}
           {projectSuggestions.map((project) => (
             <option key={project.path} value={project.path}>
               {project.label}
@@ -107,19 +75,15 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
           ))}
         </SelectField>
         <Button disabled={!canStart} fullWidth type="submit" variant="panel">
-          Start Session
+          Start Codex Session
         </Button>
       </form>
     </section>
   );
 }
 
-function findDefaultAgentProfile(agentProfiles: AgentProfile[]) {
-  return (
-    agentProfiles.find((profile) => profile.id === defaultAgentProfileId) ??
-    agentProfiles[0] ??
-    null
-  );
+function findCodexAppServerProfile(agentProfiles: AgentProfile[]) {
+  return agentProfiles.find((profile) => profile.id === defaultAgentProfileId) ?? null;
 }
 
 function buildProjectSuggestions(context: TaskDeckContext | null): ProjectSuggestion[] {

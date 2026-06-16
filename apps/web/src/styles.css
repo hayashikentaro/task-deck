@@ -481,7 +481,6 @@ dd {
 }
 
 .project-field,
-.agent-picker,
 .custom-resume-field,
 .custom-command-field {
   min-width: 0;
@@ -1895,7 +1894,6 @@ dd {
 
 .task-create-form label,
 .td-select-field,
-.agent-picker,
 .project-field {
   min-width: 0;
 }

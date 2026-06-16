@@ -1,6 +1,8 @@
-import { buildLaunchCommand } from "./agentLaunch";
 import type { ChildSessionBatchRequest } from "./childSessionRequests";
 import type { CreateTaskInput, TaskDeckContext } from "./types";
+
+export const fileProtocolChildSessionsDisabledMessage =
+  "TaskDeck file-protocol child session starts are disabled on the App Server-only route; use Codex native subagents instead.";
 
 type ChildTaskBuildResult =
   | { status: "deferred" }
@@ -13,41 +15,9 @@ export function buildChildTaskInputs(
   context: TaskDeckContext | null,
   requestKey: string,
 ): ChildTaskBuildResult {
-  if (!context) {
-    return { status: "deferred" };
-  }
-
-  const inputs: CreateTaskInput[] = [];
-
-  for (const [sessionIndex, session] of request.sessions.entries()) {
-    const profile = context.agentProfiles.find((agentProfile) => agentProfile.id === session.agentProfileId);
-    if (!profile) {
-      return { status: "rejected", error: `unknown agentProfileId "${session.agentProfileId}"` };
-    }
-
-    const launchCommand = buildLaunchCommand(profile);
-    if (!launchCommand.command) {
-      return { status: "rejected", error: `empty launch command for agentProfileId "${session.agentProfileId}"` };
-    }
-    if (!session.cwd) {
-      return { status: "rejected", error: `empty cwd for "${session.title}"` };
-    }
-
-    inputs.push({
-      title: session.title,
-      command: launchCommand.command,
-      cwd: session.cwd,
-      agentProfileId: profile.id,
-      agentLabel: profile.label,
-      sessionMode: "new",
-      initialInstruction: session.initialInstruction,
-      parentSessionId: parentTaskId,
-      spawnedFromParentRequest: true,
-      childSessionRequestKey: `${requestKey}:${sessionIndex}`,
-      workPackageId: session.workPackageId,
-      filesLikelyToChange: session.filesLikelyToChange,
-    });
-  }
-
-  return { status: "ready", inputs };
+  void parentTaskId;
+  void request;
+  void context;
+  void requestKey;
+  return { status: "rejected", error: fileProtocolChildSessionsDisabledMessage };
 }
