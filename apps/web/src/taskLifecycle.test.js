@@ -9,7 +9,10 @@ import {
   markTaskChildStatusError,
   markTaskChildStatusReported,
   markTaskClosed,
+  markTaskInputLocked,
+  markTaskInputUnlocked,
   markTaskRunning,
+  serializeTask,
 } from "@taskdeck/core";
 
 describe("task lifecycle visibility", () => {
@@ -51,6 +54,37 @@ describe("task lifecycle visibility", () => {
       status: TaskStatus.CLOSED,
       attentionState: AttentionState.NONE,
       attentionStateSource: AgentStateSource.MANUAL,
+    });
+  });
+});
+
+describe("task input locking", () => {
+  it("uses task input lock metadata for newly updated tasks", () => {
+    const task = createTask({ title: "Input lock task", command: "echo lock", cwd: "." });
+    const locked = markTaskInputLocked(task, "2026-06-17T00:00:00.000Z");
+    const unlocked = markTaskInputUnlocked(locked, "2026-06-17T00:01:00.000Z");
+
+    expect(serializeTask(locked)).toMatchObject({
+      inputLockedAt: "2026-06-17T00:00:00.000Z",
+      updatedAt: task.updatedAt,
+    });
+    expect(serializeTask(unlocked)).toMatchObject({
+      inputLockedAt: null,
+      updatedAt: "2026-06-17T00:01:00.000Z",
+    });
+    expect(locked).not.toHaveProperty("terminalInputLockedAt");
+    expect(unlocked).not.toHaveProperty("terminalInputLockedAt");
+  });
+
+  it("loads old persisted task input locks into the current metadata field", () => {
+    const legacyTask = {
+      ...createTask({ title: "Legacy lock task", command: "echo legacy", cwd: "." }),
+      inputLockedAt: null,
+      terminalInputLockedAt: "2026-06-16T00:00:00.000Z",
+    };
+
+    expect(serializeTask(legacyTask)).toMatchObject({
+      inputLockedAt: "2026-06-16T00:00:00.000Z",
     });
   });
 });

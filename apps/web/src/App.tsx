@@ -190,9 +190,9 @@ export function App() {
     applyTaskList(payload.tasks, getRunningTaskIdsFromMessage(payload));
   };
 
-  const toggleTerminalInputLock = async (taskId: string, locked: boolean) => {
+  const toggleInputLock = async (taskId: string, locked: boolean) => {
     try {
-      const response = await fetch(`/api/tasks/${taskId}/terminal-input-lock`, {
+      const response = await fetch(`/api/tasks/${taskId}/input-lock`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ locked }),
@@ -204,7 +204,7 @@ export function App() {
         runningTaskIds?: string[];
       };
       if (!response.ok || !payload.tasks) {
-        throw new Error(payload.error || "Unable to toggle terminal input lock.");
+        throw new Error(payload.error || "Unable to toggle input lock.");
       }
       applyTaskList(payload.tasks, getRunningTaskIdsFromMessage(payload));
       if (!locked) {
@@ -212,7 +212,7 @@ export function App() {
       }
       return true;
     } catch (error) {
-      console.error(error instanceof Error ? error.message : "Unable to toggle terminal input lock.");
+      console.error(error instanceof Error ? error.message : "Unable to toggle input lock.");
       return false;
     }
   };
@@ -242,7 +242,7 @@ export function App() {
           onClearTasks={clearTasks}
           onRenameTask={renameTask}
           onSelectTask={setSelectedTaskId}
-          onToggleTerminalInputLock={toggleTerminalInputLock}
+          onToggleInputLock={toggleInputLock}
         />
         <OutputPane
           composerValue={composerValue}

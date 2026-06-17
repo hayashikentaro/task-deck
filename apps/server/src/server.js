@@ -25,8 +25,8 @@ import {
   markTaskExited,
   markTaskReviewed,
   markTaskRunning,
-  markTaskTerminalInputLocked,
-  markTaskTerminalInputUnlocked,
+  markTaskInputLocked,
+  markTaskInputUnlocked,
   normalizeIdentityColorSlot,
   parseChildStatusReportJson,
   serializeTask,
@@ -294,7 +294,7 @@ app.patch("/api/tasks/:taskId/attention/acknowledge", async (request, response) 
   });
 });
 
-app.patch("/api/tasks/:taskId/terminal-input-lock", async (request, response) => {
+app.patch("/api/tasks/:taskId/input-lock", async (request, response) => {
   const { taskId } = request.params;
   const task = tasks.get(taskId);
   const locked = Boolean(request.body?.locked);
@@ -305,7 +305,7 @@ app.patch("/api/tasks/:taskId/terminal-input-lock", async (request, response) =>
   }
 
   if (task.status !== TaskStatus.RUNNING) {
-    response.status(409).json({ error: "Only running tasks can toggle terminal input lock." });
+    response.status(409).json({ error: "Only running tasks can toggle input lock." });
     return;
   }
   if (isCodexAppServerNativeSubagentTask(task)) {
@@ -313,7 +313,7 @@ app.patch("/api/tasks/:taskId/terminal-input-lock", async (request, response) =>
     return;
   }
 
-  setTask(locked ? markTaskTerminalInputLocked(task) : markTaskTerminalInputUnlocked(task));
+  setTask(locked ? markTaskInputLocked(task) : markTaskInputUnlocked(task));
   await persistTasks();
   broadcastTasks();
 
@@ -534,8 +534,8 @@ wss.on("connection", (socket) => {
       const taskId = String(message.taskId || "").trim();
       const inputResult = sendTaskInput(taskId, message.data, message.source || "client");
       if (!inputResult.ok) {
-        if (inputResult.reason === "terminal-input-locked") {
-          send(socket, { type: "error", message: "Terminal input is locked for this task." });
+        if (inputResult.reason === "input-locked") {
+          send(socket, { type: "error", message: "Input is locked for this task." });
         }
         if (inputDebugEnabled) {
           console.log(`[TaskDeck input] ignored task=${taskId || "-"} reason=${inputResult.reason}`);
@@ -934,8 +934,8 @@ function recordCodexAppServerThreadSession(activeAppServer, threadId) {
 function sendTaskInputToCodexAppServer(taskId, data, source = "client") {
   const task = tasks.get(taskId);
   const activeAppServer = activeCodexThreadSessions.get(taskId);
-  if (task?.terminalInputLockedAt) {
-    return { ok: false, reason: "terminal-input-locked" };
+  if (task?.inputLockedAt || task?.terminalInputLockedAt) {
+    return { ok: false, reason: "input-locked" };
   }
   if (!activeAppServer || typeof data !== "string") {
     return { ok: false, reason: "no-active-app-server-or-invalid-data" };
@@ -2091,7 +2091,7 @@ function materializeCodexAppServerNativeSubagent(activeAppServer, threadId, item
   }
 
   const detectedAt = new Date().toISOString();
-  const subagentTask = markTaskTerminalInputLocked(
+  const subagentTask = markTaskInputLocked(
     markTaskAgentState(
       markTaskRunning(createTask({
         title: codexAppServerNativeSubagentTitle(item, threadId),

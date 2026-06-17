@@ -132,7 +132,7 @@ export function createTask({
     reviewedByTaskId: "",
     closedAt: null,
     closedByTaskId: "",
-    terminalInputLockedAt: null,
+    inputLockedAt: null,
     risk: assessCommandRisk(normalizedCommand),
     createdAt: now,
     startedAt: null,
@@ -243,17 +243,19 @@ export function markTaskClosed(task, { closedAt = new Date().toISOString(), clos
   };
 }
 
-export function markTaskTerminalInputLocked(task, lockedAt = new Date().toISOString()) {
+export function markTaskInputLocked(task, lockedAt = new Date().toISOString()) {
+  const { terminalInputLockedAt: _legacyTerminalInputLockedAt, ...rest } = task;
   return {
-    ...task,
-    terminalInputLockedAt: lockedAt,
+    ...rest,
+    inputLockedAt: lockedAt,
   };
 }
 
-export function markTaskTerminalInputUnlocked(task, unlockedAt = new Date().toISOString()) {
+export function markTaskInputUnlocked(task, unlockedAt = new Date().toISOString()) {
+  const { terminalInputLockedAt: _legacyTerminalInputLockedAt, ...rest } = task;
   return {
-    ...task,
-    terminalInputLockedAt: null,
+    ...rest,
+    inputLockedAt: null,
     updatedAt: unlockedAt,
   };
 }
@@ -324,7 +326,7 @@ export function serializeTask(task) {
     reviewedByTaskId: task.reviewedByTaskId || "",
     closedAt: task.closedAt || null,
     closedByTaskId: task.closedByTaskId || "",
-    terminalInputLockedAt: task.terminalInputLockedAt || null,
+    inputLockedAt: task.inputLockedAt || task.terminalInputLockedAt || null,
     risk: task.risk,
     createdAt: task.createdAt,
     startedAt: task.startedAt,

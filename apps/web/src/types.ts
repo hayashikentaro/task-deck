@@ -94,7 +94,7 @@ export type Task = {
   reviewedByTaskId?: string;
   closedAt?: string | null;
   closedByTaskId?: string;
-  terminalInputLockedAt?: string | null;
+  inputLockedAt?: string | null;
   risk: TaskRisk;
   createdAt: string;
   startedAt: string | null;

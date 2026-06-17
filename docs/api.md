@@ -15,6 +15,7 @@ DELETE /api/tasks
 GET /api/tasks/:taskId
 PATCH /api/tasks/:taskId/title
 PATCH /api/tasks/:taskId/attention/acknowledge
+PATCH /api/tasks/:taskId/input-lock
 DELETE /api/tasks/:taskId
 GET /api/tasks/:taskId/logs
 GET /api/tasks/:taskId/logs?tail=200000
@@ -49,13 +50,15 @@ It returns whether the cwd resolves to an existing directory, its absolute path,
 
 ## Tasks
 
-`GET /api/tasks` and `GET /api/tasks/:taskId` return persisted task metadata including the launch command, cwd, agent profile fields, App Server thread session identity when available, legacy session fields when present, parent/child metadata, and child reported status.
+`GET /api/tasks` and `GET /api/tasks/:taskId` return persisted task metadata including the launch command, cwd, agent profile fields, input lock timestamp, App Server thread session identity when available, legacy session fields when present, parent/child metadata, and child reported status.
 
 The server still recognizes the legacy `taskdeck-manager` agent profile id on stored tasks as a global manager session marker for manager protocol safety. The committed App Server route does not expose or launch a Codex TUI manager profile. Normal worker sessions do not receive manager-only instructions or manager action environment variables.
 
 `PATCH /api/tasks/:taskId/title` updates the TaskDeck display name used to identify a task/session. When a task has legacy external session metadata, the display name may also be stored against that session key for persisted compatibility. Tasks without session metadata update their own task title.
 
 `PATCH /api/tasks/:taskId/attention/acknowledge` clears the current attention event for a running task without stopping or modifying its active runtime. The task stores `attentionAcknowledgedAt`, returns to Not now by setting `attentionState` to `none`, and can surface again when a future App Server request, child-status report, or manager action sets a new attention state.
+
+`PATCH /api/tasks/:taskId/input-lock` accepts `{ "locked": true }` or `{ "locked": false }` for running tasks. Locking blocks new user input without moving the task in the list. Unlocking stores a fresh activity timestamp so the operator can resume that task intentionally.
 
 `DELETE /api/tasks` bulk-clears tasks and their logs. `DELETE /api/tasks/:taskId` clears a single task; clearing an individual running task stops its active App Server runtime and removes that task.
 

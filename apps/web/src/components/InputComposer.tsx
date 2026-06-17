@@ -24,7 +24,7 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
-  const isTerminalInputLocked = Boolean(task?.terminalInputLockedAt);
+  const isInputLocked = Boolean(task?.inputLockedAt);
   const isCodexAppServerTask = task?.agentProfileId === "codex-app-server";
   const codexAppServerRequest = task?.codexAppServerRequest ?? null;
   const needsUserAttention = taskNeedsUserAttention(task);
@@ -32,7 +32,7 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
   const isActiveInstruction = Boolean(task?.agentState === "working" && !needsUserAttention);
   const isUnsupportedCancelActiveTask = Boolean(isCodexAppServerTask && isActiveInstruction);
   const canInteractWithRunningTask = Boolean(task && task.status === "running" && isConnected);
-  const canSend = canInteractWithRunningTask && !isTerminalInputLocked && !isUnsupportedCancelActiveTask && !isCodexAppServerNeedsAttention;
+  const canSend = canInteractWithRunningTask && !isInputLocked && !isUnsupportedCancelActiveTask && !isCodexAppServerNeedsAttention;
   const hasComposerContent = Boolean(value || selectedImages.length);
   const canSubmit = canSend && hasComposerContent && !isUploadingAttachments;
   const canResolveCodexAppServerRequest = Boolean(canInteractWithRunningTask && codexAppServerRequest);
@@ -379,8 +379,8 @@ function getComposerMode(
   if (task.status !== "running") {
     return "Read-only log";
   }
-  if (task.terminalInputLockedAt) {
-    return "Terminal input locked";
+  if (task.inputLockedAt) {
+    return "Input locked";
   }
   if (isCodexAppServerNeedsAttention) {
     return "Task needs your attention";
@@ -406,7 +406,7 @@ function getComposerInputState({
   if (!isConnected) {
     return "disconnected";
   }
-  if (task.terminalInputLockedAt) {
+  if (task.inputLockedAt) {
     return "locked";
   }
   if (isUploadingAttachments) {

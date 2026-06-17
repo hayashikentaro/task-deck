@@ -12,7 +12,7 @@ type TaskListProps = {
   onClearTasks: () => void | Promise<void>;
   onRenameTask: (taskId: string, title: string) => Promise<boolean>;
   onSelectTask: (taskId: string) => void;
-  onToggleTerminalInputLock: (taskId: string, locked: boolean) => void | Promise<boolean>;
+  onToggleInputLock: (taskId: string, locked: boolean) => void | Promise<boolean>;
 };
 
 export function TaskList({
@@ -23,7 +23,7 @@ export function TaskList({
   onClearTasks,
   onRenameTask,
   onSelectTask,
-  onToggleTerminalInputLock,
+  onToggleInputLock,
 }: TaskListProps) {
   const [filter, setFilter] = useState<TaskFilter>("all");
   const [isClearAllConfirmOpen, setIsClearAllConfirmOpen] = useState(false);
@@ -173,19 +173,18 @@ export function TaskList({
           const bucket = supervisionBucket(task);
           const stateBadge = taskStateBadge(task);
           const isEditingTitle = editingTaskId === task.id;
-          const isTerminalInputLocked = Boolean(task.terminalInputLockedAt);
+          const isInputLocked = Boolean(task.inputLockedAt);
           const isNativeSubagent = isNativeSubagentTask(task);
-          const terminalInputLockLabel = isNativeSubagent
+          const inputLockLabel = isNativeSubagent
             ? "Native subagent input is read-only"
-            : isTerminalInputLocked
-              ? "Unlock terminal input"
-              : "Lock terminal input";
+            : isInputLocked
+              ? "Unlock input"
+              : "Lock input";
           const lineageBadge = taskLineageBadge(task);
           return (
             <article
               className="task-list-item"
               data-selected={isSelected}
-              data-terminal-input-locked={isTerminalInputLocked ? "true" : undefined}
               data-tone={taskTone(task, runningTaskIdSet)}
               key={task.id}
               ref={(element) => {
@@ -298,23 +297,23 @@ export function TaskList({
                 </button>
               </div>
               <button
-                aria-label={terminalInputLockLabel}
-                aria-pressed={isTerminalInputLocked}
-                className="task-terminal-input-lock-button"
-                data-active={isTerminalInputLocked ? "true" : "false"}
+                aria-label={inputLockLabel}
+                aria-pressed={isInputLocked}
+                className="task-input-lock-button"
+                data-active={isInputLocked ? "true" : "false"}
                 disabled={task.status !== "running" || isNativeSubagent}
-                onClick={() => onToggleTerminalInputLock(task.id, !isTerminalInputLocked)}
-                title={terminalInputLockLabel}
+                onClick={() => onToggleInputLock(task.id, !isInputLocked)}
+                title={inputLockLabel}
                 type="button"
               >
-                {isTerminalInputLocked ? (
-                  <svg aria-hidden="true" className="task-terminal-input-lock-icon" focusable="false" viewBox="0 0 16 16">
+                {isInputLocked ? (
+                  <svg aria-hidden="true" className="task-input-lock-icon" focusable="false" viewBox="0 0 16 16">
                     <path d="M5 7V5.5a3 3 0 0 1 6 0V7" />
                     <path d="M4.5 7.5h7v6h-7z" />
                     <path d="M8 10v1.5" />
                   </svg>
                 ) : (
-                  <svg aria-hidden="true" className="task-terminal-input-lock-icon" focusable="false" viewBox="0 0 16 16">
+                  <svg aria-hidden="true" className="task-input-lock-icon" focusable="false" viewBox="0 0 16 16">
                     <path d="M5 7V5.5a3 3 0 0 1 5.6-1.5" />
                     <path d="M4.5 7.5h7v6h-7z" />
                     <path d="M8 10v1.5" />

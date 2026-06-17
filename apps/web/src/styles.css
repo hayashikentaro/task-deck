@@ -964,7 +964,7 @@ dd {
   place-items: center;
 }
 
-.task-terminal-input-lock-button {
+.task-input-lock-button {
   position: absolute;
   right: 8px;
   bottom: 8px;
@@ -1820,20 +1820,20 @@ dd {
 
 .task-clear-button:hover:not(:disabled),
 .task-edit-title-button:hover:not(:disabled),
-.task-terminal-input-lock-button:hover:not(:disabled) {
+.task-input-lock-button:hover:not(:disabled) {
   border-color: transparent;
   background: transparent;
   color: var(--status-focus);
 }
 
-.task-terminal-input-lock-button[data-active="true"] {
+.task-input-lock-button[data-active="true"] {
   background: color-mix(in srgb, var(--task-card-band) 18%, var(--surface-raised));
   color: var(--status-focus);
 }
 
 .task-clear-icon,
 .task-edit-title-icon,
-.task-terminal-input-lock-icon {
+.task-input-lock-icon {
   width: 16px;
   height: 16px;
   fill: none;
