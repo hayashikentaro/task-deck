@@ -1305,6 +1305,12 @@ function handleCodexAppServerOutputLine(activeAppServer, line, stream) {
       }
       return;
     }
+    if (activeAppServer.authFailureDetected && isCodexAppServerAuthError(trimmedLine)) {
+      if (codexAppServerDebugEnabled) {
+        appendAndBroadcast(activeAppServer.taskId, `${line}\n`);
+      }
+      return;
+    }
     appendAndBroadcast(activeAppServer.taskId, `${line}\n`);
     handleCodexAppServerTextDiagnostic(activeAppServer, line);
     return;
@@ -1328,6 +1334,16 @@ function isIgnorableCodexAppServerTextDiagnostic(line) {
 }
 
 function handleCodexAppServerMessage(activeAppServer, message) {
+  if (activeAppServer.authFailureDetected) {
+    if (codexAppServerDebugEnabled) {
+      appendCodexAppServerStatus(
+        activeAppServer,
+        `[TaskDeck] Ignoring Codex App Server message after authentication failure: ${String(message.method || message.id || "unknown")}\n`,
+      );
+    }
+    return;
+  }
+
   if (message.id !== undefined && (message.result !== undefined || message.error !== undefined)) {
     handleCodexAppServerResponse(activeAppServer, message);
     return;
@@ -2048,14 +2064,17 @@ function handleCodexAppServerMcpStatusUpdated(activeAppServer, params) {
     status ? `status=${status}` : "",
     error ? `error=${error}` : "",
   ].filter(Boolean).join(" ");
-  appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server MCP status updated${details ? `: ${details}` : "."}\n`);
   if (
     (normalizedStatus === "failed" || error) &&
     isCodexAppServerAuthError(details) &&
     shouldReportCodexAppServerAuthFailure(activeAppServer)
   ) {
     handleCodexAppServerAuthFailureDiagnostic(activeAppServer, details);
+    if (!codexAppServerDebugEnabled) {
+      return;
+    }
   }
+  appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server MCP status updated${details ? `: ${details}` : "."}\n`);
 }
 
 function handleCodexAppServerItemStarted(activeAppServer, params) {

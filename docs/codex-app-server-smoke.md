@@ -62,4 +62,4 @@ Normal task logs should be human-readable and should not show raw JSON-RPC. Expe
 
 If device-code login fails, TaskDeck should not automatically request another code. Restart the task to request a fresh code.
 
-If device-code login completes but the App Server later reports `token_revoked`, `refresh_token_invalidated`, or `401 Unauthorized`, fix Codex login in the environment that launches the `codex-app-server` profile, or point that profile at the host environment with the valid login, then restart the task.
+If device-code login completes but the App Server later reports `token_revoked`, `refresh_token_invalidated`, or `401 Unauthorized`, TaskDeck should keep the task in a user-attention auth-failed state and ignore later stale App Server success messages such as thread-ready or MCP startup updates. Fix Codex login in the environment that launches the `codex-app-server` profile, or point that profile at the host environment with the valid login, then restart the task.
