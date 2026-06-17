@@ -22,7 +22,6 @@ export const AgentState = Object.freeze({
 
 export const AgentStateSource = Object.freeze({
   TASKDECK_EVENT: "taskdeck_event",
-  TUI_FALLBACK: "tui_fallback",
   PROCESS: "process",
   MANUAL: "manual",
   CHILD_STATUS: "child_status",
@@ -54,6 +53,7 @@ export const ChildReportedState = Object.freeze({
 });
 
 const childReportedStates = new Set(Object.values(ChildReportedState));
+const agentStateSources = new Set(Object.values(AgentStateSource));
 const agentReasoningEfforts = new Set(["low", "medium", "high", "xhigh"]);
 
 const dangerousPatterns = [
@@ -153,7 +153,7 @@ export function markTaskRunning(task) {
     status: TaskStatus.RUNNING,
     agentState: task.agentState ?? AgentState.STARTING,
     agentStateReason: task.agentStateReason || "Process started.",
-    agentStateSource: task.agentStateSource || AgentStateSource.PROCESS,
+    agentStateSource: normalizeAgentStateSource(task.agentStateSource) || AgentStateSource.PROCESS,
     agentStateConfidence: task.agentStateConfidence || AgentStateConfidence.HIGH,
     attentionState: AttentionState.NONE,
     attentionStateReason: "Task is running.",
@@ -172,11 +172,11 @@ export function markTaskAgentState(task, agentState, metadata = {}) {
     ...task,
     agentState,
     agentStateReason: metadata.reason ?? task.agentStateReason ?? "",
-    agentStateSource: metadata.source ?? task.agentStateSource ?? "",
+    agentStateSource: normalizeAgentStateSource(metadata.source ?? task.agentStateSource),
     agentStateConfidence: metadata.confidence ?? task.agentStateConfidence ?? "",
     attentionState: metadata.attentionState ?? task.attentionState ?? AttentionState.NONE,
     attentionStateReason: metadata.attentionReason ?? task.attentionStateReason ?? "",
-    attentionStateSource: metadata.attentionSource ?? task.attentionStateSource ?? "",
+    attentionStateSource: normalizeAgentStateSource(metadata.attentionSource ?? task.attentionStateSource),
     attentionStateConfidence: metadata.attentionConfidence ?? task.attentionStateConfidence ?? "",
     updatedAt: new Date().toISOString(),
   };
@@ -315,11 +315,11 @@ export function serializeTask(task) {
     status: task.status,
     agentState: task.agentState ?? inferAgentStateFromStatus(task),
     agentStateReason: task.agentStateReason || "",
-    agentStateSource: task.agentStateSource || "",
+    agentStateSource: normalizeAgentStateSource(task.agentStateSource),
     agentStateConfidence: task.agentStateConfidence || "",
     attentionState: task.attentionState ?? inferAttentionStateFromTask(task),
     attentionStateReason: task.attentionStateReason || "",
-    attentionStateSource: task.attentionStateSource || inferAttentionStateSourceFromTask(task),
+    attentionStateSource: normalizeAgentStateSource(task.attentionStateSource) || inferAttentionStateSourceFromTask(task),
     attentionStateConfidence: task.attentionStateConfidence || inferAttentionStateConfidenceFromTask(task),
     attentionAcknowledgedAt: task.attentionAcknowledgedAt || null,
     reviewedAt: task.reviewedAt || null,
@@ -504,6 +504,11 @@ function normalizeAgentReasoningEffort(value) {
   return agentReasoningEfforts.has(normalizedValue) ? normalizedValue : "";
 }
 
+function normalizeAgentStateSource(value) {
+  const normalizedValue = String(value || "").trim();
+  return agentStateSources.has(normalizedValue) ? normalizedValue : "";
+}
+
 function normalizeStringArray(value) {
   if (!Array.isArray(value)) {
     return [];
@@ -602,7 +607,7 @@ export function inferAttentionStateSourceFromTask(task) {
   if ((task.attentionState ?? inferAttentionStateFromTask(task)) === AttentionState.NONE) return "";
   if (task.status === TaskStatus.FAILED || task.status === TaskStatus.INTERRUPTED) return AgentStateSource.PROCESS;
   if (task.agentState === AgentState.FAILED || task.agentState === AgentState.STOPPED) return AgentStateSource.PROCESS;
-  return task.agentStateSource || "";
+  return normalizeAgentStateSource(task.agentStateSource);
 }
 
 export function inferAttentionStateConfidenceFromTask(task) {

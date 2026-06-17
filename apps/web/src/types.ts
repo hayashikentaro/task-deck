@@ -11,7 +11,7 @@ export type AgentState =
   | "failed"
   | "stopped";
 
-export type AgentStateSource = "taskdeck_event" | "tui_fallback" | "process" | "manual" | "child_status" | "";
+export type AgentStateSource = "taskdeck_event" | "process" | "manual" | "child_status" | "";
 export type AgentStateConfidence = "high" | "medium" | "low" | "";
 export type AttentionStateSource = AgentStateSource;
 export type AttentionStateConfidence = AgentStateConfidence;

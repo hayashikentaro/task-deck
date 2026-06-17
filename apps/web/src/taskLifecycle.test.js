@@ -88,3 +88,19 @@ describe("task input locking", () => {
     });
   });
 });
+
+describe("legacy task metadata", () => {
+  it("does not expose old TUI fallback state sources", () => {
+    const legacyTask = {
+      ...createTask({ title: "Legacy state source task", command: "echo source", cwd: "." }),
+      attentionState: AttentionState.NEEDS_INPUT,
+      agentStateSource: "tui_fallback",
+      attentionStateSource: "tui_fallback",
+    };
+
+    expect(serializeTask(legacyTask)).toMatchObject({
+      agentStateSource: "",
+      attentionStateSource: "",
+    });
+  });
+});
