@@ -41,6 +41,13 @@ import {
   validateManagerEvent,
 } from "@taskdeck/core/manager-inbox";
 import {
+  codexAppServerThreadIdFromMessage,
+  isCodexAppServerAuthError,
+  resolveCodexAppServerTaskIdForThread,
+  shouldIgnoreCodexAppServerMessageAfterAuthFailure,
+  shouldSuppressCodexAppServerAuthErrorLine,
+} from "@taskdeck/core/codex-app-server";
+import {
   MANAGER_READABLE_ACTIONS_FILENAME,
   MANAGER_READABLE_CAPABILITIES_FILENAME,
   MANAGER_READABLE_CONTEXT_FILENAME,
@@ -1305,7 +1312,10 @@ function handleCodexAppServerOutputLine(activeAppServer, line, stream) {
       }
       return;
     }
-    if (activeAppServer.authFailureDetected && isCodexAppServerAuthError(trimmedLine)) {
+    if (shouldSuppressCodexAppServerAuthErrorLine({
+      authFailureDetected: activeAppServer.authFailureDetected,
+      line: trimmedLine,
+    })) {
       if (codexAppServerDebugEnabled) {
         appendAndBroadcast(activeAppServer.taskId, `${line}\n`);
       }
@@ -1340,7 +1350,7 @@ function handleCodexAppServerMessage(activeAppServer, message) {
     return;
   }
 
-  if (activeAppServer.authFailureDetected) {
+  if (shouldIgnoreCodexAppServerMessageAfterAuthFailure(activeAppServer)) {
     if (codexAppServerDebugEnabled) {
       appendCodexAppServerStatus(
         activeAppServer,
@@ -1371,7 +1381,11 @@ function codexThreadSessionForCodexAppServerMessage(defaultThreadSession, messag
     return defaultThreadSession;
   }
 
-  const taskId = taskIdByCodexThreadId.get(threadId);
+  const taskId = resolveCodexAppServerTaskIdForThread({
+    threadId,
+    defaultTaskId: defaultThreadSession.taskId,
+    taskIdByThreadId: taskIdByCodexThreadId,
+  });
   if (!taskId || taskId === defaultThreadSession.taskId) {
     return defaultThreadSession;
   }
@@ -1384,19 +1398,6 @@ function codexThreadSessionForCodexAppServerMessage(defaultThreadSession, messag
   const task = tasks.get(taskId);
   const parentThreadSession = activeCodexThreadSessions.get(task?.parentSessionId);
   return parentThreadSession || defaultThreadSession;
-}
-
-function codexAppServerThreadIdFromMessage(message) {
-  const params = message?.params ?? {};
-  const result = message?.result ?? {};
-  return String(
-    params.threadId ||
-      params.turn?.threadId ||
-      params.thread?.id ||
-      result.thread?.id ||
-      result.turn?.threadId ||
-      "",
-  ).trim();
 }
 
 function handleCodexAppServerResponse(activeAppServer, message) {
@@ -1630,23 +1631,6 @@ function resumeCodexAppServerAfterLogin(activeAppServer) {
 
 function codexAppServerAccountRequiresLogin(result) {
   return Boolean(result?.requiresOpenaiAuth || result?.account === null);
-}
-
-function isCodexAppServerAuthError(error) {
-  const text = (typeof error === "string" ? error : JSON.stringify(error || {})).toLowerCase();
-  return (
-    text.includes("auth expired") ||
-    text.includes("token_revoked") ||
-    text.includes("token_invalidated") ||
-    text.includes("token invalidated") ||
-    text.includes("invalidated oauth token") ||
-    text.includes("refresh_token_invalidated") ||
-    text.includes("refresh token invalidated") ||
-    text.includes("your session has ended") ||
-    text.includes("please log in again") ||
-    text.includes("unauthorized") ||
-    text.includes("401")
-  );
 }
 
 function handleCodexAppServerTextDiagnostic(activeAppServer, text) {
@@ -2243,7 +2227,11 @@ function isCodexAppServerNativeSubagentThread(activeAppServer, threadId) {
 }
 
 function codexAppServerTaskIdForThread(activeAppServer, threadId) {
-  return taskIdByCodexThreadId.get(threadId) || activeAppServer.taskId;
+  return resolveCodexAppServerTaskIdForThread({
+    threadId,
+    defaultTaskId: activeAppServer.taskId,
+    taskIdByThreadId: taskIdByCodexThreadId,
+  });
 }
 
 function materializeCodexAppServerNativeSubagents(activeAppServer, item) {

@@ -6,6 +6,7 @@
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js",
+    "./codex-app-server": "./src/codexAppServer.js",
     "./manager-inbox": "./src/managerInbox.js",
     "./manager-readable": "./src/managerReadable.js"
   }
