@@ -33,6 +33,8 @@ Server performs the validated action.
 
 On this branch, the only committed task launch surface is Codex App Server running directly in the TaskDeck server environment.
 
+TaskDeck Codex work tasks should be treated as App Server thread-session projections. The current runtime may use one App Server subprocess behind a parent thread session, but that process topology is an implementation detail and must not become the manager or UI control contract.
+
 TaskDeck may materialize Codex App Server native subagents as read-only supervision cards. Those cards are App Server thread projections. TaskDeck does not launch them as independent sessions and must not expose controls that imply the user or manager can command them separately from the parent App Server task.
 
 Do not add stdout marker protocols, request-file writers, or request-directory environment variables as an App Server control path.
@@ -260,7 +262,7 @@ taskdeckctl close --task <taskId>
 
 `taskdeckctl ack --event` writes the manager event `.ack.json` sidecar through the server, refreshes the generated manager-readable files, acknowledges the target task attention state when applicable, logs the manager action under `.taskdeck/manager-actions/`, and broadcasts the updated task snapshot. Repeated `actionId` values are deduped by the server process, and events that already have an ack sidecar return a successful already-acknowledged result.
 
-`taskdeckctl review --task` marks a task as reviewed and clears review-ready attention when applicable. `taskdeckctl close --task` marks a task closed, stops any active process for that task, preserves the task record/logs for history, and removes it from the running task set. Both commands are idempotent when the target task is already reviewed or closed.
+`taskdeckctl review --task` marks a task as reviewed and clears review-ready attention when applicable. `taskdeckctl close --task` marks a task closed, stops any active runtime or process for that task, preserves the task record/logs for history, and removes it from the running task set. Both commands are idempotent when the target task is already reviewed or closed.
 
 Every manager action result is written as a per-action JSON file under `.taskdeck/manager-actions/`. A compact recent history is also available at `.taskdeck/manager-actions/history.json`.
 

@@ -21,9 +21,9 @@ In the current session-identity-first card design, the primary card-level visual
 ## Runtime Data Flow
 
 1. The web app loads `/api/context`, opens the WebSocket, and receives task snapshots and output updates over WebSocket.
-2. The New Agent Session form creates a Codex App Server task for the selected project.
-3. The server launches the Codex App Server command as a stdio App Server subprocess. Legacy terminal-backed profile launch code remains present but is not exposed on the App Server-only route.
-4. App Server messages are reduced to human-readable task output, pending request state, and task state updates. PTY output is appended to bounded in-memory and persisted logs, broadcast over WebSocket, and rendered by xterm.js in the terminal pane.
+2. The New Agent Session form creates a TaskDeck task that represents a Codex App Server thread session for the selected project.
+3. The server starts the current App Server runtime for that thread session and sends `thread/start` with the selected project cwd. The current implementation uses one stdio App Server subprocess per parent thread session, but TaskDeck task semantics should depend on the App Server thread/session metadata rather than on process ownership.
+4. App Server thread messages are reduced to human-readable task output, pending request state, and task state updates. PTY output is appended to bounded in-memory and persisted logs, broadcast over WebSocket, and rendered by xterm.js in the terminal pane.
 5. Server-side lifecycle observations, App Server status events, and adapter-specific fallback signals update `agentState` and `attentionState` without treating silence as thinking.
 6. Task, log, preset, session-label, and attachment state is persisted under `.taskdeck/`.
 7. Focused REST calls handle actions such as task renaming, terminal input locking, log reload, attachments, task diffs, and task clearing when a UI path calls them.
@@ -71,7 +71,7 @@ The server persists local runtime state under `.taskdeck/`, which is intentional
 
 ## Domain Concepts
 
-- Task: The central supervision unit. It owns process status, command/cwd, agent profile metadata, session metadata, attachments, logs, risk, `agentState`, `attentionState`, and timing.
+- Task: The central supervision unit. For Codex App Server work, a parent task represents an App Server thread session and persists its thread identity in session metadata once the thread is ready. A task also owns low-level runtime status, command/cwd, agent profile metadata, attachments, logs, risk, `agentState`, `attentionState`, and timing.
 - Agent profile: A configured launch profile. On this branch, the exposed committed profile is Codex App Server running directly in the TaskDeck server environment. Profiles merge from built-in defaults, committed config, ignored local config, and `TASKDECK_CONFIG`.
 - Session mode: How an agent starts. The committed App Server route starts new sessions; legacy stored tasks may still carry older session mode values.
 - Attention state: The primary operator signal for `Needs you` / `Not now`. It should remain conservative and false-positive tolerant.
@@ -81,13 +81,13 @@ The server persists local runtime state under `.taskdeck/`, which is intentional
 
 ## Task And Session Behavior
 
-Multiple tasks can exist in the task list, and multiple agent processes can run at the same time. The committed launch surface creates stdio-backed Codex App Server subprocesses. PTY-backed shell/provider behavior remains legacy/local-override code and is not an exposed product route on this branch. Bulk clearing removes non-running tasks and their logs while preserving active tasks. Clearing an individual running task stops its active process and removes that task.
+Multiple tasks can exist in the task list, and multiple App Server thread sessions can run at the same time. The committed launch surface currently backs each parent Codex thread session with a stdio App Server subprocess as an implementation detail. PTY-backed shell/provider behavior remains legacy/local-override code and is not an exposed product route on this branch. Bulk clearing removes non-running tasks and their logs while preserving active tasks. Clearing an individual running task stops its active runtime and removes that task.
 
 Tasks carry a low-level process `status`, a supervisor-facing `agentState`, and a primary `attentionState` that answers whether the operator should look at the task now. `attentionState` can be `none`, `may_need_user`, `needs_input`, `needs_approval`, `review_ready`, or `failed`, with source/confidence/reason metadata. TaskDeck intentionally prefers false positives over false negatives for attention: input-like prompts that are not yet stable, quiet running PTYs, and working tasks whose PTY activity has stopped become `may_need_user` rather than staying invisible.
 
 Agent state also carries lightweight `agentStateReason`, `agentStateSource`, and `agentStateConfidence` metadata so operators can distinguish TaskDeck-owned events from App Server process events and heuristic TUI fallback. TaskDeck treats its own lifecycle events as the primary state source: session start, user input, App Server status/request events, PTY output activity, and process exit. Plain PTY output is a reliable process observation but only a medium-confidence inference of `working`. Silence does not imply thinking, but it may need user attention.
 
-Task creation is centered on starting a Codex App Server session in a selected workspace. The New Agent Session form exposes `Codex App Server` only. Instructions are sent after launch from the composer. Task records preserve the selected agent profile and session mode, while legacy session metadata fields remain loadable for old stored tasks.
+Task creation is centered on starting a Codex App Server thread session in a selected workspace. The New Agent Session form exposes `Codex App Server` only. Instructions are sent after launch from the composer. Task records preserve the selected agent profile and session mode, and once App Server returns a thread id the parent task stores it as `agentSessionId` with `agentSessionSource: "codex_app_server_thread"`. Legacy session metadata fields remain loadable for old stored tasks.
 
 Completed and other non-running tasks can be rerun from the expanded selected task card. Rerun starts a new task with the same title, command, and cwd, leaving the original task record and log intact.
 
@@ -130,7 +130,7 @@ Codex App Server launches through `codex --sandbox danger-full-access --ask-for-
 - Project dropdown / project roots: `apps/server/src/server.js` functions around `resolveProjectRoots`, `buildProjectSuggestions`, `selectDefaultProjectCwd`, and web form handling in `apps/web/src/components/TaskCreateForm.tsx`.
 - Config loading: `apps/server/src/server.js` config candidate loading and profile/project-root normalization.
 - Agent profiles: Built-in profile definitions and profile merge/sanitize logic in `apps/server/src/server.js`; frontend profile types in `apps/web/src/types.ts`; launch-command shaping in `TaskCreateForm.tsx` and `apps/web/src/agentLaunch.ts`.
-- App Server lifecycle and input/output: Task creation, App Server spawn/stdin/stdout handling, log append, and WebSocket output handling in `apps/server/src/server.js`; terminal/output rendering in `TerminalPane.tsx`; composer behavior in `InputComposer.tsx`. PTY lifecycle code is legacy/local-override support.
+- App Server lifecycle and input/output: Task/thread-session creation, current App Server runtime spawn/stdin/stdout handling, log append, and WebSocket output handling in `apps/server/src/server.js`; terminal/output rendering in `TerminalPane.tsx`; composer behavior in `InputComposer.tsx`. PTY lifecycle code is legacy/local-override support.
 - Attention/supervision logic: Adapter selection, process/activity observation, explicit TUI prompt fallback, quiet timers, and task state marking in `apps/server/src/server.js`; task-card display in `apps/web/src/components/TaskList.tsx`.
 - Output and terminal UI: `apps/web/src/components/TerminalPane.tsx`, `InputComposer.tsx`, related output/composer CSS in `apps/web/src/styles.css`.
 - Diagnostics: `/api/diagnostics` plus container inspection/start helpers in `apps/server/src/server.js`; a dedicated diagnostics UI would be future work.
@@ -143,7 +143,7 @@ Codex App Server launches through `codex --sandbox danger-full-access --ask-for-
 - `profiles`: Built-in agent profile definitions, launch helper behavior, legacy Docker workdir correction, and profile diagnostics metadata.
 - `tasks`: Task persistence, task mutation helpers, task cleanup, presets, and attachment persistence.
 - `pty`: Legacy/local-override PTY spawn/resize/input queue/output stream/log append lifecycle.
-- `codex-app-server`: App Server spawn, JSON-RPC request/notification handling, pending request state, auth/device-login flow, and structured output rendering.
+- `codex-app-server`: App Server thread-session lifecycle, current runtime spawn, JSON-RPC request/notification handling, pending request state, auth/device-login flow, and structured output rendering.
 - `supervision`: Activity tracking, adapter selection, attention/agent-state inference, quiet timers, and explicit TUI prompt fallback.
 - `diagnostics`: Optional local Docker reachability, container inspection/start, and workspace checks for locally overridden profiles.
 - `api`: Express route registration separated from business logic.

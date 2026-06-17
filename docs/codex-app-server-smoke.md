@@ -9,7 +9,7 @@ Do this smoke once after batching App Server auth, logging, and UI-state changes
 The smoke checks the user-facing TaskDeck flow for the default Codex work-session path:
 
 ```text
-User -> TaskDeck UI -> TaskDeck server -> Codex App Server process
+User -> TaskDeck UI -> TaskDeck server -> Codex App Server runtime -> Codex thread
 ```
 
 It should not require sending raw JSON-RPC through the composer. In normal mode, parseable App Server JSON is hidden from task logs; set `TASKDECK_CODEX_APP_SERVER_DEBUG=1` only when protocol debugging is needed.
@@ -20,7 +20,7 @@ When TaskDeck runs in a container and the browser runs on the host, `localhost` 
 
 ## Launch Environment
 
-TaskDeck launches the App Server through the configured `codex-app-server` agent profile command and communicates over stdio. The built-in `Codex App Server` profile runs `codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://` directly in the TaskDeck server environment because App Server uses JSON over ordinary stdin/stdout pipes rather than a terminal. TaskDeck also sends `sandbox: "danger-full-access"` and `approvalPolicy: "never"` in `thread/start`, then sends `sandboxPolicy: { type: "dangerFullAccess" }` and `approvalPolicy: "never"` in `turn/start`.
+TaskDeck launches the current App Server runtime through the configured `codex-app-server` agent profile command and communicates over stdio. The built-in `Codex App Server` profile runs `codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://` directly in the TaskDeck server environment because App Server uses JSON over ordinary stdin/stdout pipes rather than a terminal. The current implementation uses one runtime subprocess per parent thread session; the TaskDeck task records the App Server thread id once it is ready. TaskDeck also sends `sandbox: "danger-full-access"` and `approvalPolicy: "never"` in `thread/start`, then sends `sandboxPolicy: { type: "dangerFullAccess" }` and `approvalPolicy: "never"` in `turn/start`.
 
 If a machine needs TaskDeck to launch App Server somewhere other than the TaskDeck server environment, override the profile in `taskdeck.local.json`. The Codex login must exist in the same environment that runs the `codex-app-server` profile command.
 
