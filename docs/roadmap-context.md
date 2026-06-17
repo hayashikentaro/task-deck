@@ -8,7 +8,7 @@ GitHub Issues remain the source of truth for actionable work and completion stat
 
 TaskDeck is a supervision UI for multiple AI/CLI sessions.
 
-It is not a chatbot UI, a provider-specific Codex UI, or merely a prettier terminal. The medium-term direction is to make TaskDeck easier for other people to use while preserving the core supervision model. The product route on this branch is App Server-only: use structured App Server events for turns, command output, and user-input requests. PTY/TUI handling for shell and non-Codex providers is legacy/future support, not the active branch route.
+It is not a chatbot UI, a provider-specific Codex UI, or merely a prettier terminal. The medium-term direction is to make TaskDeck easier for other people to use while preserving the core supervision model. The product route on this branch is App Server-only: use structured App Server events for turns, command output, and user-input requests. PTY/TUI handling for shell and non-Codex providers is not part of the active branch runtime.
 
 ## Medium-term themes
 

@@ -50,7 +50,7 @@ flowchart TD
   ControlRoot --> ReadModel[Global Manager Readable Context]
   ControlRoot --> Manager[Global Manager Agent]
 
-  Server -->|validated session/process operation| Runtime[Runtime / App Server and PTY Sessions]
+  Server -->|validated session/process operation| Runtime[Runtime / App Server Sessions]
   Runtime --> ProjectA[Project A Worker Sessions]
   Runtime --> ProjectB[Project B Worker Sessions]
   Runtime --> ProjectC[Project C Worker Sessions]
@@ -88,7 +88,7 @@ flowchart TD
 
 ### Worker agents
 
-Worker agents on this branch are Codex App Server tasks that are not the dedicated manager. Goose, shell, non-Codex providers, and PTY-backed routes are legacy/future surfaces unless a local override explicitly opts into them.
+Worker agents on this branch are Codex App Server tasks that are not the dedicated manager. Goose, shell, non-Codex providers, and PTY-backed routes are not committed runtime surfaces on this branch.
 
 Worker agents are project-bound. They are launched in a selected project workspace and perform actual work inside that project scope.
 
@@ -358,7 +358,7 @@ This branch intentionally does not ship a built-in Codex TUI `TaskDeck Manager` 
 
 ### Phase 4: Add manager-readable context
 
-Generate or expose global files the manager can read without scraping UI or PTY transcripts:
+Generate or expose global files the manager can read without scraping UI transcripts:
 
 ```text
 unread manager events across projects

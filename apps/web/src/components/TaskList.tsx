@@ -151,7 +151,7 @@ export function TaskList({
         <div aria-labelledby="clear-all-title" aria-modal="true" className="modal-backdrop" role="dialog">
           <div className="confirmation-modal">
             <h3 id="clear-all-title">Clear all tasks?</h3>
-            <p>This will stop running PTYs and remove all task records and logs from TaskDeck.</p>
+            <p>This will stop running App Server sessions and remove all task records and logs from TaskDeck.</p>
             <div className="confirmation-actions">
               <button data-priority="secondary" onClick={() => setIsClearAllConfirmOpen(false)} type="button">
                 Cancel
@@ -442,7 +442,7 @@ function supervisionTitle(task: Task) {
   if (supervisionBucket(task) === "needs_you") {
     return task.attentionStateReason || "This running task may need human attention.";
   }
-  return task.status === "running" ? "Recent PTY activity observed." : "Task is not running.";
+  return task.status === "running" ? "Task is running." : "Task is not running.";
 }
 
 function taskLineageBadge(task: Task) {
@@ -503,8 +503,6 @@ function displayTaskTitle(title: string | undefined) {
 function agentOrCommandLabel(command: string) {
   const lowered = command.toLowerCase();
   if (/\bcodex\b/.test(lowered)) return "Codex";
-  if (/\bgoose\b/.test(lowered)) return "Goose";
-  if (/\baider\b/.test(lowered)) return "aider";
   return shortCommand(command);
 }
 

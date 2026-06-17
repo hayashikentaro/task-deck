@@ -61,16 +61,13 @@ export function TerminalPane({
   const fitAddonRef = useRef<FitAddon | null>(null);
   const resizeAnimationFrameRef = useRef<number | null>(null);
   const scrollAnimationFrameRef = useRef<number | null>(null);
-  const lastSentTerminalSizeRef = useRef<{ cols: number; rows: number } | null>(null);
   const shouldStickToTerminalBottomRef = useRef(true);
-  const selectedTaskIdRef = useRef<string | null>(null);
   const [logBuffer, setLogBuffer] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [terminalFontSize, setTerminalFontSize] = useState(readStoredTerminalFontSize);
 
   const taskId = task?.id ?? null;
   const searchMatchCount = useMemo(() => countMatches(logBuffer, searchTerm), [logBuffer, searchTerm]);
-  const hasTuiChoice = useMemo(() => detectTuiChoice(logBuffer), [logBuffer]);
   const taskIdentityStyle = useMemo(
     () => (task ? taskIdentityCssProperties({ taskId: task.id, identityColorSlot: task.identityColorSlot }) : undefined),
     [task?.id, task?.identityColorSlot],
@@ -86,8 +83,6 @@ export function TerminalPane({
   );
 
   useEffect(() => {
-    selectedTaskIdRef.current = taskId;
-    lastSentTerminalSizeRef.current = null;
     shouldStickToTerminalBottomRef.current = true;
   }, [taskId]);
 
@@ -99,15 +94,7 @@ export function TerminalPane({
     }
 
     fitAddon.fit();
-
-    const taskId = selectedTaskIdRef.current;
-    const nextSize = { cols: terminal.cols, rows: terminal.rows };
-    const previousSize = lastSentTerminalSizeRef.current;
-    if (taskId && (!previousSize || previousSize.cols !== nextSize.cols || previousSize.rows !== nextSize.rows)) {
-      send({ type: "resize", taskId, cols: nextSize.cols, rows: nextSize.rows });
-      lastSentTerminalSizeRef.current = nextSize;
-    }
-  }, [send]);
+  }, []);
 
   const getTerminalViewportElement = useCallback(() => {
     return hostRef.current?.querySelector<HTMLElement>(".xterm-viewport") ?? null;
@@ -340,18 +327,6 @@ export function TerminalPane({
   return (
     <section className="terminal-pane" aria-label="Terminal" data-has-task={task ? "true" : undefined} style={taskIdentityStyle}>
       <div className="terminal-toolbar">
-        <div className="terminal-observations">
-          {hasTuiChoice ? (
-            <span
-              aria-label="Possible TUI choice detected"
-              className="terminal-tui-choice-indicator"
-              role="status"
-              title="Possible TUI choice detected"
-            >
-              Possible TUI choice
-            </span>
-          ) : null}
-        </div>
         <div className="terminal-controls">
           <label className="terminal-font-size">
             <span>Font</span>
@@ -446,124 +421,6 @@ function countTerminalRows(value: string, cols: number) {
 
 function visibleTerminalTextLength(value: string) {
   return value.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "").length;
-}
-
-function detectTuiChoice(value: string) {
-  const text = normalizeTerminalObservation(value.slice(-8000));
-  if (!text) {
-    return false;
-  }
-
-  const lines = text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(-80);
-  const optionLineIndexes = indexesMatching(lines, (line) => isLikelyChoiceOptionLine(line) || isLikelySelectedChoiceLine(line));
-  const selectedLineIndexes = indexesMatching(lines, isLikelySelectedChoiceLine);
-  const menuPromptLineIndexes = indexesMatching(lines, isLikelyMenuPromptLine);
-  const enterPromptLineIndexes = indexesMatching(lines, isLikelyEnterPromptLine);
-  const numberedOptionIndexes = indexesMatching(lines, isLikelyNumberedChoiceOptionLine);
-  const selectedNumberedOptionIndexes = indexesMatching(lines, isLikelySelectedNumberedChoiceOptionLine);
-
-  return hasNumberedChoiceMenu(lines, numberedOptionIndexes, selectedNumberedOptionIndexes)
-    || (menuPromptLineIndexes.length > 0 && hasNearbyLine(menuPromptLineIndexes, optionLineIndexes))
-    || (
-      enterPromptLineIndexes.length > 0
-      && selectedLineIndexes.length > 0
-      && optionLineIndexes.length >= 2
-      && hasNearbyLine(enterPromptLineIndexes, selectedLineIndexes)
-    );
-}
-
-function normalizeTerminalObservation(value: string) {
-  return value
-    .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "")
-    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
-    .replace(/\x1b[PX^_].*?\x1b\\/g, "")
-    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "")
-    .replace(/[│┃┆┊┌┐└┘├┤┬┴┼─━]/g, " ");
-}
-
-function isLikelyChoiceOptionLine(line: string) {
-  return /^(?:[>▸▹▶❯]\s*)?(?:\(?[0-9]{1,2}\)?[.)]|[a-zA-Z][.)])\s+\S/.test(line);
-}
-
-function isLikelySelectedChoiceLine(line: string) {
-  return /^(?:[>▸▹▶❯])\s+\S/.test(line);
-}
-
-function isLikelyNumberedChoiceOptionLine(line: string) {
-  return /^(?:[>›»▸▹▶❯]\s*)?(?:\(?[0-9]{1,2}\)?[.)])\s+\S/.test(line);
-}
-
-function isLikelySelectedNumberedChoiceOptionLine(line: string) {
-  return /^(?:[>›»▸▹▶❯])\s+(?:\(?[0-9]{1,2}\)?[.)])\s+\S/.test(line);
-}
-
-function isLikelyMenuPromptLine(line: string) {
-  return /\b(use\s+(?:the\s+)?arrow\s+keys|select(?:\s+an?\s+option)?|choose(?:\s+an?\s+option)?|pick\s+one)\b/i.test(line);
-}
-
-function isLikelyEnterPromptLine(line: string) {
-  return /\bpress\s+enter\b/i.test(line);
-}
-
-function hasNumberedChoiceMenu(lines: string[], numberedOptionIndexes: number[], selectedNumberedOptionIndexes: number[]) {
-  const consecutiveNumberedOptionIndexes = consecutiveNumberedMenuIndexes(lines, numberedOptionIndexes);
-  if (consecutiveNumberedOptionIndexes.length < 2) {
-    return false;
-  }
-
-  if (selectedNumberedOptionIndexes.some((index) => consecutiveNumberedOptionIndexes.includes(index))) {
-    return true;
-  }
-
-  return hasNearbyInteractionSignal(lines, consecutiveNumberedOptionIndexes);
-}
-
-function consecutiveNumberedMenuIndexes(lines: string[], numberedOptionIndexes: number[]) {
-  for (let index = 0; index < numberedOptionIndexes.length - 1; index += 1) {
-    const firstIndex = numberedOptionIndexes[index];
-    const secondIndex = numberedOptionIndexes[index + 1];
-    const firstNumber = numberedOptionNumber(lines[firstIndex]);
-    const secondNumber = numberedOptionNumber(lines[secondIndex]);
-    if (secondIndex - firstIndex <= 2 && firstNumber > 0 && secondNumber === firstNumber + 1) {
-      return [firstIndex, secondIndex];
-    }
-  }
-  return [];
-}
-
-function numberedOptionNumber(line: string) {
-  const match = line.match(/^(?:[>›»▸▹▶❯]\s*)?\(?([0-9]{1,2})\)?[.)]\s+\S/);
-  return match ? Number(match[1]) : 0;
-}
-
-function hasNearbyInteractionSignal(lines: string[], optionIndexes: number[]) {
-  const optionText = optionIndexes.map((index) => lines[index]).join("\n");
-  if (/\b(?:yes|no|cancel|proceed|continue|quit)\b/i.test(optionText)) {
-    return true;
-  }
-
-  const firstIndex = optionIndexes[0];
-  const lastIndex = optionIndexes[optionIndexes.length - 1];
-  const nearbyText = lines.slice(Math.max(0, firstIndex - 6), Math.min(lines.length, lastIndex + 7)).join("\n");
-  return /\b(?:press\s+enter|use\s+(?:the\s+)?arrow|select|choose|pick\s+one)\b/i.test(nearbyText)
-    || /(?:\?|^(?:do|are|would|should|can|will|is|does)\b.*\?)/im.test(nearbyText);
-}
-
-function indexesMatching(lines: string[], predicate: (line: string) => boolean) {
-  return lines.reduce<number[]>((indexes, line, index) => {
-    if (predicate(line)) {
-      indexes.push(index);
-    }
-    return indexes;
-  }, []);
-}
-
-function hasNearbyLine(leftIndexes: number[], rightIndexes: number[]) {
-  return leftIndexes.some((leftIndex) => rightIndexes.some((rightIndex) => Math.abs(leftIndex - rightIndex) <= 6));
 }
 
 function readStoredTerminalFontSize() {

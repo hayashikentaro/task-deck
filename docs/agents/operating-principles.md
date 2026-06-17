@@ -8,7 +8,7 @@ GitHub Issues remain the source of truth for actionable work, open/closed state,
 
 TaskDeck is a multi-agent supervision UI. It is not a generic terminal wrapper, a chatbot UI, or merely a prettier terminal.
 
-Keep the interface task-centric and centered on state, risk, diffs, review, and supervision. Codex App Server events are the preferred Codex control signal on the App Server-first route. PTY interaction is an implementation mechanism for fallback/provider compatibility, not the product identity.
+Keep the interface task-centric and centered on state, risk, diffs, review, and supervision. Codex App Server events are the control signal on the App Server-first route.
 
 ## Supervision Model
 
@@ -31,7 +31,7 @@ Examples:
 
 - Workers write append-only status/result/request files instead of mutating canonical TaskDeck state.
 - Manager write operations go through `taskdeckctl`.
-- TaskDeck server validates, dedupes, logs, executes mutations, and coordinates App Server, PTY, and session effects.
+- TaskDeck server validates, dedupes, logs, executes mutations, and coordinates App Server session effects.
 - Generated runtime action guides expose only actions supported by the running server and CLI.
 
 ## Runtime Capabilities

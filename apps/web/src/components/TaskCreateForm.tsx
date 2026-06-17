@@ -1,9 +1,4 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import {
-  buildLaunchCommand,
-  buildTaskTitle,
-  executionCwdForAgentProfile,
-} from "../agentLaunch";
 import type { AgentProfile, CreateTaskInput, ProjectSuggestion, TaskDeckContext } from "../types";
 import { Button } from "./ui/Button";
 import { SelectField } from "./ui/SelectField";
@@ -31,16 +26,8 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
   }, [context?.defaultCwd, projectSuggestions, selectedProjectPath]);
 
   const codexAppServerProfile = findCodexAppServerProfile(context?.agentProfiles ?? []);
-  const launchCommand = codexAppServerProfile
-    ? buildLaunchCommand(codexAppServerProfile)
-    : { command: "", resumeCommand: "" };
-  const command = launchCommand.command;
-  const effectiveCwd = executionCwdForAgentProfile(
-    codexAppServerProfile,
-    selectedProjectPath,
-    context?.controlRoot,
-    context?.defaultCwd,
-  );
+  const command = codexAppServerProfile?.command.trim() ?? "";
+  const effectiveCwd = selectedProjectPath || context?.defaultCwd || "";
   const canStart = !disabled && Boolean(codexAppServerProfile) && Boolean(effectiveCwd) && Boolean(command);
 
   const handleSubmit = (event: FormEvent) => {
@@ -113,4 +100,8 @@ function selectDefaultProjectPath(projectSuggestions: ProjectSuggestion[], defau
 
 function basename(value: string) {
   return value.split(/[\\/]/).filter(Boolean).pop() ?? "";
+}
+
+function buildTaskTitle(agentLabel: string, cwd: string) {
+  return basename(cwd) || `${agentLabel} session`;
 }

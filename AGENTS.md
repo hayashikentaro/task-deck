@@ -69,11 +69,11 @@ This branch is intentionally App Server-only.
 - Do not assume TaskDeck should call `docker`, `docker exec`, `zsh`, Goose, Aider, Claude, or a Codex TUI profile on this branch.
 - Do not add stdout marker protocols, file-request writers, or request-directory environment variables as a control path.
 - Codex App Server native subagents may be materialized as read-only supervision cards. They are App Server thread projections, not TaskDeck-launched sessions, and TaskDeck must not expose controls that imply they can be commanded independently.
-- PTY, shell, non-Codex provider, and Docker diagnostics code may still exist for compatibility, tests, or future local overrides. Do not use their presence as evidence that those routes are active product behavior.
+- Docker diagnostics code may still exist for compatibility, tests, or future local overrides. Do not use its presence as evidence that Docker is active product behavior.
 
 ## Actor Boundary
 
-For session hierarchy, native subagent display, manager behavior, agent-to-TaskDeck communication, request transports, or PTY command delivery, follow `docs/taskdeck-actor-protocol.md`.
+For session hierarchy, native subagent display, manager behavior, agent-to-TaskDeck communication, request transports, or session input delivery, follow `docs/taskdeck-actor-protocol.md`.
 
 At a high level:
 
@@ -82,7 +82,7 @@ At a high level:
 - Non-manager agents must not command other agents directly.
 - Manager sessions are global TaskDeck supervisor sessions launched from the TaskDeck control/document root, not an individual project workspace.
 - Manager write operations must go through `taskdeckctl`.
-- TaskDeck server is the only actor that may validate, dedupe, log, execute mutations, and deliver PTY input to another session.
+- TaskDeck server is the only actor that may validate, dedupe, log, execute mutations, and deliver input to another session.
 
 Do not add raw Web API manager-write paths, raw terminal-write paths, raw SQL mutation paths, or direct worker-to-worker command paths unless the user explicitly approves a protocol change and `docs/taskdeck-actor-protocol.md` is updated in the same change.
 
@@ -212,15 +212,13 @@ If a task-specific user instruction conflicts with this file, stop and report th
 
 - Task persistence must keep old stored tasks loadable.
 - Logs can grow; avoid moving terminal output into unbounded React state.
-- App Server and PTY process lifecycle, interrupts, server restarts, and task clearing should remain predictable.
+- App Server process lifecycle, server restarts, and task clearing should remain predictable.
 - WebSocket task updates should keep task lists, selected task behavior, task output, and session metadata in sync.
 - Treat `attentionState` as the supervision UI's primary signal for whether the user should look at a task.
-- Agent state should be driven primarily by TaskDeck events such as start, input, Codex App Server status/request events, PTY output activity, and exit.
-- Do not infer thinking from silence; quiet running PTYs should keep their last known supervisor state until a stronger signal arrives.
+- Agent state should be driven primarily by TaskDeck events such as start, input, Codex App Server status/request events, and exit.
+- Do not infer thinking from silence.
 - For Codex work sessions, use Codex App Server status/request events as the control signal.
-- Treat TUI text matching as a fallback for explicit user-action prompts only.
 - Do not add one-off terminal spinner phrases to infer thinking.
-- Keep agent state inference split by adapter (`codex-app-server`, `goose`, and `generic`).
-- Approval prompts may override immediately, but input-prompt fallback should be gated by PTY activity.
-- PTY activity signals should remain in-memory process observations, not persisted task metadata.
+- Keep agent state inference tied to the App Server adapter on this branch.
+- Approval and input prompts should come from App Server request/status events.
 - Agent session metadata is best-effort and should not assume every agent exposes stable ids.

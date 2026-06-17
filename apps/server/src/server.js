@@ -9,7 +9,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { WebSocketServer } from "ws";
-import pty from "node-pty";
 import {
   AgentState,
   AgentStateConfidence,
@@ -21,7 +20,6 @@ import {
   markTaskChildStatusError,
   markTaskChildStatusReported,
   markTaskAttentionAcknowledged,
-  markTaskAttentionState,
   markTaskAgentState,
   markTaskClosed,
   markTaskExited,
@@ -123,13 +121,6 @@ const logs = new Map();
 const sessionLabels = new Map();
 let presets = [];
 const maxLogLength = 250_000;
-const terminalEnter = "\r";
-const bracketedPasteStart = "\x1b[200~";
-const bracketedPasteEnd = "\x1b[201~";
-const inputPromptStabilizationMs = 750;
-const ptyActivityWindowMs = 3000;
-const maxPtyActivityFrames = 40;
-const quietAttentionMs = 5000;
 const childStatusPollIntervalMs = 2000;
 const defaultContainerWorkspaceRoot = "/workspace";
 const protectedContainerCleanupPids = new Set(["1", "7", "8", "130"]);
@@ -139,7 +130,6 @@ const imageAttachmentExtensions = new Map([
   ["image/jpeg", ".jpg"],
   ["image/webp", ".webp"],
 ]);
-const activePtys = new Map();
 const activeCodexRuntimes = new Map();
 const activeCodexThreadSessions = new Map();
 const taskIdByCodexThreadId = new Map();
@@ -293,7 +283,6 @@ app.patch("/api/tasks/:taskId/attention/acknowledge", async (request, response) 
     return;
   }
 
-  resetPendingInputPrompt(activePtys.get(taskId));
   setTask(markTaskAttentionAcknowledged(task));
   await persistTasks();
   broadcastTasks();
@@ -324,12 +313,6 @@ app.patch("/api/tasks/:taskId/terminal-input-lock", async (request, response) =>
   if (isCodexAppServerNativeSubagentTask(task)) {
     response.status(409).json({ error: "Native subagent cards are read-only." });
     return;
-  }
-
-  const activePty = activePtys.get(taskId);
-  if (locked && activePty) {
-    resetPendingInputPrompt(activePty);
-    clearQueuedPtyInput(activePty);
   }
 
   setTask(locked ? markTaskTerminalInputLocked(task) : markTaskTerminalInputUnlocked(task));
@@ -574,35 +557,6 @@ wss.on("connection", (socket) => {
       return;
     }
 
-    if (message.type === "resize") {
-      const activePty = activePtys.get(message.taskId);
-      if (activePty) {
-        activePty.process.resize(Number(message.cols) || 100, Number(message.rows) || 28);
-      }
-      return;
-    }
-
-    if (message.type === "interrupt") {
-      const taskId = String(message.taskId || "").trim();
-      const task = tasks.get(taskId);
-      const activePty = activePtys.get(taskId);
-      if (!task || task.status !== TaskStatus.RUNNING) {
-        send(socket, { type: "error", message: "Select a running task before canceling the current instruction." });
-        return;
-      }
-      if (!activePty) {
-        send(socket, { type: "error", message: "No active PTY is available for the selected task." });
-        return;
-      }
-      resetPendingInputPrompt(activePty);
-      clearQueuedPtyInput(activePty);
-      activePty.process.write("\x03");
-      const marker = "\r\n[TaskDeck] Sent interrupt to running PTY.\r\n";
-      appendLog(taskId, marker);
-      broadcast({ type: "output", taskId, data: marker });
-      return;
-    }
-
     send(socket, { type: "error", message: `Unsupported message type: ${message.type}` });
   });
 
@@ -626,9 +580,6 @@ server.on("error", (error) => {
 server.listen(port, host, () => {
   console.log(`TaskDeck listening on http://${host}:${port}`);
 });
-
-const attentionTimer = setInterval(updateQuietAttentionStates, 1000);
-attentionTimer.unref?.();
 
 const childStatusTimer = setInterval(scanChildStatusFiles, childStatusPollIntervalMs);
 childStatusTimer.unref?.();
@@ -701,7 +652,7 @@ async function startTaskNow({
 
   const resolvedCwd = cwdValidation.resolvedCwd;
   const processCwd = await serverAccessiblePathForHostCwd(resolvedCwd);
-  const effectiveCommand = await commandForTaskCwd(command, resolvedCwd, sessionMode);
+  const effectiveCommand = await commandForTaskCwd(command, resolvedCwd);
   const launchInitialInstruction = await initialInstructionForTaskLaunch({
     isManagerLaunch,
     command: effectiveCommand,
@@ -750,77 +701,7 @@ async function startTaskNow({
   });
   writeTaskLog(task.id, "");
 
-  if (isCodexAppServerTask(task)) {
-    return startCodexAppServerThreadSession({ task, commandForProcess, processCwd, socket, taskDeckEnv });
-  }
-
-  try {
-    const terminalProcess = pty.spawn(shell, ["-lc", commandForProcess], {
-      name: "xterm-256color",
-      cols: 100,
-      rows: 28,
-      cwd: processCwd,
-      env: {
-        ...process.env,
-        TERM: "xterm-256color",
-        ...taskDeckEnv,
-      },
-    });
-
-    const activePty = createActivePty(task, terminalProcess);
-    activePtys.set(task.id, activePty);
-    updateAgentStateFromTaskDeckEvent(task.id, AgentState.THINKING, {
-      reason: "PTY process started; waiting for agent output.",
-      source: AgentStateSource.TASKDECK_EVENT,
-      confidence: AgentStateConfidence.MEDIUM,
-      attentionState: AttentionState.NONE,
-      attentionReason: "Task has started.",
-      attentionSource: AgentStateSource.TASKDECK_EVENT,
-      attentionConfidence: AgentStateConfidence.HIGH,
-    });
-    send(socket, { type: "started", taskId: task.id });
-
-    terminalProcess.onData((data) => {
-      if (!tasks.has(task.id)) {
-        return;
-      }
-      appendLog(task.id, data);
-      updateAgentStateFromPtyOutput(activePty, data);
-      broadcast({ type: "output", taskId: task.id, data });
-    });
-
-    terminalProcess.onExit(({ exitCode, signal }) => {
-      const currentTask = tasks.get(task.id);
-      clearActivePty(task.id);
-      if (!currentTask) {
-        return;
-      }
-      if (currentTask.status === TaskStatus.CLOSED) {
-        broadcastTasks();
-        return;
-      }
-      setTask(markTaskExited(currentTask, { exitCode, signal }));
-      broadcastTasks();
-    });
-
-    const initialInstructionInput = String(task.initialInstruction || "").trim();
-    if (initialInstructionInput) {
-      const marker = "\r\n[TaskDeck] Sending initial instruction.\r\n";
-      appendLog(task.id, marker);
-      broadcast({ type: "output", taskId: task.id, data: marker });
-      writeOrQueuePtyInput(activePty, `${initialInstructionInput}${terminalEnter}`, "initial-instruction");
-    }
-    if (isManagerTask(task)) {
-      await nudgeManagerTaskIfUnread(task.id);
-    }
-    return { ok: true, taskId: task.id };
-  } catch (error) {
-    appendLog(task.id, `\r\n[TaskDeck] Failed to start PTY: ${error.message}\r\n`);
-    setTask(markTaskExited(tasks.get(task.id), { exitCode: 1, signal: null }));
-    broadcast({ type: "output", taskId: task.id, data: logs.get(task.id) });
-    broadcastTasks();
-    return { ok: true, taskId: task.id };
-  }
+  return startCodexAppServerThreadSession({ task, commandForProcess, processCwd, socket, taskDeckEnv });
 }
 
 async function cwdForTaskLaunch({ cwd, isManagerLaunch }) {
@@ -865,69 +746,12 @@ function assignTaskIdentityColorSlot() {
   return selectedSlot;
 }
 
-function createActivePty(task, process) {
-  const activePty = {
-    taskId: task.id,
-    process,
-    createdAt: Date.now(),
-    inputHoldUntil: 0,
-    inputQueue: [],
-    flushTimer: null,
-    activity: createPtyActivity(),
-    pendingInputPrompt: null,
-  };
-  scheduleQueuedPtyInputFlush(activePty);
-  return activePty;
-}
-
-function writeOrQueuePtyInput(activePty, data, source) {
-  const waitMs = activePty.inputHoldUntil - Date.now();
-  if (waitMs > 0) {
-    activePty.inputQueue.push(data);
-    if (inputDebugEnabled) {
-      console.log(`[TaskDeck input] queued source=${source} task=${activePty.taskId} waitMs=${waitMs}`);
-    }
-    scheduleQueuedPtyInputFlush(activePty);
-    return;
-  }
-
-  flushQueuedPtyInput(activePty);
-  activePty.process.write(data);
-}
-
-function sendTaskInputToPty(taskId, data, source = "client") {
-  const normalizedTaskId = String(taskId || "").trim();
-  const task = tasks.get(normalizedTaskId);
-  const activePty = activePtys.get(normalizedTaskId);
-
-  if (task?.terminalInputLockedAt) {
-    return { ok: false, reason: "terminal-input-locked" };
-  }
-  if (!activePty || typeof data !== "string") {
-    return { ok: false, reason: "no-active-pty-or-invalid-data" };
-  }
-
-  logInputDebug(normalizedTaskId, data, source);
-  updateAgentStateFromTaskDeckEvent(normalizedTaskId, AgentState.WORKING, {
-    reason: "User input was sent to the PTY.",
-    source: AgentStateSource.TASKDECK_EVENT,
-    confidence: AgentStateConfidence.HIGH,
-    attentionState: AttentionState.NONE,
-    attentionReason: "User input was sent to the task.",
-    attentionSource: AgentStateSource.TASKDECK_EVENT,
-    attentionConfidence: AgentStateConfidence.HIGH,
-  });
-  resetPendingInputPrompt(activePty);
-  writeOrQueuePtyInput(activePty, data, source);
-  return { ok: true };
-}
-
 function sendTaskInput(taskId, data, source = "client") {
   const normalizedTaskId = String(taskId || "").trim();
   if (activeCodexThreadSessions.has(normalizedTaskId)) {
     return sendTaskInputToCodexAppServer(normalizedTaskId, data, source);
   }
-  return sendTaskInputToPty(normalizedTaskId, data, source);
+  return { ok: false, reason: "no-active-app-server-or-invalid-data" };
 }
 
 async function startCodexAppServerThreadSession({ task, commandForProcess, processCwd, socket, taskDeckEnv }) {
@@ -1154,8 +978,6 @@ function sendTaskInputToCodexAppServer(taskId, data, source = "client") {
 
 function normalizeCodexAppServerInput(data) {
   return String(data || "")
-    .replaceAll(bracketedPasteStart, "")
-    .replaceAll(bracketedPasteEnd, "")
     .replace(/\r/g, "\n")
     .trim();
 }
@@ -2543,58 +2365,6 @@ function appendAndBroadcast(taskId, data) {
   broadcast({ type: "output", taskId, data });
 }
 
-function scheduleQueuedPtyInputFlush(activePty) {
-  const waitMs = activePty.inputHoldUntil - Date.now();
-  if (waitMs <= 0 || activePty.flushTimer) {
-    return;
-  }
-
-  activePty.flushTimer = setTimeout(() => {
-    activePty.flushTimer = null;
-    flushQueuedPtyInput(activePty);
-  }, waitMs);
-}
-
-function flushQueuedPtyInput(activePty) {
-  if (activePty.inputQueue.length === 0) {
-    return;
-  }
-
-  const queuedInput = activePty.inputQueue.splice(0).join("");
-  if (inputDebugEnabled) {
-    console.log(`[TaskDeck input] flushing task=${activePty.taskId} len=${queuedInput.length}`);
-  }
-  activePty.process.write(queuedInput);
-}
-
-function clearQueuedPtyInput(activePty) {
-  activePty.inputQueue.splice(0);
-  if (activePty.flushTimer) {
-    clearTimeout(activePty.flushTimer);
-    activePty.flushTimer = null;
-  }
-}
-
-function clearActivePty(taskId) {
-  const activePty = activePtys.get(taskId);
-  if (activePty) {
-    resetPendingInputPrompt(activePty);
-    clearQueuedPtyInput(activePty);
-  }
-  activePtys.delete(taskId);
-}
-
-async function resolveCwd(cwd, socket) {
-  const validation = await validateCwd(cwd);
-
-  if (!validation.ok) {
-    send(socket, { type: "error", message: validation.message });
-    return null;
-  }
-
-  return validation.resolvedCwd;
-}
-
 async function validateCwd(cwd) {
   const inputCwd = String(cwd || "").trim();
   const resolvedCwd = inputCwd ? path.resolve(repoRoot, inputCwd) : repoRoot;
@@ -3336,7 +3106,6 @@ async function acknowledgeTaskAttentionFromManager(taskId, acknowledgedAt, { req
     return { ok: true, acknowledged: false, skippedReason: "task_attention_not_required" };
   }
 
-  resetPendingInputPrompt(activePtys.get(taskId));
   setTask(markTaskAttentionAcknowledged(task, acknowledgedAt));
   await persistTasks();
   return { ok: true, acknowledged: true };
@@ -3501,50 +3270,6 @@ async function writeTextAtomic(filePath, value) {
   await fs.rename(tempPath, filePath);
 }
 
-async function nudgeManagerTaskIfUnread(taskId) {
-  const events = await refreshManagerReadableFiles();
-  if (events.length === 0) {
-    return false;
-  }
-  return nudgeManagerTask(taskId);
-}
-
-function nudgeRunningManagerTasks() {
-  for (const task of tasks.values()) {
-    if (isManagerTask(task) && task.status === TaskStatus.RUNNING) {
-      nudgeManagerTask(task.id);
-    }
-  }
-}
-
-function nudgeManagerTask(taskId) {
-  const task = tasks.get(taskId);
-  const activePty = activePtys.get(taskId);
-  if (!task || !isManagerTask(task) || task.status !== TaskStatus.RUNNING || !activePty) {
-    return false;
-  }
-
-  const marker = "\r\n[TaskDeck] Manager inbox event nudge sent.\r\n";
-  appendLog(task.id, marker);
-  broadcast({ type: "output", taskId: task.id, data: marker });
-  writeOrQueuePtyInput(activePty, formatManagerNudgeInputForPty(), "manager-inbox-nudge");
-  return true;
-}
-
-function formatManagerNudgeInputForPty() {
-  return formatAgentInputForPty(
-    [
-      "New TaskDeck manager event is available.",
-      "Read TASKDECK_MANAGER_CONTEXT_FILE, TASKDECK_MANAGER_UNREAD_EVENTS_FILE, TASKDECK_MANAGER_ACTIONS_FILE, and TASKDECK_MANAGER_CAPABILITIES_FILE before acting.",
-      "Report your judgment in this terminal response only.",
-      "Do not write TASKDECK_STATUS_FILE.",
-      "Do not command workers directly.",
-      "Use taskdeckctl ack, taskdeckctl review, or taskdeckctl close for supported manager writes.",
-      "Do not mutate TaskDeck state directly.",
-    ].join("\n"),
-  );
-}
-
 function isManagerTask(task) {
   return Boolean(task?.isManager || isManagerAgentProfileId(task?.agentProfileId));
 }
@@ -3586,7 +3311,7 @@ function stringArraysEqual(left, right) {
   return normalizedLeft.length === normalizedRight.length && normalizedLeft.every((value, index) => value === normalizedRight[index]);
 }
 
-async function commandForTaskCwd(command, resolvedCwd, sessionMode) {
+async function commandForTaskCwd(command, resolvedCwd) {
   if (!resolvedCwd) {
     return command;
   }
@@ -3754,15 +3479,6 @@ function quoteShellToken(value) {
   return `'${String(value).replace(/'/g, "'\\''")}'`;
 }
 
-function formatAgentInputForPty(input) {
-  const text = normalizeTerminalInput(input);
-  return `${bracketedPasteStart}${text}${bracketedPasteEnd}${terminalEnter}`;
-}
-
-function normalizeTerminalInput(input) {
-  return String(input).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-}
-
 function modelFromCommand(command) {
   const match = String(command || "").match(/(?:^|\s)(?:--model|-m)\s+(?:"([^"]+)"|'([^']+)'|([^\s]+))/);
   return match?.[1] || match?.[2] || match?.[3] || "";
@@ -3776,7 +3492,7 @@ function logInputDebug(taskId, data, source) {
   const tail = data.slice(-24);
   const codes = Array.from(tail).map((character) => character.charCodeAt(0));
   console.log(
-    `[TaskDeck input] source=${source} task=${taskId} len=${data.length} hasCR=${data.includes("\r")} hasLF=${data.includes("\n")} hasBracketedPaste=${data.includes(bracketedPasteStart)} tail=${JSON.stringify(tail)} tailCodes=${codes.join(",")}`,
+    `[TaskDeck input] source=${source} task=${taskId} len=${data.length} hasCR=${data.includes("\r")} hasLF=${data.includes("\n")} tail=${JSON.stringify(tail)} tailCodes=${codes.join(",")}`,
   );
 }
 
@@ -4254,475 +3970,11 @@ function hasSameAgentStateMetadata(task, metadata) {
   );
 }
 
-function updateAgentStateFromPtyOutput(activePty, data) {
-  const task = tasks.get(activePty.taskId);
-  if (!task || task.status !== TaskStatus.RUNNING) {
-    return;
-  }
-
-  const activity = recordPtyActivity(activePty, data);
-  const adapter = getAgentStateInferenceAdapter(task);
-
-  // TUI text is an unreliable protocol. Agent adapters keep that fallback
-  // isolated so Goose/Codex behavior can evolve without broad shared guesses.
-  const recentOutput = logs.get(activePty.taskId)?.slice(-8000) || data;
-  const nextSignal = adapter.infer({ recentOutput, latestOutput: data, activity, task, activePty });
-  const attentionState = nextSignal.attentionState ?? AttentionState.NONE;
-  const attentionReason = nextSignal.attentionReason ?? "No user attention needed.";
-  const attentionSource = nextSignal.attentionSource ?? nextSignal.source;
-  const attentionConfidence = nextSignal.attentionConfidence ?? nextSignal.confidence;
-
-  updateAgentStateFromTaskDeckEvent(activePty.taskId, nextSignal.state, {
-    reason: nextSignal.reason,
-    source: nextSignal.source,
-    confidence: nextSignal.confidence,
-    attentionState,
-    attentionReason,
-    attentionSource,
-    attentionConfidence,
-  });
-}
-
-function updateQuietAttentionStates() {
-  const now = Date.now();
-  let changed = updatePendingInputAttentionStates(now);
-
-  for (const activePty of activePtys.values()) {
-    const task = tasks.get(activePty.taskId);
-    if (
-      !task ||
-      task.status !== TaskStatus.RUNNING ||
-      isStrongAttentionState(task.attentionState) ||
-      isChildStatusAttentionActive(task)
-    ) {
-      continue;
-    }
-
-    const lastActivityAt = activePty.activity?.lastOutputAt || activePty.createdAt || now;
-    if (now - lastActivityAt < quietAttentionMs) {
-      continue;
-    }
-
-    if (isAttentionEventAcknowledged(task, lastActivityAt)) {
-      continue;
-    }
-
-    const reason = "Running PTY has been quiet; user attention may be needed.";
-    if (task.attentionState !== AttentionState.MAY_NEED_USER || task.attentionStateReason !== reason) {
-      setTask(markTaskAttentionState(task, AttentionState.MAY_NEED_USER, {
-        reason,
-        source: AgentStateSource.PROCESS,
-        confidence: AgentStateConfidence.LOW,
-      }));
-      changed = true;
-    }
-  }
-
-  if (changed) {
-    broadcastTasks();
-  }
-}
-
-function updatePendingInputAttentionStates(now) {
-  let changed = false;
-
-  for (const activePty of activePtys.values()) {
-    const task = tasks.get(activePty.taskId);
-    const pendingInputPrompt = activePty.pendingInputPrompt;
-    if (!task || task.status !== TaskStatus.RUNNING || !pendingInputPrompt) {
-      continue;
-    }
-
-    if (now - pendingInputPrompt.firstSeenAt < inputPromptStabilizationMs) {
-      continue;
-    }
-
-    if (isAttentionEventAcknowledged(task, pendingInputPrompt.firstSeenAt)) {
-      continue;
-    }
-
-    if (isPtyActivelyRepainting(activePty.activity, now)) {
-      continue;
-    }
-
-    const reason = "Input prompt persisted and terminal is quiet.";
-    const attentionReason = "Stable input prompt detected.";
-    if (
-      task.agentState !== AgentState.WAITING_INPUT ||
-      task.agentStateReason !== reason ||
-      task.attentionState !== AttentionState.NEEDS_INPUT ||
-      task.attentionStateReason !== attentionReason
-    ) {
-      setTask(markTaskAgentState(task, AgentState.WAITING_INPUT, {
-        reason,
-        source: AgentStateSource.TUI_FALLBACK,
-        confidence: AgentStateConfidence.MEDIUM,
-        attentionState: AttentionState.NEEDS_INPUT,
-        attentionReason,
-        attentionSource: AgentStateSource.TUI_FALLBACK,
-        attentionConfidence: AgentStateConfidence.MEDIUM,
-      }));
-      changed = true;
-    }
-  }
-
-  return changed;
-}
-
-function isStrongAttentionState(attentionState) {
-  return (
-    attentionState === AttentionState.NEEDS_APPROVAL ||
-    attentionState === AttentionState.NEEDS_INPUT ||
-    attentionState === AttentionState.REVIEW_READY ||
-    attentionState === AttentionState.FAILED
-  );
-}
-
 function isChildStatusAttentionActive(task) {
   return (
     task.attentionStateSource === AgentStateSource.CHILD_STATUS &&
     task.attentionState &&
     task.attentionState !== AttentionState.NONE
-  );
-}
-
-function isAttentionEventAcknowledged(task, eventStartedAt) {
-  const acknowledgedAt = Date.parse(String(task.attentionAcknowledgedAt || ""));
-  return Number.isFinite(acknowledgedAt) && acknowledgedAt >= eventStartedAt;
-}
-
-function createPtyActivity() {
-  return {
-    lastOutputAt: 0,
-    lastTextOutputAt: 0,
-    lastAnsiFrameAt: 0,
-    recentOutputFrames: [],
-    recentAnsiFrames: [],
-    recentCarriageReturns: [],
-    signals: {
-      containsAnsiControl: false,
-      containsCarriageReturn: false,
-      containsCursorMovementOrLineClear: false,
-      hasVisibleTextAfterStrip: false,
-    },
-  };
-}
-
-function recordPtyActivity(activePty, data) {
-  const now = Date.now();
-  const signals = classifyPtyOutputChunk(data);
-  const activity = activePty.activity || createPtyActivity();
-
-  activity.signals = signals;
-  activity.lastOutputAt = now;
-  activity.recentOutputFrames = appendRecentTimestamp(activity.recentOutputFrames, now);
-
-  if (signals.hasVisibleTextAfterStrip) {
-    activity.lastTextOutputAt = now;
-  }
-
-  if (signals.containsAnsiControl || signals.containsCursorMovementOrLineClear) {
-    activity.lastAnsiFrameAt = now;
-    activity.recentAnsiFrames = appendRecentTimestamp(activity.recentAnsiFrames, now);
-  }
-
-  if (signals.containsCarriageReturn) {
-    activity.recentCarriageReturns = appendRecentTimestamp(activity.recentCarriageReturns, now);
-  }
-
-  activePty.activity = activity;
-  return { ...activity, signals };
-}
-
-function appendRecentTimestamp(timestamps, timestamp) {
-  return [...timestamps, timestamp]
-    .filter((candidate) => timestamp - candidate <= ptyActivityWindowMs)
-    .slice(-maxPtyActivityFrames);
-}
-
-function classifyPtyOutputChunk(data) {
-  const value = String(data);
-  const visibleText = stripTerminalControlSequences(value).replace(/\s+/g, "");
-
-  return {
-    containsAnsiControl: /\x1b(?:\][^\x07]*(?:\x07|\x1b\\)|\[[0-?]*[ -/]*[@-~])/.test(value),
-    containsCarriageReturn: /\r/.test(value),
-    containsCursorMovementOrLineClear: /\x1b\[[0-?]*[ -/]*(?:[ABCDEFGHJKSTfhl])/.test(value),
-    hasVisibleTextAfterStrip: visibleText.length > 0,
-  };
-}
-
-function getAgentStateInferenceAdapter(task) {
-  if (isGooseLikeTask(task)) {
-    return gooseAgentStateAdapter;
-  }
-
-  return genericAgentStateAdapter;
-}
-
-const gooseAgentStateAdapter = {
-  id: "goose",
-  infer({ recentOutput, latestOutput, activity, activePty }) {
-    return inferWithExplicitPromptFallback({ recentOutput, latestOutput, activity, activePty, agentKind: this.id });
-  },
-};
-
-const genericAgentStateAdapter = {
-  id: "generic",
-  infer({ recentOutput, latestOutput, activity, activePty }) {
-    return inferWithExplicitPromptFallback({ recentOutput, latestOutput, activity, activePty, agentKind: this.id });
-  },
-};
-
-function inferWithExplicitPromptFallback({ recentOutput, latestOutput, activity, activePty, agentKind }) {
-  const tuiSignal = inferFromExplicitTuiPrompts({ recentOutput, latestOutput, activity, activePty, agentKind });
-  const processSignal = inferFromPtyActivity(activity);
-
-  if (tuiSignal?.state) {
-    return tuiSignal;
-  }
-
-  return {
-    ...processSignal,
-    attentionState: tuiSignal?.attentionState ?? processSignal.attentionState,
-    attentionReason: tuiSignal?.attentionReason ?? processSignal.attentionReason,
-    attentionSource: tuiSignal?.attentionSource ?? processSignal.attentionSource,
-    attentionConfidence: tuiSignal?.attentionConfidence ?? processSignal.attentionConfidence,
-  };
-}
-
-function inferFromPtyActivity(activity) {
-  const { signals } = activity;
-  const isAnimationLikeOutput = isPtyActivelyRepainting(activity);
-
-  if (isAnimationLikeOutput) {
-    return {
-      state: AgentState.WORKING,
-      reason: "PTY is actively repainting terminal frames; TaskDeck infers the agent may be active.",
-      source: AgentStateSource.PROCESS,
-      confidence: AgentStateConfidence.MEDIUM,
-      attentionState: AttentionState.NONE,
-      attentionReason: "PTY is actively repainting.",
-      attentionSource: AgentStateSource.PROCESS,
-      attentionConfidence: AgentStateConfidence.MEDIUM,
-    };
-  }
-
-  if (signals.hasVisibleTextAfterStrip) {
-    return {
-      state: AgentState.WORKING,
-      reason: "PTY emitted visible output; TaskDeck infers the agent may be active.",
-      source: AgentStateSource.PROCESS,
-      confidence: AgentStateConfidence.MEDIUM,
-      attentionState: AttentionState.NONE,
-      attentionReason: "PTY emitted visible output.",
-      attentionSource: AgentStateSource.PROCESS,
-      attentionConfidence: AgentStateConfidence.MEDIUM,
-    };
-  }
-
-  return {
-    state: AgentState.WORKING,
-    reason: "PTY emitted terminal output; TaskDeck infers the agent may be active.",
-    source: AgentStateSource.PROCESS,
-    confidence: AgentStateConfidence.LOW,
-    attentionState: AttentionState.NONE,
-    attentionReason: "PTY emitted terminal output.",
-    attentionSource: AgentStateSource.PROCESS,
-    attentionConfidence: AgentStateConfidence.LOW,
-  };
-}
-
-function isPtyActivelyRepainting(activity, now = Date.now()) {
-  const { signals } = activity;
-  const recentAnsiFrames = activity.recentAnsiFrames.filter((timestamp) => now - timestamp <= ptyActivityWindowMs).length;
-  const recentCarriageReturns = activity.recentCarriageReturns.filter((timestamp) => now - timestamp <= ptyActivityWindowMs).length;
-  const recentRepaintFrames = recentAnsiFrames + recentCarriageReturns;
-  const lastOutputIsCurrent = !activity.lastOutputAt || now - activity.lastOutputAt <= 250;
-  return (
-    recentRepaintFrames >= 3 ||
-    (lastOutputIsCurrent && signals.containsCarriageReturn && !signals.hasVisibleTextAfterStrip) ||
-    (lastOutputIsCurrent && signals.containsCursorMovementOrLineClear && !signals.hasVisibleTextAfterStrip)
-  );
-}
-
-function inferFromExplicitTuiPrompts({ recentOutput, latestOutput, activity, activePty, agentKind }) {
-  const rawText = String(recentOutput);
-  const text = stripTerminalControlSequences(String(recentOutput));
-  const latestText = stripTerminalControlSequences(String(latestOutput));
-  const normalizedRaw = rawText.toLowerCase();
-  const normalized = text.toLowerCase();
-  const lastLine = lastMeaningfulLine(latestText).toLowerCase();
-  const promptWindow = lastMeaningfulLines(latestText, 8).join("\n").toLowerCase();
-
-  if (!normalized.trim()) {
-    return null;
-  }
-
-  if (/(you approved|approved .* to run|✔ .*approved)/.test(normalized)) {
-    resetPendingInputPrompt(activePty);
-    return {
-      state: AgentState.WORKING,
-      reason: "TUI output indicates an approval was accepted.",
-      source: AgentStateSource.TUI_FALLBACK,
-      confidence: AgentStateConfidence.MEDIUM,
-      attentionState: AttentionState.NONE,
-      attentionReason: "Approval appears to have been accepted.",
-      attentionSource: AgentStateSource.TUI_FALLBACK,
-      attentionConfidence: AgentStateConfidence.MEDIUM,
-    };
-  }
-
-  if (isApprovalPrompt(normalized, normalizedRaw)) {
-    resetPendingInputPrompt(activePty);
-    return {
-      state: AgentState.WAITING_APPROVAL,
-      reason: "TUI output appears to be requesting approval.",
-      source: AgentStateSource.TUI_FALLBACK,
-      confidence: AgentStateConfidence.MEDIUM,
-      attentionState: AttentionState.NEEDS_APPROVAL,
-      attentionReason: "Approval prompt detected.",
-      attentionSource: AgentStateSource.TUI_FALLBACK,
-      attentionConfidence: AgentStateConfidence.MEDIUM,
-    };
-  }
-
-  const hasInputLikePrompt =
-    isInteractivePrompt(lastLine) ||
-    /(waiting for input|press enter|enter your|select an? |choose an? |type .*:|\?\s*$)/.test(promptWindow);
-
-  if (hasInputLikePrompt) {
-    const inputPromptSignal = updatePendingInputPrompt(activePty, {
-      agentKind,
-      textFingerprint: fingerprintInputPrompt(lastLine || normalized),
-    });
-
-    if (!isPtyActivelyRepainting(activity) && inputPromptSignal.isStable) {
-      return {
-        state: AgentState.WAITING_INPUT,
-        reason: "Input prompt persisted and terminal is quiet.",
-        source: AgentStateSource.TUI_FALLBACK,
-        confidence: AgentStateConfidence.MEDIUM,
-        attentionState: AttentionState.NEEDS_INPUT,
-        attentionReason: "Stable input prompt detected.",
-        attentionSource: AgentStateSource.TUI_FALLBACK,
-        attentionConfidence: AgentStateConfidence.MEDIUM,
-      };
-    }
-
-    return {
-      attentionState: AttentionState.MAY_NEED_USER,
-      attentionReason: "Input-like prompt is visible but not yet stable.",
-      attentionSource: AgentStateSource.TUI_FALLBACK,
-      attentionConfidence: AgentStateConfidence.LOW,
-    };
-  }
-
-  if (/(ready for review|review ready|please review|changes are ready|diff is ready|summary of changes|task complete|completed successfully)/.test(normalized)) {
-    resetPendingInputPrompt(activePty);
-    return {
-      state: AgentState.REVIEW_READY,
-      reason: "TUI output indicates the work may be ready for review.",
-      source: AgentStateSource.TUI_FALLBACK,
-      confidence: AgentStateConfidence.MEDIUM,
-      attentionState: AttentionState.REVIEW_READY,
-      attentionReason: "Review-ready output detected.",
-      attentionSource: AgentStateSource.TUI_FALLBACK,
-      attentionConfidence: AgentStateConfidence.MEDIUM,
-    };
-  }
-
-  resetPendingInputPrompt(activePty);
-  return null;
-}
-
-function updatePendingInputPrompt(activePty, { agentKind, textFingerprint }) {
-  const now = Date.now();
-  const currentPrompt = activePty?.pendingInputPrompt;
-  const isSamePrompt =
-    currentPrompt &&
-    currentPrompt.agentKind === agentKind &&
-    currentPrompt.textFingerprint === textFingerprint;
-
-  if (!activePty) {
-    return { isStable: false };
-  }
-
-  if (!isSamePrompt) {
-    activePty.pendingInputPrompt = {
-      firstSeenAt: now,
-      lastSeenAt: now,
-      textFingerprint,
-      agentKind,
-    };
-    return { isStable: false };
-  }
-
-  activePty.pendingInputPrompt = {
-    ...currentPrompt,
-    lastSeenAt: now,
-  };
-
-  return {
-    isStable: now - currentPrompt.firstSeenAt >= inputPromptStabilizationMs,
-  };
-}
-
-function resetPendingInputPrompt(activePty) {
-  if (activePty) {
-    activePty.pendingInputPrompt = null;
-  }
-}
-
-function fingerprintInputPrompt(value) {
-  return String(value)
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(-240);
-}
-
-function isApprovalPrompt(normalized, normalizedRaw) {
-  return (
-    /action required/.test(normalizedRaw) ||
-    /(approval required|requires approval|permission requested)/.test(normalized) ||
-    /(approve\?|allow\?|deny\?|confirm\?|continue\?|yes\/no|\by\/n\b)/.test(normalized) ||
-    /would you like to run the following command\?/.test(normalized) ||
-    /do you want to allow\b/.test(normalized) ||
-    /yes,\s*proceed\s*\(y\)/.test(normalized) ||
-    /press enter to confirm or esc to cancel/.test(normalized)
-  );
-}
-
-function stripTerminalControlSequences(value) {
-  return value
-    .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "")
-    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
-    .replace(/\r/g, "\n");
-}
-
-function isGooseLikeTask(task) {
-  const haystack = `${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command || ""}`.toLowerCase();
-  return /\bgoose\b/.test(haystack);
-}
-
-function lastMeaningfulLine(value) {
-  return lastMeaningfulLines(value, 1).at(-1) ?? "";
-}
-
-function lastMeaningfulLines(value, limit) {
-  return value
-    .split(/\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(-limit);
-}
-
-function isInteractivePrompt(line) {
-  return (
-    /^gpt-[\w.-]+\s+default\s+[·•-]\s+\S+/.test(line) ||
-    /^>\s*$/.test(line) ||
-    /^[^\s]+@[^^]+:[^$#]+[$#]\s*$/.test(line)
   );
 }
 
@@ -4920,7 +4172,6 @@ function broadcastTasks() {
 
 function getRunningTaskIds() {
   return Array.from(new Set([
-    ...Array.from(activePtys.keys()).reverse(),
     ...Array.from(activeCodexThreadSessions.keys()).reverse(),
   ]));
 }
@@ -4945,7 +4196,6 @@ async function clearTask(taskId) {
 
 async function stopTaskProcesses(taskId) {
   const task = tasks.get(taskId);
-  stopActivePty(taskId);
   stopActiveCodexThreadSession(taskId);
 
   if (!task) {
@@ -4953,19 +4203,6 @@ async function stopTaskProcesses(taskId) {
   }
 
   await cleanupDockerTaskProcesses(task);
-}
-
-function stopActivePty(taskId) {
-  const activePty = activePtys.get(taskId);
-  if (!activePty) {
-    return;
-  }
-  clearActivePty(taskId);
-  try {
-    activePty.process.kill();
-  } catch (error) {
-    console.error("TaskDeck could not stop PTY for " + taskId + ": " + error.message);
-  }
 }
 
 function stopActiveCodexThreadSession(taskId) {

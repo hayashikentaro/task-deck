@@ -11,9 +11,6 @@ type InputComposerProps = {
 };
 
 const maxComposerHeight = 140;
-const terminalEnter = "\r";
-const bracketedPasteStart = "\x1b[200~";
-const bracketedPasteEnd = "\x1b[201~";
 type SelectedImageAttachment = {
   id: string;
   file: File;
@@ -38,13 +35,10 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
   const canSend = canInteractWithRunningTask && !isTerminalInputLocked && !isUnsupportedCancelActiveTask && !isCodexAppServerNeedsAttention;
   const hasComposerContent = Boolean(value || selectedImages.length);
   const canSubmit = canSend && hasComposerContent && !isUploadingAttachments;
-  const canCancelCurrentInstruction = Boolean(canInteractWithRunningTask && !isCodexAppServerTask && isActiveInstruction);
   const canResolveCodexAppServerRequest = Boolean(canInteractWithRunningTask && codexAppServerRequest);
   const actionLabel = isUnsupportedCancelActiveTask
     ? "Task is running"
-    : canCancelCurrentInstruction
-      ? "Cancel current instruction"
-      : "Send input to running task";
+    : "Send input to running task";
   const modeText = getComposerMode(task, isConnected, { isCodexAppServerNeedsAttention, isUnsupportedCancelActiveTask });
   const inputPlaceholder = canSend
     ? isCodexAppServerTask
@@ -68,10 +62,6 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
   };
 
   const handlePrimaryAction = () => {
-    if (canCancelCurrentInstruction) {
-      cancelCurrentInstruction();
-      return;
-    }
     sendValue();
   };
 
@@ -112,13 +102,6 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
     setSelectedImages((current) => current.filter((image) => image.id !== imageId));
   };
 
-  const cancelCurrentInstruction = () => {
-    if (!task || !canInteractWithRunningTask) {
-      return;
-    }
-    send({ type: "interrupt", taskId: task.id });
-  };
-
   const resolveCodexAppServerRequest = (action: "approve" | "decline" | "cancel") => {
     if (!task || !codexAppServerRequest || !canResolveCodexAppServerRequest) {
       return;
@@ -139,10 +122,9 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
     try {
       setIsUploadingAttachments(true);
       setAttachmentError("");
-      const hasImageAttachments = selectedImages.length > 0;
       const uploadedAttachments = await uploadSelectedImages(selectedImages);
       const input = appendAttachmentContext(value, uploadedAttachments);
-      const didSend = sendAgentInput(input, hasImageAttachments);
+      const didSend = sendAgentInput(input);
       if (didSend) {
         onValueChange("");
         setSelectedImages([]);
@@ -154,11 +136,11 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
     }
   };
 
-  const sendAgentInput = (input: string, hasImageAttachments: boolean) => {
+  const sendAgentInput = (input: string) => {
     if (!task || !canSend || !input) {
       return false;
     }
-    const data = formatComposerInputForPty(input, hasImageAttachments);
+    const data = normalizeComposerInput(input);
     return send({ type: "input", taskId: task.id, data, source: "composer-agent" });
   };
 
@@ -266,20 +248,14 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
         <button
           aria-label={actionLabel}
           className="input-primary-action-button"
-          disabled={canCancelCurrentInstruction ? !canInteractWithRunningTask : !canSubmit}
+          disabled={!canSubmit}
           onClick={handlePrimaryAction}
           title={actionLabel}
           type="button"
         >
-          {canCancelCurrentInstruction ? (
-            <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
-              <rect height="8" rx="1.2" width="8" x="4" y="4" />
-            </svg>
-          ) : (
-            <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
-              <path d="M8 13V3M4 7l4-4 4 4" />
-            </svg>
-          )}
+          <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+            <path d="M8 13V3M4 7l4-4 4 4" />
+          </svg>
         </button>
       </div>
     </form>
@@ -382,25 +358,8 @@ function isCommandEnter(event: KeyboardEvent<HTMLTextAreaElement>) {
   return event.metaKey || event.ctrlKey;
 }
 
-function formatComposerInputForPty(input: string, hasImageAttachments: boolean) {
-  const text = normalizeTerminalInput(input);
-  if (isSlashCommandInput(text, hasImageAttachments)) {
-    return `${text.trim()}${terminalEnter}`;
-  }
-  return `${bracketedPasteStart}${text}${bracketedPasteEnd}${terminalEnter}`;
-}
-
-function normalizeTerminalInput(input: string) {
+function normalizeComposerInput(input: string) {
   return input.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-}
-
-function isSlashCommandInput(input: string, hasImageAttachments: boolean) {
-  if (hasImageAttachments) {
-    return false;
-  }
-
-  const text = input.trim();
-  return text.startsWith("/") && !text.includes("\n");
 }
 
 function getComposerMode(

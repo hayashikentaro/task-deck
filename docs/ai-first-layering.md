@@ -48,7 +48,7 @@ Typical files:
 
 - `packages/core/src/*`
 
-Core sessions may decide what a concept means. They should not decide UI layout, App Server/PTY timing, or protocol transport details unless explicitly asked.
+Core sessions may decide what a concept means. They should not decide UI layout, App Server timing, or protocol transport details unless explicitly asked.
 
 ### Protocol
 
@@ -78,7 +78,6 @@ Examples:
 
 - Codex App Server subprocess lifecycle;
 - App Server JSON-RPC request/notification handling;
-- PTY lifecycle;
 - input queueing;
 - websocket server behavior;
 - process start/exit handling;
@@ -122,12 +121,12 @@ Examples:
 - native subagent card selection and update flow;
 - dedupe for supported runtime events;
 - status/error messages;
-- connecting trusted launch helpers to task creation.
+- connecting trusted launch profiles to task creation.
 
 Typical files:
 
 - `apps/web/src/App.tsx`;
-- `apps/web/src/agentLaunch.ts`;
+- `apps/web/src/components/TaskCreateForm.tsx`;
 - related orchestration helpers.
 
 App Flow sessions often cross layer boundaries. They should reuse Protocol, Core, Runtime, and UI pieces rather than redefining their rules.
