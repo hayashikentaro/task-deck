@@ -1789,78 +1789,18 @@ dd {
   overflow: auto;
 }
 
-.tools-panel {
-  min-width: 0;
-  margin-top: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-}
-
-.tools-panel .pane-heading,
-.tools-body {
-  padding: 12px;
-}
-
-.tools-panel .pane-heading {
-  border-bottom: 1px solid var(--line);
-}
-
-.tools-panel .pane-heading h2 {
-  color: var(--text-secondary);
-}
-
 .task-create-form button[type="submit"] {
   height: 32px;
   padding: 0 10px;
 }
 
-.tools-body {
-  display: grid;
-  gap: 10px;
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
-.tools-body p {
-  margin: 0;
-}
-
-.tool-section {
-  display: grid;
-  gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-}
-
-.tool-section:first-child {
-  padding-top: 0;
-  border-top: 0;
-}
-
-.task-create-form span,
-.tool-section h3 {
+.task-create-form span {
   margin: 0;
   color: var(--status-muted);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0;
   text-transform: uppercase;
-}
-
-.tool-actions {
-  display: grid;
-  gap: 8px;
-}
-
-.tool-action-group {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.tool-action-group[data-layout="single"] {
-  grid-template-columns: 1fr;
 }
 
 .task-create-form button[type="submit"] {
@@ -1871,19 +1811,6 @@ dd {
   font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.tool-status {
-  color: var(--status-muted);
-}
-
-.tool-hint {
-  color: var(--status-muted);
-  font-size: 12px;
-}
-
-.tool-status[data-tone="error"] {
-  color: var(--status-failed);
 }
 
 .task-create-panel {

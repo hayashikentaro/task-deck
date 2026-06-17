@@ -13,7 +13,6 @@ type TerminalPaneProps = {
   lastOutput: OutputEvent | null;
   terminalMessage: string;
   onComposerValueChange: (value: string) => void;
-  onLogBufferChange: (value: string) => void;
   onTerminalMessageChange: (value: string) => void;
   send: (payload: unknown) => boolean;
 };
@@ -53,7 +52,6 @@ export function TerminalPane({
   lastOutput,
   terminalMessage,
   onComposerValueChange,
-  onLogBufferChange,
   onTerminalMessageChange,
   send,
 }: TerminalPaneProps) {
@@ -66,15 +64,11 @@ export function TerminalPane({
   const lastSentTerminalSizeRef = useRef<{ cols: number; rows: number } | null>(null);
   const shouldStickToTerminalBottomRef = useRef(true);
   const selectedTaskIdRef = useRef<string | null>(null);
-  const selectedTaskTerminalInputLockedRef = useRef(false);
-  const directInputDebugRef = useRef(isDirectInputDebugEnabled());
   const [logBuffer, setLogBuffer] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [terminalFontSize, setTerminalFontSize] = useState(readStoredTerminalFontSize);
 
-  const directInputDebug = directInputDebugRef.current;
   const taskId = task?.id ?? null;
-  const isTerminalInputLocked = Boolean(task?.terminalInputLockedAt);
   const searchMatchCount = useMemo(() => countMatches(logBuffer, searchTerm), [logBuffer, searchTerm]);
   const hasTuiChoice = useMemo(() => detectTuiChoice(logBuffer), [logBuffer]);
   const taskIdentityStyle = useMemo(
@@ -170,16 +164,6 @@ export function TerminalPane({
   }, [fitTerminalToHost, scrollTerminalToBottomAfterLayout]);
 
   useEffect(() => {
-    onLogBufferChange(logBuffer);
-  }, [logBuffer, onLogBufferChange]);
-
-  useEffect(() => {
-    if (terminalRef.current) {
-      terminalRef.current.options.disableStdin = !(directInputDebug && task?.status === "running" && isConnected && !isTerminalInputLocked);
-    }
-  }, [directInputDebug, isConnected, isTerminalInputLocked, task?.status]);
-
-  useEffect(() => {
     if (!hostRef.current || terminalRef.current) {
       return;
     }
@@ -188,6 +172,7 @@ export function TerminalPane({
       allowTransparency: true,
       cursorBlink: true,
       convertEol: true,
+      disableStdin: true,
       fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
       fontSize: terminalFontSize,
       theme: terminalTheme,
@@ -195,16 +180,6 @@ export function TerminalPane({
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(hostRef.current);
-    terminal.options.disableStdin = !directInputDebugRef.current;
-    terminal.onData((data) => {
-      if (!directInputDebugRef.current) {
-        return;
-      }
-      const taskId = selectedTaskIdRef.current;
-      if (taskId && !selectedTaskTerminalInputLockedRef.current) {
-        send({ type: "input", taskId, data, source: "xterm" });
-      }
-    });
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
     fitTerminalToHost();
@@ -343,10 +318,6 @@ export function TerminalPane({
     setSearchTerm("");
     return loadPersistedLog(task);
   }, [loadPersistedLog, taskId]);
-
-  useEffect(() => {
-    selectedTaskTerminalInputLockedRef.current = isTerminalInputLocked;
-  }, [isTerminalInputLocked]);
 
   useEffect(() => {
     if (!lastOutput || lastOutput.taskId !== task?.id) {
@@ -593,10 +564,6 @@ function indexesMatching(lines: string[], predicate: (line: string) => boolean) 
 
 function hasNearbyLine(leftIndexes: number[], rightIndexes: number[]) {
   return leftIndexes.some((leftIndex) => rightIndexes.some((rightIndex) => Math.abs(leftIndex - rightIndex) <= 6));
-}
-
-function isDirectInputDebugEnabled() {
-  return new URLSearchParams(window.location.search).get("directInput") === "1";
 }
 
 function readStoredTerminalFontSize() {

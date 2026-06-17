@@ -13,7 +13,7 @@ In the current session-identity-first card design, the primary card-level visual
 ## Repository Map
 
 - `apps/server`: Node/Express backend, Codex App Server adapter, PTY orchestration, REST API, WebSocket updates, config loading, task persistence, diagnostics, and supervision heuristics.
-- `apps/web`: React/Vite frontend for task cards, task output rendering, terminal fallback rendering, task creation, tools, diagnostics, composer input, App Server request controls, and API/WebSocket state handling.
+- `apps/web`: React/Vite frontend for task cards, task output rendering, terminal fallback rendering, task creation, composer input, App Server request controls, and API/WebSocket state handling.
 - `packages/core`: Shared task-state primitives and task serialization helpers used by server and web code.
 - `.taskdeck/`: Ignored local runtime state. It stores persisted tasks, logs, presets, session labels, attachments, and other local data that may be sensitive.
 - Config files: `taskdeck.config.json` is committed config and exposes only the Codex App Server task profile on this branch; ignored `taskdeck.local.json`, `TASKDECK_CONFIG`, `TASKDECK_PROJECT_ROOT`, and `TASKDECK_PROJECT_ROOTS` carry machine-local overrides. `taskdeck.local.example.json` is the public example for local setup.
@@ -26,8 +26,8 @@ In the current session-identity-first card design, the primary card-level visual
 4. App Server messages are reduced to human-readable task output, pending request state, and task state updates. PTY output is appended to bounded in-memory and persisted logs, broadcast over WebSocket, and rendered by xterm.js in the terminal pane.
 5. Server-side lifecycle observations, App Server status events, and adapter-specific fallback signals update `agentState` and `attentionState` without treating silence as thinking.
 6. Task, log, preset, session-label, and attachment state is persisted under `.taskdeck/`.
-7. Focused REST calls handle actions such as task renaming, log reload, attachments, and diagnostics queries when a UI path calls them.
-8. UI state updates from REST responses and WebSocket messages keep the task list, selected task, terminal output, composer availability, and tools in sync.
+7. Focused REST calls handle actions such as task renaming, terminal input locking, log reload, attachments, task diffs, and task clearing when a UI path calls them.
+8. UI state updates from REST responses and WebSocket messages keep the task list, selected task, terminal output, composer availability, and request controls in sync.
 
 ## Native Subagent Card Ownership
 
@@ -99,7 +99,7 @@ The UI is organized around task cards that help operators keep the left-rail tas
 
 Expanded task cards show command, cwd, process status, exit code, timing, initial instruction when available, and compact diff status. The former top summary strip and right-side task-state panel are intentionally folded into the card model.
 
-The output pane displays human-readable Codex App Server status, assistant text, command output, and request state. xterm.js remains in the codebase for legacy/local-override PTY profiles, but it is not the committed App Server control plane. The pane includes operator controls for follow mode, clearing the current view, reloading persisted logs, copying the bounded visible log buffer, and counting simple search matches.
+The output pane displays human-readable Codex App Server status, assistant text, command output, and request state. xterm.js remains in the codebase for legacy/local-override PTY profiles, but it is not the committed App Server control plane. The pane includes operator controls for terminal font size, reloading persisted logs, and counting simple search matches.
 
 Task input is sent through the fixed bottom composer. For Codex App Server tasks it becomes structured turn input. The composer stays disabled for read-only logs, disconnected sessions, or no selected task. It supports multi-line instructions. Enter sends, Shift+Enter inserts a newline, Cmd/Ctrl+Enter sends, and IME composition is preserved for Japanese input. Legacy/local-override PTY profiles may still use terminal input semantics, but new branch work should not add product behavior that depends on a Codex TUI transcript.
 
@@ -121,7 +121,7 @@ For maintainer environments, user-specific paths such as `/Users/hayashikentarou
 
 Agent profiles can be changed without editing application code. TaskDeck merges profiles by `id`: built-in defaults are loaded first, then `taskdeck.config.json`, then ignored `taskdeck.local.json`, then `TASKDECK_CONFIG`. Later files override matching ids and append new ids, and the server exposes the merged profile list.
 
-Each profile supports `id`, `label`, `command`, `description`, optional `diagnosticContainer`, optional `diagnosticWorkspace`, and optional `modelOptions`. The diagnostics panel uses the diagnostic fields to inspect/start configured Docker containers and check whether expected container workspace directories exist. Profiles without diagnostic container fields are launchable but omitted from container diagnostics. The committed App Server profile has no diagnostic container because it runs in the TaskDeck server environment.
+Each profile supports `id`, `label`, `command`, `description`, optional `diagnosticContainer`, optional `diagnosticWorkspace`, and optional `modelOptions`. The diagnostics API uses the diagnostic fields to inspect/start configured Docker containers and check whether expected container workspace directories exist. Profiles without diagnostic container fields are launchable but omitted from container diagnostics. The committed App Server profile has no diagnostic container because it runs in the TaskDeck server environment.
 
 Codex App Server launches through `codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://` so TaskDeck can communicate over ordinary stdin/stdout pipes. The committed route uses `danger-full-access` in the TaskDeck server environment, and TaskDeck also passes full-access/no-approval overrides when starting App Server threads and turns. TaskDeck does not otherwise synthesize Codex CLI/TUI reasoning, startup, or resume flags for this profile. If a local machine needs Docker wrapping, use ignored local config to override the profile command.
 
@@ -133,7 +133,7 @@ Codex App Server launches through `codex --sandbox danger-full-access --ask-for-
 - App Server lifecycle and input/output: Task creation, App Server spawn/stdin/stdout handling, log append, and WebSocket output handling in `apps/server/src/server.js`; terminal/output rendering in `TerminalPane.tsx`; composer behavior in `InputComposer.tsx`. PTY lifecycle code is legacy/local-override support.
 - Attention/supervision logic: Adapter selection, process/activity observation, explicit TUI prompt fallback, quiet timers, and task state marking in `apps/server/src/server.js`; task-card display in `apps/web/src/components/TaskList.tsx`.
 - Output and terminal UI: `apps/web/src/components/TerminalPane.tsx`, `InputComposer.tsx`, related output/composer CSS in `apps/web/src/styles.css`.
-- Diagnostics: `/api/diagnostics` plus container inspection/start helpers in `apps/server/src/server.js`; existing tool panes use related profile/container metadata, and a dedicated diagnostics UI would be future work.
+- Diagnostics: `/api/diagnostics` plus container inspection/start helpers in `apps/server/src/server.js`; a dedicated diagnostics UI would be future work.
 
 ## Refactoring Seams
 

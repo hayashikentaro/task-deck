@@ -388,18 +388,6 @@ app.delete("/api/presets", async (_request, response) => {
   response.json({ ok: true, presets });
 });
 
-app.get("/api/server/restart", (_request, response) => {
-  response.status(405).json({ error: "Use POST to restart TaskDeck." });
-});
-
-app.post("/api/server/restart", (_request, response) => {
-  console.log("TaskDeck restart requested from UI.");
-  response.json({ ok: true, message: "Restarting TaskDeck." });
-  setTimeout(() => {
-    process.exit(42);
-  }, 250);
-});
-
 app.get("/api/tasks/:taskId", (request, response) => {
   const task = tasks.get(request.params.taskId);
 

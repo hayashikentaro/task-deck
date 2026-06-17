@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TaskCreateForm } from "./components/TaskCreateForm";
 import { TaskList } from "./components/TaskList";
 import { TerminalPane } from "./components/TerminalPane";
-import { ToolsPane } from "./components/ToolsPane";
 import type { CreateTaskInput, OutputEvent, Task, TaskDeckContext } from "./types";
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
@@ -27,7 +26,6 @@ export function App() {
   const [lastOutput, setLastOutput] = useState<OutputEvent | null>(null);
   const [taskDeckContext, setTaskDeckContext] = useState<TaskDeckContext | null>(null);
   const [composerValue, setComposerValue] = useState("");
-  const [selectedLogBuffer, setSelectedLogBuffer] = useState("");
   const [terminalMessage, setTerminalMessage] = useState("");
   const socketRef = useRef<WebSocket | null>(null);
   const outputSeqRef = useRef(0);
@@ -219,20 +217,6 @@ export function App() {
     }
   };
 
-  const copySelectedLog = async () => {
-    if (!selectedLogBuffer) {
-      setTerminalMessage("No terminal content to copy.");
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(selectedLogBuffer);
-      setTerminalMessage("Copied terminal content.");
-    } catch {
-      setTerminalMessage("Copy failed in this browser context.");
-    }
-  };
-
   const applyTaskList = (nextTasks: Task[], nextRunningTaskIds: string[]) => {
     setTasks(nextTasks);
     setRunningTaskIds(nextRunningTaskIds);
@@ -267,7 +251,6 @@ export function App() {
           lastOutput={lastOutput}
           terminalMessage={terminalMessage}
           onComposerValueChange={setComposerValue}
-          onLogBufferChange={setSelectedLogBuffer}
           onTerminalMessageChange={setTerminalMessage}
           send={send}
         />
@@ -276,11 +259,6 @@ export function App() {
             context={taskDeckContext}
             disabled={connectionState !== "connected"}
             onCreateTask={createTask}
-          />
-          <ToolsPane
-            isConnected={connectionState === "connected"}
-            canCopyLog={Boolean(selectedTask && selectedLogBuffer.length)}
-            onCopyLog={copySelectedLog}
           />
         </aside>
       </section>
