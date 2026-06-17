@@ -69,6 +69,8 @@ The server persists local runtime state under `.taskdeck/`, which is intentional
 
 `.taskdeck/` may contain sensitive task metadata, logs, session labels, attachments, and agent output. Do not commit or share it.
 
+For running Codex App Server work, server memory keeps App Server runtime handles separate from App Server thread-session handles. The current runtime id is still one-to-one with the parent task id, but routing should go through task/thread maps such as task id -> thread session and App Server thread id -> TaskDeck task id so a future shared runtime can host multiple project threads without changing task semantics.
+
 ## Domain Concepts
 
 - Task: The central supervision unit. For Codex App Server work, a parent task represents an App Server thread session and persists its thread identity in session metadata once the thread is ready. A task also owns low-level runtime status, command/cwd, agent profile metadata, attachments, logs, risk, `agentState`, `attentionState`, and timing.

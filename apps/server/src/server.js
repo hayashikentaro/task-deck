@@ -133,7 +133,9 @@ const imageAttachmentExtensions = new Map([
   ["image/webp", ".webp"],
 ]);
 const activePtys = new Map();
+const activeCodexRuntimes = new Map();
 const activeCodexThreadSessions = new Map();
+const taskIdByCodexThreadId = new Map();
 const processedManagerActionIds = new Set();
 const childStatusFileSnapshots = new Map();
 let managerActionSocketPath = managerActionDefaultSocketPath;
@@ -939,7 +941,11 @@ async function startCodexAppServerThreadSession({ task, commandForProcess, proce
     },
     stdio: ["pipe", "pipe", "pipe"],
   });
-  const activeAppServer = createActiveCodexThreadSession(task, appServerProcess, launchCommand);
+  const runtimeId = task.id;
+  const activeRuntime = createActiveCodexRuntime({ runtimeId, runtimeProcess: appServerProcess, launchCommand });
+  activeCodexRuntimes.set(runtimeId, activeRuntime);
+  const activeAppServer = createActiveCodexThreadSession(task, runtimeId);
+  activeRuntime.threadSessionTaskIds.add(task.id);
   activeCodexThreadSessions.set(task.id, activeAppServer);
 
   updateAgentStateFromTaskDeckEvent(task.id, AgentState.THINKING, {
@@ -976,7 +982,8 @@ async function startCodexAppServerThreadSession({ task, commandForProcess, proce
     const currentTask = tasks.get(task.id);
     activeAppServer.loginInProgress = false;
     activeAppServer.loginId = "";
-    activeCodexThreadSessions.delete(task.id);
+    clearCodexThreadSession(activeAppServer);
+    activeCodexRuntimes.delete(runtimeId);
     if (!currentTask) {
       return;
     }
@@ -992,14 +999,20 @@ async function startCodexAppServerThreadSession({ task, commandForProcess, proce
   return { ok: true, taskId: task.id };
 }
 
-function createActiveCodexThreadSession(task, runtimeProcess, launchCommand) {
+function createActiveCodexRuntime({ runtimeId, runtimeProcess, launchCommand }) {
+  return {
+    id: runtimeId,
+    process: runtimeProcess,
+    launchCommand,
+    startedAt: Date.now(),
+    threadSessionTaskIds: new Set(),
+  };
+}
+
+function createActiveCodexThreadSession(task, runtimeId) {
   return {
     taskId: task.id,
-    runtime: {
-      process: runtimeProcess,
-      launchCommand,
-      startedAt: Date.now(),
-    },
+    runtimeId,
     nextRequestId: 1,
     pendingRequests: new Map(),
     pendingServerRequests: new Map(),
@@ -1025,13 +1038,41 @@ function createActiveCodexThreadSession(task, runtimeProcess, launchCommand) {
   };
 }
 
+function codexRuntimeForThreadSession(activeAppServer) {
+  return activeCodexRuntimes.get(activeAppServer?.runtimeId) ?? null;
+}
+
+function clearCodexThreadSession(activeAppServer) {
+  if (!activeAppServer) {
+    return;
+  }
+
+  activeCodexThreadSessions.delete(activeAppServer.taskId);
+  if (activeAppServer.threadId) {
+    taskIdByCodexThreadId.delete(activeAppServer.threadId);
+  }
+  for (const threadId of activeAppServer.nativeSubagentTaskIdsByThreadId.keys()) {
+    taskIdByCodexThreadId.delete(threadId);
+  }
+
+  const activeRuntime = codexRuntimeForThreadSession(activeAppServer);
+  activeRuntime?.threadSessionTaskIds.delete(activeAppServer.taskId);
+}
+
 function recordCodexAppServerThreadSession(activeAppServer, threadId) {
   const normalizedThreadId = String(threadId || "").trim();
   if (!normalizedThreadId) {
     return false;
   }
 
+  if (activeAppServer.threadId && activeAppServer.threadId !== normalizedThreadId) {
+    taskIdByCodexThreadId.delete(activeAppServer.threadId);
+  }
   activeAppServer.threadId = normalizedThreadId;
+  taskIdByCodexThreadId.set(normalizedThreadId, activeAppServer.taskId);
+
+  const activeRuntime = codexRuntimeForThreadSession(activeAppServer);
+  activeRuntime?.threadSessionTaskIds.add(activeAppServer.taskId);
 
   const task = tasks.get(activeAppServer.taskId);
   if (!task) {
@@ -1200,7 +1241,7 @@ function sendCodexAppServerRequest(activeAppServer, method, params) {
   if (codexAppServerDebugEnabled) {
     appendAndBroadcast(activeAppServer.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`);
   }
-  activeAppServer.runtime.process.stdin.write(`${JSON.stringify(message)}\n`);
+  writeCodexAppServerRuntimeMessage(activeAppServer, message);
   return id;
 }
 
@@ -1209,7 +1250,7 @@ function sendCodexAppServerResponse(activeAppServer, id, result) {
   if (codexAppServerDebugEnabled) {
     appendAndBroadcast(activeAppServer.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`);
   }
-  activeAppServer.runtime.process.stdin.write(`${JSON.stringify(message)}\n`);
+  writeCodexAppServerRuntimeMessage(activeAppServer, message);
 }
 
 function sendCodexAppServerRequestError(activeAppServer, id, messageText, code = -32603) {
@@ -1224,7 +1265,17 @@ function sendCodexAppServerRequestError(activeAppServer, id, messageText, code =
   if (codexAppServerDebugEnabled) {
     appendAndBroadcast(activeAppServer.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`);
   }
-  activeAppServer.runtime.process.stdin.write(`${JSON.stringify(message)}\n`);
+  writeCodexAppServerRuntimeMessage(activeAppServer, message);
+}
+
+function writeCodexAppServerRuntimeMessage(activeAppServer, message) {
+  const activeRuntime = codexRuntimeForThreadSession(activeAppServer);
+  if (!activeRuntime?.process?.stdin?.writable || activeRuntime.process.stdin.destroyed) {
+    appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server runtime is not writable.\n");
+    return false;
+  }
+  activeRuntime.process.stdin.write(`${JSON.stringify(message)}\n`);
+  return true;
 }
 
 function handleCodexAppServerOutput(activeAppServer, data, stream) {
@@ -2133,10 +2184,7 @@ function isCodexAppServerNativeSubagentThread(activeAppServer, threadId) {
 }
 
 function codexAppServerTaskIdForThread(activeAppServer, threadId) {
-  if (isCodexAppServerNativeSubagentThread(activeAppServer, threadId)) {
-    return activeAppServer.nativeSubagentTaskIdsByThreadId.get(threadId) || activeAppServer.taskId;
-  }
-  return activeAppServer.taskId;
+  return taskIdByCodexThreadId.get(threadId) || activeAppServer.taskId;
 }
 
 function materializeCodexAppServerNativeSubagents(activeAppServer, item) {
@@ -2212,6 +2260,7 @@ function materializeCodexAppServerNativeSubagent(activeAppServer, threadId, item
   tasks.set(subagentTask.id, subagentTask);
   logs.set(subagentTask.id, "");
   activeAppServer.nativeSubagentTaskIdsByThreadId.set(threadId, subagentTask.id);
+  taskIdByCodexThreadId.set(threadId, subagentTask.id);
   persistTasks();
   writeTaskLog(
     subagentTask.id,
@@ -4877,12 +4926,16 @@ function stopActiveCodexThreadSession(taskId) {
   if (!activeAppServer) {
     return;
   }
+  const activeRuntime = codexRuntimeForThreadSession(activeAppServer);
   cancelCodexAppServerLoginIfNeeded(activeAppServer);
   activeAppServer.loginInProgress = false;
   activeAppServer.loginId = "";
-  activeCodexThreadSessions.delete(taskId);
+  clearCodexThreadSession(activeAppServer);
+  if (activeRuntime) {
+    activeCodexRuntimes.delete(activeRuntime.id);
+  }
   try {
-    activeAppServer.runtime.process.kill();
+    activeRuntime?.process.kill();
   } catch (error) {
     console.error("TaskDeck could not stop Codex App Server for " + taskId + ": " + error.message);
   }
@@ -4892,7 +4945,8 @@ function cancelCodexAppServerLoginIfNeeded(activeAppServer) {
   if (!activeAppServer?.loginInProgress || !activeAppServer.loginId) {
     return;
   }
-  if (!activeAppServer.runtime.process?.stdin?.writable || activeAppServer.runtime.process.stdin.destroyed) {
+  const activeRuntime = codexRuntimeForThreadSession(activeAppServer);
+  if (!activeRuntime?.process?.stdin?.writable || activeRuntime.process.stdin.destroyed) {
     return;
   }
   try {
@@ -4907,7 +4961,7 @@ function cancelCodexAppServerLoginIfNeeded(activeAppServer) {
     if (codexAppServerDebugEnabled) {
       appendAndBroadcast(activeAppServer.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`);
     }
-    activeAppServer.runtime.process.stdin.write(`${JSON.stringify(message)}\n`);
+    activeRuntime.process.stdin.write(`${JSON.stringify(message)}\n`);
   } catch (error) {
     if (codexAppServerDebugEnabled) {
       appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Could not cancel Codex App Server login: ${error.message}\n`);
