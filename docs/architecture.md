@@ -69,7 +69,7 @@ The server persists local runtime state under `.taskdeck/`, which is intentional
 
 `.taskdeck/` may contain sensitive task metadata, logs, session labels, attachments, and agent output. Do not commit or share it.
 
-For running Codex App Server work, server memory keeps App Server runtime handles separate from App Server thread-session handles. The current runtime id is still one-to-one with the parent task id, but routing should go through task/thread maps such as task id -> thread session and App Server thread id -> TaskDeck task id so a future shared runtime can host multiple project threads without changing task semantics.
+For running Codex App Server work, server memory keeps App Server runtime handles separate from App Server thread-session handles. The current runtime id is still one-to-one with the parent task id, but routing should go through task/thread maps such as task id -> thread session and App Server thread id -> TaskDeck task id so a future shared runtime can host multiple project threads without changing task semantics. App Server messages that include a thread id are routed through that map before they update task state, request state, or logs.
 
 ## Domain Concepts
 

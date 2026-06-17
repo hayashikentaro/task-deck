@@ -1334,6 +1334,12 @@ function isIgnorableCodexAppServerTextDiagnostic(line) {
 }
 
 function handleCodexAppServerMessage(activeAppServer, message) {
+  const routedAppServer = codexThreadSessionForCodexAppServerMessage(activeAppServer, message);
+  if (routedAppServer !== activeAppServer) {
+    handleCodexAppServerMessage(routedAppServer, message);
+    return;
+  }
+
   if (activeAppServer.authFailureDetected) {
     if (codexAppServerDebugEnabled) {
       appendCodexAppServerStatus(
@@ -1357,6 +1363,40 @@ function handleCodexAppServerMessage(activeAppServer, message) {
     return;
   }
   appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Unknown Codex App Server message: ${JSON.stringify(message)}\n`);
+}
+
+function codexThreadSessionForCodexAppServerMessage(defaultThreadSession, message) {
+  const threadId = codexAppServerThreadIdFromMessage(message);
+  if (!threadId) {
+    return defaultThreadSession;
+  }
+
+  const taskId = taskIdByCodexThreadId.get(threadId);
+  if (!taskId || taskId === defaultThreadSession.taskId) {
+    return defaultThreadSession;
+  }
+
+  const directThreadSession = activeCodexThreadSessions.get(taskId);
+  if (directThreadSession) {
+    return directThreadSession;
+  }
+
+  const task = tasks.get(taskId);
+  const parentThreadSession = activeCodexThreadSessions.get(task?.parentSessionId);
+  return parentThreadSession || defaultThreadSession;
+}
+
+function codexAppServerThreadIdFromMessage(message) {
+  const params = message?.params ?? {};
+  const result = message?.result ?? {};
+  return String(
+    params.threadId ||
+      params.turn?.threadId ||
+      params.thread?.id ||
+      result.thread?.id ||
+      result.turn?.threadId ||
+      "",
+  ).trim();
 }
 
 function handleCodexAppServerResponse(activeAppServer, message) {
