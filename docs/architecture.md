@@ -101,7 +101,7 @@ The UI is organized around task cards that help operators keep the left-rail tas
 
 Expanded task cards show command, cwd, process status, exit code, timing, initial instruction when available, and compact diff status. The former top summary strip and right-side task-state panel are intentionally folded into the card model.
 
-The output pane displays human-readable Codex App Server status, assistant text, command output, and request state. xterm.js is currently used as an ANSI log renderer; it is not a PTY control plane. The pane includes operator controls for output font size, reloading persisted logs, and counting simple search matches.
+The output pane displays human-readable Codex App Server status, assistant text, command output, and request state in a plain scrollable text view. The pane strips legacy ANSI control sequences when replaying older logs. It includes operator controls for output font size, reloading persisted logs, and counting simple search matches.
 
 Task input is sent through the fixed bottom composer. For Codex App Server tasks it becomes structured turn input. The composer stays disabled for read-only logs, disconnected sessions, or no selected task. It supports multi-line instructions. Enter sends, Shift+Enter inserts a newline, Cmd/Ctrl+Enter sends, and IME composition is preserved for Japanese input.
 
@@ -132,9 +132,9 @@ Codex App Server launches through `codex --sandbox danger-full-access --ask-for-
 - Project dropdown / project roots: `apps/server/src/server.js` functions around `resolveProjectRoots`, `buildProjectSuggestions`, `selectDefaultProjectCwd`, and web form handling in `apps/web/src/components/TaskCreateForm.tsx`.
 - Config loading: `apps/server/src/server.js` config candidate loading and profile/project-root normalization.
 - Agent profiles: Built-in profile definitions and profile merge/sanitize logic in `apps/server/src/server.js`; frontend profile types in `apps/web/src/types.ts`; launch-command selection in `TaskCreateForm.tsx`.
-- App Server lifecycle and input/output: Task/thread-session creation, current App Server runtime spawn/stdin/stdout handling, log append, and WebSocket output handling in `apps/server/src/server.js`; output rendering in `TerminalPane.tsx`; composer behavior in `InputComposer.tsx`.
+- App Server lifecycle and input/output: Task/thread-session creation, current App Server runtime spawn/stdin/stdout handling, log append, and WebSocket output handling in `apps/server/src/server.js`; output rendering in `OutputPane.tsx`; composer behavior in `InputComposer.tsx`.
 - Attention/supervision logic: App Server status/request handling, child-status handling, manager actions, and task state marking in `apps/server/src/server.js`; task-card display in `apps/web/src/components/TaskList.tsx`.
-- Output and terminal UI: `apps/web/src/components/TerminalPane.tsx`, `InputComposer.tsx`, related output/composer CSS in `apps/web/src/styles.css`.
+- Output and input UI: `apps/web/src/components/OutputPane.tsx`, `InputComposer.tsx`, related output/composer CSS in `apps/web/src/styles.css`.
 - Diagnostics: `/api/diagnostics` plus container inspection/start helpers in `apps/server/src/server.js`; a dedicated diagnostics UI would be future work.
 
 ## Refactoring Seams
@@ -152,7 +152,7 @@ Codex App Server launches through `codex --sandbox danger-full-access --ask-for-
 Frontend seams are smaller but still visible:
 
 - Task creation can be isolated from `TaskCreateForm.tsx` when it grows.
-- Output rendering helpers can be extracted from `TerminalPane.tsx` when they grow.
+- Output rendering helpers can be extracted from `OutputPane.tsx` when they grow.
 - Task-card supervision display can stay separate from lower-level task metadata details.
 
 ## Architecture Cautions

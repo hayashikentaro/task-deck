@@ -112,8 +112,6 @@ const host = process.env.HOST || "127.0.0.1";
 const shell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "bash");
 const inputDebugEnabled = process.env.TASKDECK_INPUT_DEBUG === "1";
 const codexAppServerDebugEnabled = process.env.TASKDECK_CODEX_APP_SERVER_DEBUG === "1";
-const codexAppServerAssistantStyleStart = "\u001b[38;2;127;171;159m";
-const codexAppServerAssistantStyleEnd = "\u001b[0m";
 
 const clients = new Set();
 const tasks = new Map();
@@ -1967,12 +1965,12 @@ function handleCodexAppServerAgentMessageDelta(activeAppServer, params) {
 function formatCodexAppServerAssistantText(activeAppServer, delta, taskId = activeAppServer.taskId) {
   const assistantMessageOpen = isCodexAppServerAssistantMessageOpen(activeAppServer, taskId);
   if (assistantMessageOpen) {
-    return `${codexAppServerAssistantStyleStart}${delta}${codexAppServerAssistantStyleEnd}`;
+    return delta;
   }
   setCodexAppServerAssistantMessageOpen(activeAppServer, taskId, true);
   const currentLog = logs.get(taskId) || "";
   const prefix = currentLog && !currentLog.endsWith("\n") ? "\n" : "";
-  return `${prefix}[Assistant]\n${codexAppServerAssistantStyleStart}${delta}${codexAppServerAssistantStyleEnd}`;
+  return `${prefix}[Assistant]\n${delta}`;
 }
 
 function appendCodexAppServerStatus(activeAppServer, data) {

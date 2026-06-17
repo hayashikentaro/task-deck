@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TaskCreateForm } from "./components/TaskCreateForm";
 import { TaskList } from "./components/TaskList";
-import { TerminalPane } from "./components/TerminalPane";
+import { OutputPane } from "./components/OutputPane";
 import type { CreateTaskInput, OutputEvent, Task, TaskDeckContext } from "./types";
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
@@ -26,7 +26,7 @@ export function App() {
   const [lastOutput, setLastOutput] = useState<OutputEvent | null>(null);
   const [taskDeckContext, setTaskDeckContext] = useState<TaskDeckContext | null>(null);
   const [composerValue, setComposerValue] = useState("");
-  const [terminalMessage, setTerminalMessage] = useState("");
+  const [outputMessage, setOutputMessage] = useState("");
   const socketRef = useRef<WebSocket | null>(null);
   const outputSeqRef = useRef(0);
   const selectedTaskIdRef = useRef<string | null>(null);
@@ -244,14 +244,14 @@ export function App() {
           onSelectTask={setSelectedTaskId}
           onToggleTerminalInputLock={toggleTerminalInputLock}
         />
-        <TerminalPane
+        <OutputPane
           composerValue={composerValue}
           isConnected={connectionState === "connected"}
           task={selectedTask}
           lastOutput={lastOutput}
-          terminalMessage={terminalMessage}
+          outputMessage={outputMessage}
           onComposerValueChange={setComposerValue}
-          onTerminalMessageChange={setTerminalMessage}
+          onOutputMessageChange={setOutputMessage}
           send={send}
         />
         <aside className="right-rail">
