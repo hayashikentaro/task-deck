@@ -42,7 +42,6 @@ import {
   codexAppServerThreadIdFromMessage,
   isCodexAppServerAuthError,
   resolveCodexAppServerTaskIdForThread,
-  shouldIgnoreCodexAppServerMessageAfterAuthFailure,
   shouldSuppressCodexAppServerAuthErrorLine,
 } from "@taskdeck/core/codex-app-server";
 import {
@@ -91,6 +90,7 @@ const codexAppServerAgentProfileId = "codex-app-server";
 const codexAppServerAgentSessionProvider = codexAppServerAgentProfileId;
 const codexAppServerThreadSessionSource = "codex_app_server_thread";
 const codexAppServerNativeSubagentSessionSource = "codex_app_server_native_subagent";
+const codexAppServerSharedRuntimeId = "codex-app-server-shared-runtime";
 const codexAppServerCommand = "codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://";
 const codexAppServerOnlyTaskError =
   "TaskDeck now only starts Codex App Server tasks while the App Server thread model is being rebuilt.";
@@ -650,7 +650,6 @@ async function startTaskNow({
   }
 
   const resolvedCwd = cwdValidation.resolvedCwd;
-  const processCwd = await serverAccessiblePathForHostCwd(resolvedCwd);
   const effectiveCommand = await commandForTaskCwd(command, resolvedCwd);
   const launchInitialInstruction = await initialInstructionForTaskLaunch({
     isManagerLaunch,
@@ -688,8 +687,6 @@ async function startTaskNow({
     childStatusFile,
     attachments: finalizedAttachments,
   });
-  const taskDeckEnv = await taskDeckEnvironmentForTask(task, effectiveCommand, childStatusFile);
-  const commandForProcess = commandWithTaskDeckEnv(effectiveCommand, taskDeckEnv);
   tasks.set(task.id, task);
   logs.set(task.id, "");
   persistTasks();
@@ -700,7 +697,7 @@ async function startTaskNow({
   });
   writeTaskLog(task.id, "");
 
-  return startCodexAppServerThreadSession({ task, commandForProcess, processCwd, socket, taskDeckEnv });
+  return startCodexAppServerThreadSession({ task, launchCommand: effectiveCommand, socket });
 }
 
 async function cwdForTaskLaunch({ cwd, isManagerLaunch }) {
@@ -753,9 +750,9 @@ function sendTaskInput(taskId, data, source = "client") {
   return { ok: false, reason: "no-active-app-server-or-invalid-data" };
 }
 
-async function startCodexAppServerThreadSession({ task, commandForProcess, processCwd, socket, taskDeckEnv }) {
-  const launchCommand = String(commandForProcess || task.command || "").trim();
-  if (!launchCommand) {
+async function startCodexAppServerThreadSession({ task, launchCommand, socket }) {
+  const command = String(launchCommand || task.command || "").trim();
+  if (!command) {
     appendLog(task.id, "\r\n[TaskDeck] Failed to start Codex App Server: empty launch command.\r\n");
     setTask(markTaskExited(tasks.get(task.id), { exitCode: 1, signal: null }));
     broadcast({ type: "output", taskId: task.id, data: logs.get(task.id) });
@@ -763,23 +760,13 @@ async function startCodexAppServerThreadSession({ task, commandForProcess, proce
     return { ok: true, taskId: task.id };
   }
 
-  const appServerProcess = spawn(shell, ["-lc", launchCommand], {
-    cwd: processCwd,
-    env: {
-      ...process.env,
-      ...taskDeckEnv,
-    },
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-  const runtimeId = task.id;
-  const activeRuntime = createActiveCodexRuntime({ runtimeId, runtimeProcess: appServerProcess, launchCommand });
-  activeCodexRuntimes.set(runtimeId, activeRuntime);
-  const activeAppServer = createActiveCodexThreadSession(task, runtimeId);
+  const activeRuntime = startOrReuseCodexAppServerRuntime({ launchCommand: command, task });
+  const activeAppServer = createActiveCodexThreadSession(task, activeRuntime);
   activeRuntime.threadSessionTaskIds.add(task.id);
   activeCodexThreadSessions.set(task.id, activeAppServer);
 
   updateAgentStateFromTaskDeckEvent(task.id, AgentState.THINKING, {
-    reason: "Codex App Server runtime started; initializing thread session.",
+    reason: "Codex App Server thread session is starting.",
     source: AgentStateSource.TASKDECK_EVENT,
     confidence: AgentStateConfidence.MEDIUM,
     attentionState: AttentionState.NONE,
@@ -788,81 +775,175 @@ async function startCodexAppServerThreadSession({ task, commandForProcess, proce
     attentionConfidence: AgentStateConfidence.HIGH,
   });
   send(socket, { type: "started", taskId: task.id });
-  appendAndBroadcast(task.id, "[TaskDeck] Starting Codex App Server thread session.\n");
+  appendAndBroadcast(
+    task.id,
+    activeRuntime.initialized
+      ? "[TaskDeck] Reusing shared Codex App Server runtime; starting thread session.\n"
+      : "[TaskDeck] Starting shared Codex App Server runtime and thread session.\n",
+  );
 
-  appServerProcess.stdout.setEncoding("utf8");
-  appServerProcess.stderr.setEncoding("utf8");
-  appServerProcess.stdout.on("data", (data) => {
-    handleCodexAppServerOutput(activeAppServer, data, "stdout");
-  });
-  appServerProcess.stderr.on("data", (data) => {
-    handleCodexAppServerOutput(activeAppServer, data, "stderr");
-  });
-  appServerProcess.on("error", (error) => {
-    appendAndBroadcast(task.id, `[TaskDeck] Codex App Server process error: ${error.message}\n`);
-    updateAgentStateFromTaskDeckEvent(task.id, AgentState.FAILED, {
-      reason: "Codex App Server process emitted an error.",
-      source: AgentStateSource.PROCESS,
-      confidence: AgentStateConfidence.HIGH,
-      attentionState: AttentionState.FAILED,
-      attentionReason: "Codex App Server process emitted an error.",
-      attentionSource: AgentStateSource.PROCESS,
-      attentionConfidence: AgentStateConfidence.HIGH,
-    });
-  });
-  appServerProcess.on("exit", (exitCode, signal) => {
-    const currentTask = tasks.get(task.id);
-    activeAppServer.loginInProgress = false;
-    activeAppServer.loginId = "";
-    clearCodexThreadSession(activeAppServer);
-    activeCodexRuntimes.delete(runtimeId);
-    if (!currentTask) {
-      return;
+  if (activeRuntime.initialized) {
+    sendCodexAppServerThreadStart(activeAppServer);
+  } else {
+    activeRuntime.pendingThreadStartTaskIds.add(task.id);
+    if (!activeRuntime.initializeRequested) {
+      activeRuntime.initializeRequested = true;
+      sendCodexAppServerInitialize(activeAppServer);
     }
-    if (currentTask.status === TaskStatus.CLOSED) {
-      broadcastTasks();
-      return;
-    }
-    setTask(markTaskExited(currentTask, { exitCode, signal }));
-    broadcastTasks();
-  });
-
-  sendCodexAppServerInitialize(activeAppServer);
+  }
   return { ok: true, taskId: task.id };
 }
 
-function createActiveCodexRuntime({ runtimeId, runtimeProcess, launchCommand }) {
-  return {
-    id: runtimeId,
-    process: runtimeProcess,
+function startOrReuseCodexAppServerRuntime({ launchCommand, task }) {
+  const activeRuntime = activeCodexRuntimes.get(codexAppServerSharedRuntimeId);
+  if (codexRuntimeIsWritable(activeRuntime)) {
+    activeRuntime.defaultTaskId = activeRuntime.defaultTaskId || task.id;
+    return activeRuntime;
+  }
+
+  if (activeRuntime) {
+    finishCodexAppServerRuntime(activeRuntime, {
+      exitCode: 1,
+      signal: null,
+      statusMessage: "[TaskDeck] Replacing unavailable Codex App Server runtime.",
+    });
+    try {
+      activeRuntime.process?.kill();
+    } catch {
+      // The previous runtime is already unavailable.
+    }
+  }
+
+  const runtimeProcess = spawn(shell, ["-lc", launchCommand], {
+    cwd: repoRoot,
+    env: process.env,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const nextRuntime = createActiveCodexRuntime({
+    runtimeId: codexAppServerSharedRuntimeId,
+    runtimeProcess,
     launchCommand,
-    startedAt: Date.now(),
-    threadSessionTaskIds: new Set(),
-  };
+    defaultTaskId: task.id,
+  });
+  activeCodexRuntimes.set(nextRuntime.id, nextRuntime);
+
+  runtimeProcess.stdout.setEncoding("utf8");
+  runtimeProcess.stderr.setEncoding("utf8");
+  runtimeProcess.stdout.on("data", (data) => {
+    handleCodexAppServerOutput(nextRuntime, data, "stdout");
+  });
+  runtimeProcess.stderr.on("data", (data) => {
+    handleCodexAppServerOutput(nextRuntime, data, "stderr");
+  });
+  runtimeProcess.on("error", (error) => {
+    handleCodexAppServerRuntimeError(nextRuntime, error);
+  });
+  runtimeProcess.on("exit", (exitCode, signal) => {
+    handleCodexAppServerRuntimeExit(nextRuntime, { exitCode, signal });
+  });
+
+  return nextRuntime;
 }
 
-function createActiveCodexThreadSession(task, runtimeId) {
+function codexRuntimeIsWritable(activeRuntime) {
+  return Boolean(activeRuntime?.process?.stdin?.writable && !activeRuntime.process.stdin.destroyed);
+}
+
+function createActiveCodexRuntime({ runtimeId, runtimeProcess, launchCommand, defaultTaskId }) {
   return {
-    taskId: task.id,
-    runtimeId,
+    id: runtimeId,
+    instanceId: randomUUID(),
+    process: runtimeProcess,
+    launchCommand,
+    defaultTaskId,
+    startedAt: Date.now(),
     nextRequestId: 1,
     pendingRequests: new Map(),
-    pendingServerRequests: new Map(),
-    currentServerRequestId: null,
+    pendingThreadStartTaskIds: new Set(),
+    threadSessionTaskIds: new Set(),
     stdoutBuffer: "",
     stderrBuffer: "",
-    threadId: "",
-    activeTurnId: "",
-    turnActive: false,
-    assistantMessageOpen: false,
-    assistantMessageOpenTaskIds: new Set(),
+    initialized: false,
+    initializeRequested: false,
     accountReady: false,
+    accountReadInFlight: false,
     authFailureDetected: false,
     loginInProgress: false,
     loginId: "",
     loginCompletedAt: 0,
-    pendingAuthRetry: null,
     forcedAccountRefreshAttempted: false,
+  };
+}
+
+function handleCodexAppServerRuntimeError(activeRuntime, error) {
+  finishCodexAppServerRuntime(activeRuntime, {
+    exitCode: 1,
+    signal: null,
+    statusMessage: `[TaskDeck] Codex App Server runtime error: ${error.message}`,
+  });
+}
+
+function handleCodexAppServerRuntimeExit(activeRuntime, { exitCode, signal }) {
+  finishCodexAppServerRuntime(activeRuntime, {
+    exitCode,
+    signal,
+    statusMessage: `[TaskDeck] Codex App Server runtime exited${exitCode === null ? "" : ` with code ${exitCode}`}${signal ? ` signal ${signal}` : ""}.`,
+  });
+}
+
+function finishCodexAppServerRuntime(activeRuntime, { exitCode, signal, statusMessage }) {
+  if (!activeRuntime) {
+    return;
+  }
+
+  const threadSessions = codexThreadSessionsForRuntime(activeRuntime);
+  const affectedTaskIds = new Set([
+    ...Array.from(activeRuntime.threadSessionTaskIds || []),
+    ...threadSessions.map((threadSession) => threadSession.taskId),
+  ]);
+  activeRuntime.pendingRequests?.clear();
+  activeRuntime.pendingThreadStartTaskIds?.clear();
+
+  for (const threadSession of threadSessions) {
+    clearCodexThreadSession(threadSession);
+  }
+  if (activeCodexRuntimes.get(activeRuntime.id) === activeRuntime) {
+    activeCodexRuntimes.delete(activeRuntime.id);
+  }
+  activeRuntime.threadSessionTaskIds?.clear();
+
+  let didChangeTasks = false;
+  for (const taskId of affectedTaskIds) {
+    const task = tasks.get(taskId);
+    if (!task) {
+      continue;
+    }
+    appendAndBroadcast(taskId, `${statusMessage}\n`);
+    if (task.status !== TaskStatus.RUNNING) {
+      continue;
+    }
+    setTask(markTaskExited(task, { exitCode, signal }));
+    didChangeTasks = true;
+  }
+  if (didChangeTasks) {
+    broadcastTasks();
+  }
+}
+
+function createActiveCodexThreadSession(task, activeRuntime) {
+  return {
+    taskId: task.id,
+    runtimeId: activeRuntime.id,
+    runtimeInstanceId: activeRuntime.instanceId,
+    pendingServerRequests: new Map(),
+    currentServerRequestId: null,
+    threadId: "",
+    threadStartRequested: false,
+    activeTurnId: "",
+    turnActive: false,
+    assistantMessageOpen: false,
+    assistantMessageOpenTaskIds: new Set(),
+    pendingAuthRetry: null,
     tokenUsage: null,
     rateLimits: null,
     pendingInputs: [],
@@ -871,7 +952,33 @@ function createActiveCodexThreadSession(task, runtimeId) {
 }
 
 function codexRuntimeForThreadSession(activeAppServer) {
-  return activeCodexRuntimes.get(activeAppServer?.runtimeId) ?? null;
+  const activeRuntime = activeCodexRuntimes.get(activeAppServer?.runtimeId) ?? null;
+  if (!activeRuntime) {
+    return null;
+  }
+  const sessionRuntimeInstanceId = String(activeAppServer?.runtimeInstanceId || "").trim();
+  if (sessionRuntimeInstanceId && sessionRuntimeInstanceId !== activeRuntime.instanceId) {
+    return null;
+  }
+  return activeRuntime;
+}
+
+function codexRuntimeStateForThreadSession(activeAppServer) {
+  return codexRuntimeForThreadSession(activeAppServer) || activeAppServer;
+}
+
+function codexThreadSessionsForRuntime(activeRuntime) {
+  const runtimeId = String(activeRuntime?.id || "").trim();
+  if (!runtimeId) {
+    return [];
+  }
+  const runtimeInstanceId = String(activeRuntime?.instanceId || "").trim();
+  return Array.from(activeCodexThreadSessions.values()).filter((activeAppServer) => {
+    if (activeAppServer.runtimeId !== runtimeId) {
+      return false;
+    }
+    return !runtimeInstanceId || activeAppServer.runtimeInstanceId === runtimeInstanceId;
+  });
 }
 
 function clearCodexThreadSession(activeAppServer) {
@@ -889,6 +996,7 @@ function clearCodexThreadSession(activeAppServer) {
 
   const activeRuntime = codexRuntimeForThreadSession(activeAppServer);
   activeRuntime?.threadSessionTaskIds.delete(activeAppServer.taskId);
+  activeRuntime?.pendingThreadStartTaskIds.delete(activeAppServer.taskId);
 }
 
 function recordCodexAppServerThreadSession(activeAppServer, threadId) {
@@ -948,7 +1056,7 @@ function sendTaskInputToCodexAppServer(taskId, data, source = "client") {
   if (!text) {
     return { ok: false, reason: "empty-input" };
   }
-  if (activeAppServer.authFailureDetected) {
+  if (codexRuntimeStateForThreadSession(activeAppServer).authFailureDetected) {
     handleCodexAppServerAuthFailureDiagnostic(
       activeAppServer,
       "User input was blocked because Codex App Server authentication has already failed."
@@ -997,19 +1105,39 @@ function sendCodexAppServerInitialize(activeAppServer) {
 }
 
 function sendCodexAppServerAccountRead(activeAppServer, { refreshToken = false } = {}) {
-  sendCodexAppServerRequest(activeAppServer, "account/read", {
+  const activeRuntime = codexRuntimeForThreadSession(activeAppServer);
+  if (!activeRuntime) {
+    appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server runtime is not available.\n");
+    return;
+  }
+  if (!refreshToken && activeRuntime.accountReadInFlight) {
+    return;
+  }
+  activeRuntime.accountReadInFlight = true;
+  const requestId = sendCodexAppServerRequest(activeAppServer, "account/read", {
     refreshToken,
   });
+  if (requestId === null) {
+    activeRuntime.accountReadInFlight = false;
+  }
 }
 
 function sendCodexAppServerLoginStart(activeAppServer) {
-  if (activeAppServer.loginInProgress) {
+  const activeRuntime = codexRuntimeForThreadSession(activeAppServer);
+  if (!activeRuntime) {
+    appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server runtime is not available.\n");
     return;
   }
-  activeAppServer.loginInProgress = true;
-  sendCodexAppServerRequest(activeAppServer, "account/login/start", {
+  if (activeRuntime.loginInProgress) {
+    return;
+  }
+  activeRuntime.loginInProgress = true;
+  const requestId = sendCodexAppServerRequest(activeAppServer, "account/login/start", {
     type: "chatgptDeviceCode",
   });
+  if (requestId === null) {
+    activeRuntime.loginInProgress = false;
+  }
 }
 
 function sendCodexAppServerThreadStart(activeAppServer) {
@@ -1017,21 +1145,43 @@ function sendCodexAppServerThreadStart(activeAppServer) {
   if (!task) {
     return;
   }
-  if (!activeAppServer.accountReady) {
+  const activeRuntime = codexRuntimeForThreadSession(activeAppServer);
+  if (!activeRuntime) {
+    appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server runtime is not available.\n");
+    return;
+  }
+  if (activeAppServer.threadId || activeAppServer.threadStartRequested) {
+    return;
+  }
+  if (!activeRuntime.initialized) {
+    activeRuntime.pendingThreadStartTaskIds.add(activeAppServer.taskId);
+    if (!activeRuntime.initializeRequested) {
+      activeRuntime.initializeRequested = true;
+      sendCodexAppServerInitialize(activeAppServer);
+    }
+    return;
+  }
+  if (!activeRuntime.accountReady) {
+    activeRuntime.pendingThreadStartTaskIds.add(activeAppServer.taskId);
     activeAppServer.pendingAuthRetry = { method: "thread/start" };
     sendCodexAppServerAccountRead(activeAppServer);
     return;
   }
+  activeAppServer.threadStartRequested = true;
   taskVisibleHostPath(task.command, task.cwd)
     .then((cwd) => {
-      sendCodexAppServerRequest(activeAppServer, "thread/start", {
+      const requestId = sendCodexAppServerRequest(activeAppServer, "thread/start", {
         cwd,
         ephemeral: true,
         sandbox: "danger-full-access",
         approvalPolicy: "never",
       });
+      if (requestId === null) {
+        activeAppServer.threadStartRequested = false;
+      }
     })
     .catch((error) => {
+      activeAppServer.threadStartRequested = false;
       appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Could not resolve Codex App Server cwd: ${error.message}\n`);
       updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.FAILED, {
         reason: "Codex App Server cwd mapping failed.",
@@ -1064,14 +1214,22 @@ function sendCodexAppServerTurn(activeAppServer, text) {
 }
 
 function sendCodexAppServerRequest(activeAppServer, method, params) {
-  const id = activeAppServer.nextRequestId;
-  activeAppServer.nextRequestId += 1;
+  const activeRuntime = codexRuntimeForThreadSession(activeAppServer);
+  if (!activeRuntime) {
+    appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server runtime is not available.\n");
+    return null;
+  }
+  const id = activeRuntime.nextRequestId;
+  activeRuntime.nextRequestId += 1;
   const message = { jsonrpc: "2.0", id, method, params };
-  activeAppServer.pendingRequests.set(id, { method, params });
+  activeRuntime.pendingRequests.set(id, { method, params, threadSession: activeAppServer });
   if (codexAppServerDebugEnabled) {
     appendAndBroadcast(activeAppServer.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`);
   }
-  writeCodexAppServerRuntimeMessage(activeAppServer, message);
+  if (!writeCodexAppServerRuntimeMessage(activeAppServer, message)) {
+    activeRuntime.pendingRequests.delete(id);
+    return null;
+  }
   return id;
 }
 
@@ -1100,7 +1258,7 @@ function sendCodexAppServerRequestError(activeAppServer, id, messageText, code =
 
 function writeCodexAppServerRuntimeMessage(activeAppServer, message) {
   const activeRuntime = codexRuntimeForThreadSession(activeAppServer);
-  if (!activeRuntime?.process?.stdin?.writable || activeRuntime.process.stdin.destroyed) {
+  if (!codexRuntimeIsWritable(activeRuntime)) {
     appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server runtime is not writable.\n");
     return false;
   }
@@ -1108,75 +1266,103 @@ function writeCodexAppServerRuntimeMessage(activeAppServer, message) {
   return true;
 }
 
-function handleCodexAppServerOutput(activeAppServer, data, stream) {
-  if (!tasks.has(activeAppServer.taskId)) {
+function handleCodexAppServerOutput(activeRuntime, data, stream) {
+  if (!activeRuntime) {
     return;
   }
 
   const bufferKey = stream === "stderr" ? "stderrBuffer" : "stdoutBuffer";
-  activeAppServer[bufferKey] += data;
-  const lines = activeAppServer[bufferKey].split(/\r?\n/);
-  activeAppServer[bufferKey] = lines.pop() ?? "";
+  activeRuntime[bufferKey] += data;
+  const lines = activeRuntime[bufferKey].split(/\r?\n/);
+  activeRuntime[bufferKey] = lines.pop() ?? "";
   for (const line of lines) {
-    handleCodexAppServerOutputLine(activeAppServer, line, stream);
+    handleCodexAppServerOutputLine(activeRuntime, line, stream);
   }
 }
 
-function handleCodexAppServerOutputLine(activeAppServer, line, stream) {
+function handleCodexAppServerOutputLine(activeRuntime, line, stream) {
   const trimmedLine = line.trim();
   if (!trimmedLine) {
     return;
   }
 
+  const defaultThreadSession = defaultCodexThreadSessionForRuntime(activeRuntime);
   if (!trimmedLine.startsWith("{")) {
     if (isIgnorableCodexAppServerTextDiagnostic(trimmedLine)) {
       if (codexAppServerDebugEnabled) {
-        appendAndBroadcast(activeAppServer.taskId, `${line}\n`);
+        appendCodexRuntimeDiagnostic(activeRuntime, `${line}\n`);
       }
       return;
     }
     if (shouldSuppressCodexAppServerAuthErrorLine({
-      authFailureDetected: activeAppServer.authFailureDetected,
+      authFailureDetected: activeRuntime.authFailureDetected,
       line: trimmedLine,
     })) {
       if (codexAppServerDebugEnabled) {
-        appendAndBroadcast(activeAppServer.taskId, `${line}\n`);
+        appendCodexRuntimeDiagnostic(activeRuntime, `${line}\n`);
       }
       return;
     }
-    appendAndBroadcast(activeAppServer.taskId, `${line}\n`);
-    handleCodexAppServerTextDiagnostic(activeAppServer, line);
+    appendCodexRuntimeDiagnostic(activeRuntime, `${line}\n`);
+    if (defaultThreadSession) {
+      handleCodexAppServerTextDiagnostic(defaultThreadSession, line);
+    }
     return;
   }
 
   try {
     const message = JSON.parse(trimmedLine);
     if (codexAppServerDebugEnabled) {
-      appendAndBroadcast(activeAppServer.taskId, `[TaskDeck Codex App Server ${stream} JSON] ${trimmedLine}\n`);
+      appendCodexRuntimeDiagnostic(activeRuntime, `[TaskDeck Codex App Server ${stream} JSON] ${trimmedLine}\n`);
     }
-    handleCodexAppServerMessage(activeAppServer, message);
+    handleCodexAppServerMessage(activeRuntime, message);
   } catch (error) {
-    appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Could not parse Codex App Server ${stream} JSON: ${error.message}\n`);
-    appendAndBroadcast(activeAppServer.taskId, `${line}\n`);
-    handleCodexAppServerTextDiagnostic(activeAppServer, line);
+    appendCodexRuntimeDiagnostic(activeRuntime, `[TaskDeck] Could not parse Codex App Server ${stream} JSON: ${error.message}\n`);
+    appendCodexRuntimeDiagnostic(activeRuntime, `${line}\n`);
+    if (defaultThreadSession) {
+      handleCodexAppServerTextDiagnostic(defaultThreadSession, line);
+    }
   }
+}
+
+function defaultCodexThreadSessionForRuntime(activeRuntime) {
+  if (!activeRuntime) {
+    return null;
+  }
+  const defaultThreadSession = activeCodexThreadSessions.get(activeRuntime.defaultTaskId);
+  if (
+    defaultThreadSession?.runtimeId === activeRuntime.id &&
+    defaultThreadSession.runtimeInstanceId === activeRuntime.instanceId
+  ) {
+    return defaultThreadSession;
+  }
+  const [activeAppServer] = codexThreadSessionsForRuntime(activeRuntime);
+  if (activeAppServer) {
+    activeRuntime.defaultTaskId = activeAppServer.taskId;
+    return activeAppServer;
+  }
+  return null;
+}
+
+function appendCodexRuntimeDiagnostic(activeRuntime, data) {
+  const activeAppServer = defaultCodexThreadSessionForRuntime(activeRuntime);
+  if (!activeAppServer) {
+    return;
+  }
+  appendAndBroadcast(activeAppServer.taskId, data);
 }
 
 function isIgnorableCodexAppServerTextDiagnostic(line) {
   return String(line || "").includes("failed to clean up stale arg0 temp dirs");
 }
 
-function handleCodexAppServerMessage(activeAppServer, message) {
-  const routedAppServer = codexThreadSessionForCodexAppServerMessage(activeAppServer, message);
-  if (routedAppServer !== activeAppServer) {
-    handleCodexAppServerMessage(routedAppServer, message);
-    return;
-  }
+function handleCodexAppServerMessage(activeRuntime, message) {
+  const defaultThreadSession = defaultCodexThreadSessionForRuntime(activeRuntime);
 
-  if (shouldIgnoreCodexAppServerMessageAfterAuthFailure(activeAppServer)) {
+  if (activeRuntime.authFailureDetected) {
     if (codexAppServerDebugEnabled) {
-      appendCodexAppServerStatus(
-        activeAppServer,
+      appendCodexRuntimeDiagnostic(
+        activeRuntime,
         `[TaskDeck] Ignoring Codex App Server message after authentication failure: ${String(message.method || message.id || "unknown")}\n`,
       );
     }
@@ -1184,21 +1370,35 @@ function handleCodexAppServerMessage(activeAppServer, message) {
   }
 
   if (message.id !== undefined && (message.result !== undefined || message.error !== undefined)) {
-    handleCodexAppServerResponse(activeAppServer, message);
+    const pendingRequest = activeRuntime.pendingRequests.get(message.id);
+    activeRuntime.pendingRequests.delete(message.id);
+    const activeAppServer = pendingRequest?.threadSession || defaultThreadSession;
+    if (activeAppServer) {
+      handleCodexAppServerResponse(activeAppServer, message, pendingRequest);
+    }
     return;
   }
   if (message.id !== undefined && message.method) {
-    handleCodexAppServerRequest(activeAppServer, message);
+    const activeAppServer = codexThreadSessionForCodexAppServerMessage(defaultThreadSession, message);
+    if (activeAppServer) {
+      handleCodexAppServerRequest(activeAppServer, message);
+    }
     return;
   }
   if (message.method) {
-    handleCodexAppServerNotification(activeAppServer, message);
+    const activeAppServer = codexThreadSessionForCodexAppServerMessage(defaultThreadSession, message);
+    if (activeAppServer) {
+      handleCodexAppServerNotification(activeAppServer, message);
+    }
     return;
   }
-  appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Unknown Codex App Server message: ${JSON.stringify(message)}\n`);
+  appendCodexRuntimeDiagnostic(activeRuntime, `[TaskDeck] Unknown Codex App Server message: ${JSON.stringify(message)}\n`);
 }
 
 function codexThreadSessionForCodexAppServerMessage(defaultThreadSession, message) {
+  if (!defaultThreadSession) {
+    return null;
+  }
   const threadId = codexAppServerThreadIdFromMessage(message);
   if (!threadId) {
     return defaultThreadSession;
@@ -1210,7 +1410,11 @@ function codexThreadSessionForCodexAppServerMessage(defaultThreadSession, messag
     taskIdByThreadId: taskIdByCodexThreadId,
   });
   if (!taskId || taskId === defaultThreadSession.taskId) {
-    return defaultThreadSession;
+    const parentThreadSession = codexThreadSessionForCodexParentThread(message);
+    if (parentThreadSession) {
+      return parentThreadSession;
+    }
+    return codexUnknownThreadCanUseDefaultSession(defaultThreadSession, message, threadId) ? defaultThreadSession : null;
   }
 
   const directThreadSession = activeCodexThreadSessions.get(taskId);
@@ -1223,35 +1427,74 @@ function codexThreadSessionForCodexAppServerMessage(defaultThreadSession, messag
   return parentThreadSession || defaultThreadSession;
 }
 
-function handleCodexAppServerResponse(activeAppServer, message) {
-  const pendingRequest = activeAppServer.pendingRequests.get(message.id);
+function codexThreadSessionForCodexParentThread(message) {
+  const parentThreadId = String(message?.params?.thread?.parentThreadId || message?.params?.parentThreadId || "").trim();
+  if (!parentThreadId) {
+    return null;
+  }
+  const parentTaskId = taskIdByCodexThreadId.get(parentThreadId);
+  return parentTaskId ? activeCodexThreadSessions.get(parentTaskId) || null : null;
+}
+
+function codexUnknownThreadCanUseDefaultSession(defaultThreadSession, message, threadId) {
+  if (!defaultThreadSession.threadId || defaultThreadSession.threadId === threadId) {
+    return true;
+  }
+  const parentThreadId = String(message?.params?.thread?.parentThreadId || "").trim();
+  if (parentThreadId && parentThreadId === defaultThreadSession.threadId) {
+    return true;
+  }
+  const parentTaskId = parentThreadId ? taskIdByCodexThreadId.get(parentThreadId) : "";
+  return Boolean(parentTaskId && parentTaskId === defaultThreadSession.taskId);
+}
+
+function handleCodexAppServerResponse(activeAppServer, message, pendingRequest = null) {
+  const activeRuntime = codexRuntimeStateForThreadSession(activeAppServer);
   const method = pendingRequest?.method || "";
-  activeAppServer.pendingRequests.delete(message.id);
+  if (method === "account/read") {
+    activeRuntime.accountReadInFlight = false;
+  }
+  if (method === "thread/start") {
+    activeAppServer.threadStartRequested = false;
+  }
   if (message.error) {
     if (isCodexAppServerAuthError(message.error)) {
       preserveCodexAppServerPendingAuthRetry(activeAppServer, pendingRequest);
-      if (activeAppServer.authFailureDetected) {
+      if (activeRuntime.authFailureDetected) {
         handleCodexAppServerAuthFailureDiagnostic(
           activeAppServer,
           `Codex App Server ${method || "request"} returned an auth error after authentication had already failed.`
         );
         return;
       }
-      if (activeAppServer.loginCompletedAt && activeAppServer.forcedAccountRefreshAttempted) {
+      if (activeRuntime.loginCompletedAt && activeRuntime.forcedAccountRefreshAttempted) {
         handleCodexAppServerAuthFailureDiagnostic(
           activeAppServer,
           `Codex App Server ${method || "request"} still returned an auth error after device login and account refresh.`
         );
         return;
       }
-      if (!activeAppServer.forcedAccountRefreshAttempted) {
-        activeAppServer.forcedAccountRefreshAttempted = true;
+      if (!activeRuntime.forcedAccountRefreshAttempted) {
+        activeRuntime.forcedAccountRefreshAttempted = true;
         appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server authentication is expired or invalid; trying one account refresh.\n");
         sendCodexAppServerAccountRead(activeAppServer, { refreshToken: true });
         return;
       }
       appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server authentication refresh failed; ChatGPT device login is required.\n");
       handleCodexAppServerAuthRequired(activeAppServer, pendingRequest);
+      return;
+    }
+    if (codexRuntimeRequestCanMoveToAnotherThreadSession(method)) {
+      finishCodexAppServerRuntime(activeRuntime, {
+        exitCode: 1,
+        signal: null,
+        statusMessage: `[TaskDeck] Codex App Server ${method || "request"} error: ${JSON.stringify(message.error)}`,
+      });
+      try {
+        activeRuntime.process?.kill();
+      } catch {
+        // The runtime is already finalized; no further action is needed if the process is gone.
+      }
       return;
     }
     appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server ${method || "request"} error: ${JSON.stringify(message.error)}\n`);
@@ -1268,14 +1511,15 @@ function handleCodexAppServerResponse(activeAppServer, message) {
   }
 
   if (method === "initialize") {
+    activeRuntime.initialized = true;
     appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server initialized; checking account.\n");
-    sendCodexAppServerAccountRead(activeAppServer);
+    resumeCodexAppServerRuntimeThreadStarts(activeRuntime, activeAppServer);
     return;
   }
 
   if (method === "account/read") {
     if (codexAppServerAccountRequiresLogin(message.result)) {
-      if (activeAppServer.loginCompletedAt) {
+      if (activeRuntime.loginCompletedAt) {
         handleCodexAppServerAuthFailureDiagnostic(
           activeAppServer,
           "Codex App Server account still requires OpenAI authentication after device login completed."
@@ -1286,10 +1530,10 @@ function handleCodexAppServerResponse(activeAppServer, message) {
       handleCodexAppServerAuthRequired(activeAppServer, { method: "thread/start" });
       return;
     }
-    activeAppServer.accountReady = true;
-    activeAppServer.loginInProgress = false;
+    activeRuntime.accountReady = true;
+    activeRuntime.loginInProgress = false;
     appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server account is ready; starting thread.\n");
-    resumeCodexAppServerAfterLogin(activeAppServer);
+    resumeCodexAppServerRuntimeThreadStarts(activeRuntime, activeAppServer);
     return;
   }
 
@@ -1300,6 +1544,7 @@ function handleCodexAppServerResponse(activeAppServer, message) {
 
   if (method === "thread/start") {
     const threadId = String(message.result?.thread?.id || "").trim();
+    activeAppServer.threadStartRequested = false;
     const didRecordThreadSession = recordCodexAppServerThreadSession(activeAppServer, threadId);
     appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server thread ready${threadId ? `: ${threadId}` : ""}.\n`);
     if (didRecordThreadSession) {
@@ -1320,24 +1565,28 @@ function handleCodexAppServerResponse(activeAppServer, message) {
 }
 
 function handleCodexAppServerAuthRequired(activeAppServer, pendingRequest) {
-  if (activeAppServer.loginCompletedAt) {
+  const activeRuntime = codexRuntimeStateForThreadSession(activeAppServer);
+  if (activeRuntime.loginCompletedAt) {
     handleCodexAppServerAuthFailureDiagnostic(
       activeAppServer,
       "Codex App Server requested ChatGPT login again after a device login had already completed."
     );
     return;
   }
-  activeAppServer.accountReady = false;
+  activeRuntime.accountReady = false;
   preserveCodexAppServerPendingAuthRetry(activeAppServer, pendingRequest);
-  updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WAITING_INPUT, {
-    reason: "Codex App Server needs ChatGPT device login.",
-    source: AgentStateSource.PROCESS,
-    confidence: AgentStateConfidence.HIGH,
-    attentionState: AttentionState.NEEDS_INPUT,
-    attentionReason: "Open the ChatGPT device login URL and enter the user code shown in the task log.",
-    attentionSource: AgentStateSource.PROCESS,
-    attentionConfidence: AgentStateConfidence.HIGH,
-  });
+  const threadSessions = codexThreadSessionsForRuntime(activeRuntime);
+  for (const threadSession of threadSessions.length > 0 ? threadSessions : [activeAppServer]) {
+    updateAgentStateFromTaskDeckEvent(threadSession.taskId, AgentState.WAITING_INPUT, {
+      reason: "Codex App Server needs ChatGPT device login.",
+      source: AgentStateSource.PROCESS,
+      confidence: AgentStateConfidence.HIGH,
+      attentionState: AttentionState.NEEDS_INPUT,
+      attentionReason: "Open the ChatGPT device login URL and enter the user code shown in the task log.",
+      attentionSource: AgentStateSource.PROCESS,
+      attentionConfidence: AgentStateConfidence.HIGH,
+    });
+  }
   sendCodexAppServerLoginStart(activeAppServer);
 }
 
@@ -1353,6 +1602,7 @@ function preserveCodexAppServerPendingAuthRetry(activeAppServer, pendingRequest)
 }
 
 function handleCodexAppServerLoginStartResponse(activeAppServer, result) {
+  const activeRuntime = codexRuntimeStateForThreadSession(activeAppServer);
   if (result?.type !== "chatgptDeviceCode") {
     appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server login started: ${JSON.stringify(result)}\n`);
     return;
@@ -1361,95 +1611,136 @@ function handleCodexAppServerLoginStartResponse(activeAppServer, result) {
   const verificationUrl = String(result.verificationUrl || "").trim();
   const userCode = String(result.userCode || "").trim();
   const loginId = String(result.loginId || "").trim();
-  activeAppServer.loginId = loginId;
-  appendCodexAppServerStatus(
-    activeAppServer,
-    [
-      "[TaskDeck] ChatGPT device login required.",
-      verificationUrl ? `[TaskDeck] Verification URL: ${verificationUrl}` : "",
-      userCode ? `[TaskDeck] User code: ${userCode}` : "",
-    ].filter(Boolean).join("\n") + "\n"
-  );
-  updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WAITING_INPUT, {
-    reason: "Codex App Server is waiting for ChatGPT device login.",
-    source: AgentStateSource.PROCESS,
-    confidence: AgentStateConfidence.HIGH,
-    attentionState: AttentionState.NEEDS_INPUT,
-    attentionReason: "Complete ChatGPT device login with the URL and code shown in the task log.",
-    attentionSource: AgentStateSource.PROCESS,
-    attentionConfidence: AgentStateConfidence.HIGH,
-  });
-}
-
-function handleCodexAppServerLoginCompleted(activeAppServer, params) {
-  const success = Boolean(params?.success);
-  const error = String(params?.error || "").trim();
-  activeAppServer.loginInProgress = false;
-  activeAppServer.loginId = "";
-  if (!success) {
-    activeAppServer.accountReady = false;
-    const failureReason = error || "ChatGPT device login failed.";
-    appendCodexAppServerStatus(
-      activeAppServer,
-      [
-        `[TaskDeck] Codex App Server login failed: ${failureReason}`,
-        "[TaskDeck] TaskDeck will not start another device-code login automatically. Restart this task to request a fresh code.",
-      ].join("\n") + "\n"
-    );
-    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WAITING_INPUT, {
-      reason: "Codex App Server login failed.",
+  activeRuntime.loginId = loginId;
+  const loginMessage = [
+    "[TaskDeck] ChatGPT device login required.",
+    verificationUrl ? `[TaskDeck] Verification URL: ${verificationUrl}` : "",
+    userCode ? `[TaskDeck] User code: ${userCode}` : "",
+  ].filter(Boolean).join("\n") + "\n";
+  const threadSessions = codexThreadSessionsForRuntime(activeRuntime);
+  for (const threadSession of threadSessions.length > 0 ? threadSessions : [activeAppServer]) {
+    appendCodexAppServerStatus(threadSession, loginMessage);
+    updateAgentStateFromTaskDeckEvent(threadSession.taskId, AgentState.WAITING_INPUT, {
+      reason: "Codex App Server is waiting for ChatGPT device login.",
       source: AgentStateSource.PROCESS,
       confidence: AgentStateConfidence.HIGH,
       attentionState: AttentionState.NEEDS_INPUT,
-      attentionReason: `${failureReason} TaskDeck will not start another device-code login automatically; restart this task to request a fresh code.`,
+      attentionReason: "Complete ChatGPT device login with the URL and code shown in the task log.",
       attentionSource: AgentStateSource.PROCESS,
       attentionConfidence: AgentStateConfidence.HIGH,
     });
+  }
+}
+
+function handleCodexAppServerLoginCompleted(activeAppServer, params) {
+  const activeRuntime = codexRuntimeStateForThreadSession(activeAppServer);
+  const success = Boolean(params?.success);
+  const error = String(params?.error || "").trim();
+  activeRuntime.loginInProgress = false;
+  activeRuntime.loginId = "";
+  if (!success) {
+    activeRuntime.accountReady = false;
+    const failureReason = error || "ChatGPT device login failed.";
+    const failureMessage = [
+      `[TaskDeck] Codex App Server login failed: ${failureReason}`,
+      "[TaskDeck] TaskDeck will not start another device-code login automatically. Restart this task to request a fresh code.",
+    ].join("\n") + "\n";
+    const threadSessions = codexThreadSessionsForRuntime(activeRuntime);
+    for (const threadSession of threadSessions.length > 0 ? threadSessions : [activeAppServer]) {
+      appendCodexAppServerStatus(threadSession, failureMessage);
+      updateAgentStateFromTaskDeckEvent(threadSession.taskId, AgentState.WAITING_INPUT, {
+        reason: "Codex App Server login failed.",
+        source: AgentStateSource.PROCESS,
+        confidence: AgentStateConfidence.HIGH,
+        attentionState: AttentionState.NEEDS_INPUT,
+        attentionReason: `${failureReason} TaskDeck will not start another device-code login automatically; restart this task to request a fresh code.`,
+        attentionSource: AgentStateSource.PROCESS,
+        attentionConfidence: AgentStateConfidence.HIGH,
+      });
+    }
     return;
   }
 
   appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server login completed; resuming.\n");
-  activeAppServer.accountReady = true;
-  activeAppServer.loginCompletedAt = Date.now();
+  activeRuntime.accountReady = true;
+  activeRuntime.loginCompletedAt = Date.now();
   resumeCodexAppServerAfterLogin(activeAppServer);
 }
 
 function handleCodexAppServerAccountUpdated(activeAppServer) {
-  if (activeAppServer.authFailureDetected) {
+  const activeRuntime = codexRuntimeStateForThreadSession(activeAppServer);
+  if (activeRuntime.authFailureDetected) {
     return;
   }
-  if (activeAppServer.accountReady && !activeAppServer.pendingAuthRetry) {
+  if (activeRuntime.accountReady && !codexRuntimeHasPendingAuthRetry(activeRuntime)) {
     appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server account updated.\n");
     return;
   }
   appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server account updated; resuming.\n");
-  activeAppServer.loginInProgress = false;
-  activeAppServer.accountReady = true;
+  activeRuntime.loginInProgress = false;
+  activeRuntime.accountReady = true;
   resumeCodexAppServerAfterLogin(activeAppServer);
 }
 
 function resumeCodexAppServerAfterLogin(activeAppServer) {
-  const pendingAuthRetry = activeAppServer.pendingAuthRetry;
-  activeAppServer.pendingAuthRetry = null;
-  updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WORKING, {
-    reason: "Codex App Server authentication is ready.",
-    source: AgentStateSource.PROCESS,
-    confidence: AgentStateConfidence.HIGH,
-    attentionState: AttentionState.NONE,
-    attentionReason: "Codex App Server authentication is ready.",
-    attentionSource: AgentStateSource.PROCESS,
-    attentionConfidence: AgentStateConfidence.HIGH,
-  });
+  const activeRuntime = codexRuntimeStateForThreadSession(activeAppServer);
+  for (const threadSession of codexThreadSessionsForRuntime(activeRuntime)) {
+    const pendingAuthRetry = threadSession.pendingAuthRetry;
+    threadSession.pendingAuthRetry = null;
+    updateAgentStateFromTaskDeckEvent(threadSession.taskId, AgentState.WORKING, {
+      reason: "Codex App Server authentication is ready.",
+      source: AgentStateSource.PROCESS,
+      confidence: AgentStateConfidence.HIGH,
+      attentionState: AttentionState.NONE,
+      attentionReason: "Codex App Server authentication is ready.",
+      attentionSource: AgentStateSource.PROCESS,
+      attentionConfidence: AgentStateConfidence.HIGH,
+    });
 
-  if (pendingAuthRetry?.method === "turn/start" && pendingAuthRetry.params) {
-    sendCodexAppServerRequest(activeAppServer, "turn/start", pendingAuthRetry.params);
-    return;
+    if (pendingAuthRetry?.method === "turn/start" && pendingAuthRetry.params) {
+      sendCodexAppServerRequest(threadSession, "turn/start", pendingAuthRetry.params);
+      continue;
+    }
+    if (!threadSession.threadId) {
+      activeRuntime.pendingThreadStartTaskIds?.add(threadSession.taskId);
+      continue;
+    }
+    flushCodexAppServerPendingInputs(threadSession);
   }
-  if (!activeAppServer.threadId) {
-    sendCodexAppServerThreadStart(activeAppServer);
-    return;
+  resumeCodexAppServerRuntimeThreadStarts(activeRuntime, activeAppServer);
+}
+
+function resumeCodexAppServerRuntimeThreadStarts(activeRuntime, fallbackThreadSession = null) {
+  if (!activeRuntime || activeRuntime.authFailureDetected || !activeRuntime.initialized) {
+    return false;
   }
-  flushCodexAppServerPendingInputs(activeAppServer);
+
+  const threadSessions = codexThreadSessionsForRuntime(activeRuntime);
+  const requestSession = fallbackThreadSession || threadSessions[0] || null;
+  if (!activeRuntime.accountReady) {
+    if (requestSession) {
+      sendCodexAppServerAccountRead(requestSession);
+    }
+    return false;
+  }
+
+  let resumed = false;
+  for (const threadSession of threadSessions) {
+    activeRuntime.pendingThreadStartTaskIds?.delete(threadSession.taskId);
+    if (!threadSession.threadId) {
+      sendCodexAppServerThreadStart(threadSession);
+      resumed = true;
+      continue;
+    }
+    if (threadSession.pendingInputs.length > 0) {
+      resumed = flushCodexAppServerPendingInputs(threadSession) || resumed;
+    }
+  }
+  return resumed;
+}
+
+function codexRuntimeHasPendingAuthRetry(activeRuntime) {
+  return codexThreadSessionsForRuntime(activeRuntime).some((threadSession) => Boolean(threadSession.pendingAuthRetry));
 }
 
 function codexAppServerAccountRequiresLogin(result) {
@@ -1467,40 +1758,47 @@ function handleCodexAppServerTextDiagnostic(activeAppServer, text) {
 }
 
 function shouldReportCodexAppServerAuthFailure(activeAppServer) {
+  const activeRuntime = codexRuntimeStateForThreadSession(activeAppServer);
   return Boolean(
-    activeAppServer.authFailureDetected ||
-    activeAppServer.loginCompletedAt ||
-    activeAppServer.accountReady ||
-    activeAppServer.threadId
+    activeRuntime.authFailureDetected ||
+    activeRuntime.loginCompletedAt ||
+    activeRuntime.accountReady ||
+    activeAppServer.threadId ||
+    codexThreadSessionsForRuntime(activeRuntime).some((threadSession) => Boolean(threadSession.threadId))
   );
 }
 
 function handleCodexAppServerAuthFailureDiagnostic(activeAppServer, _detail) {
-  if (activeAppServer.authFailureDetected) {
+  const activeRuntime = codexRuntimeStateForThreadSession(activeAppServer);
+  if (activeRuntime.authFailureDetected) {
     return;
   }
-  activeAppServer.authFailureDetected = true;
-  activeAppServer.accountReady = false;
-  activeAppServer.loginInProgress = false;
-  activeAppServer.loginId = "";
-  activeAppServer.pendingAuthRetry = null;
-  appendCodexAppServerStatus(
-    activeAppServer,
-    [
-      "[TaskDeck] Codex App Server authentication failed after login.",
-      "[TaskDeck] The current App Server environment still has an invalid or revoked ChatGPT token.",
-      "[TaskDeck] Fix Codex login in the App Server environment, or point the codex-app-server profile at the host environment that already has a valid login, then restart this task.",
-    ].join("\n") + "\n"
-  );
-  updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WAITING_INPUT, {
-    reason: "Codex App Server authentication failed after login.",
-    source: AgentStateSource.PROCESS,
-    confidence: AgentStateConfidence.HIGH,
-    attentionState: AttentionState.NEEDS_INPUT,
-    attentionReason: "Codex App Server token is invalid or revoked. Fix Codex login in the App Server environment, then restart this task.",
-    attentionSource: AgentStateSource.PROCESS,
-    attentionConfidence: AgentStateConfidence.HIGH,
-  });
+  activeRuntime.authFailureDetected = true;
+  activeRuntime.accountReady = false;
+  activeRuntime.loginInProgress = false;
+  activeRuntime.loginId = "";
+  activeRuntime.pendingRequests?.clear();
+  activeRuntime.pendingThreadStartTaskIds?.clear();
+
+  const failureMessage = [
+    "[TaskDeck] Codex App Server authentication failed after login.",
+    "[TaskDeck] The current App Server environment still has an invalid or revoked ChatGPT token.",
+    "[TaskDeck] Fix Codex login in the App Server environment, or point the codex-app-server profile at the host environment that already has a valid login, then restart this task.",
+  ].join("\n") + "\n";
+  const threadSessions = codexThreadSessionsForRuntime(activeRuntime);
+  for (const threadSession of threadSessions.length > 0 ? threadSessions : [activeAppServer]) {
+    threadSession.pendingAuthRetry = null;
+    appendCodexAppServerStatus(threadSession, failureMessage);
+    updateAgentStateFromTaskDeckEvent(threadSession.taskId, AgentState.WAITING_INPUT, {
+      reason: "Codex App Server authentication failed after login.",
+      source: AgentStateSource.PROCESS,
+      confidence: AgentStateConfidence.HIGH,
+      attentionState: AttentionState.NEEDS_INPUT,
+      attentionReason: "Codex App Server token is invalid or revoked. Fix Codex login in the App Server environment, then restart this task.",
+      attentionSource: AgentStateSource.PROCESS,
+      attentionConfidence: AgentStateConfidence.HIGH,
+    });
+  }
 }
 
 function handleCodexAppServerRequest(activeAppServer, message) {
@@ -2251,7 +2549,7 @@ function completeCodexAppServerNativeSubagent(activeAppServer, threadId) {
 }
 
 function updateCodexAppServerReady(activeAppServer, reason) {
-  if (activeAppServer.authFailureDetected) {
+  if (codexRuntimeStateForThreadSession(activeAppServer).authFailureDetected) {
     return;
   }
   updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.READY, {
@@ -2266,7 +2564,7 @@ function updateCodexAppServerReady(activeAppServer, reason) {
 }
 
 function updateCodexAppServerWorking(activeAppServer, reason) {
-  if (activeAppServer.authFailureDetected) {
+  if (codexRuntimeStateForThreadSession(activeAppServer).authFailureDetected) {
     return;
   }
   updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WORKING, {
@@ -2330,7 +2628,7 @@ function updateCodexAppServerStatus(activeAppServer, status) {
 }
 
 function flushCodexAppServerPendingInputs(activeAppServer) {
-  if (activeAppServer.authFailureDetected) {
+  if (codexRuntimeStateForThreadSession(activeAppServer).authFailureDetected) {
     return false;
   }
   const initialInstruction = String(tasks.get(activeAppServer.taskId)?.initialInstruction || "").trim();
@@ -4212,44 +4510,79 @@ function stopActiveCodexThreadSession(taskId) {
     return;
   }
   const activeRuntime = codexRuntimeForThreadSession(activeAppServer);
-  cancelCodexAppServerLoginIfNeeded(activeAppServer);
-  activeAppServer.loginInProgress = false;
-  activeAppServer.loginId = "";
   clearCodexThreadSession(activeAppServer);
-  if (activeRuntime) {
+  if (!activeRuntime) {
+    return;
+  }
+
+  cleanupCodexRuntimeRequestsForStoppedThreadSession(activeRuntime, activeAppServer);
+  if (activeRuntime.defaultTaskId === taskId) {
+    activeRuntime.defaultTaskId = defaultCodexThreadSessionForRuntime(activeRuntime)?.taskId || "";
+  }
+  if (codexThreadSessionsForRuntime(activeRuntime).length > 0) {
+    return;
+  }
+
+  cancelCodexAppServerLoginIfNeeded(activeRuntime, activeAppServer);
+  if (activeCodexRuntimes.get(activeRuntime.id) === activeRuntime) {
     activeCodexRuntimes.delete(activeRuntime.id);
   }
   try {
-    activeRuntime?.process.kill();
+    activeRuntime.process.kill();
   } catch (error) {
     console.error("TaskDeck could not stop Codex App Server for " + taskId + ": " + error.message);
   }
 }
 
-function cancelCodexAppServerLoginIfNeeded(activeAppServer) {
-  if (!activeAppServer?.loginInProgress || !activeAppServer.loginId) {
+function cleanupCodexRuntimeRequestsForStoppedThreadSession(activeRuntime, stoppedThreadSession) {
+  const fallbackThreadSession = defaultCodexThreadSessionForRuntime(activeRuntime);
+  for (const [requestId, pendingRequest] of activeRuntime.pendingRequests.entries()) {
+    if (pendingRequest.threadSession !== stoppedThreadSession) {
+      continue;
+    }
+    if (codexRuntimeRequestCanMoveToAnotherThreadSession(pendingRequest.method) && fallbackThreadSession) {
+      pendingRequest.threadSession = fallbackThreadSession;
+      continue;
+    }
+    activeRuntime.pendingRequests.delete(requestId);
+  }
+}
+
+function codexRuntimeRequestCanMoveToAnotherThreadSession(method) {
+  return method === "initialize" || method === "account/read" || method === "account/login/start";
+}
+
+function cancelCodexAppServerLoginIfNeeded(activeRuntime, logThreadSession = null) {
+  if (!activeRuntime?.loginInProgress || !activeRuntime.loginId) {
     return;
   }
-  const activeRuntime = codexRuntimeForThreadSession(activeAppServer);
   if (!activeRuntime?.process?.stdin?.writable || activeRuntime.process.stdin.destroyed) {
     return;
   }
   try {
-    const id = activeAppServer.nextRequestId;
-    activeAppServer.nextRequestId += 1;
+    const id = activeRuntime.nextRequestId;
+    activeRuntime.nextRequestId += 1;
     const message = {
       jsonrpc: "2.0",
       id,
       method: "account/login/cancel",
-      params: { loginId: activeAppServer.loginId },
+      params: { loginId: activeRuntime.loginId },
     };
     if (codexAppServerDebugEnabled) {
-      appendAndBroadcast(activeAppServer.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`);
+      const threadSession = logThreadSession || defaultCodexThreadSessionForRuntime(activeRuntime);
+      if (threadSession) {
+        appendAndBroadcast(threadSession.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`);
+      }
     }
     activeRuntime.process.stdin.write(`${JSON.stringify(message)}\n`);
+    activeRuntime.loginInProgress = false;
+    activeRuntime.loginId = "";
   } catch (error) {
     if (codexAppServerDebugEnabled) {
-      appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Could not cancel Codex App Server login: ${error.message}\n`);
+      const threadSession = logThreadSession || defaultCodexThreadSessionForRuntime(activeRuntime);
+      if (threadSession) {
+        appendCodexAppServerStatus(threadSession, `[TaskDeck] Could not cancel Codex App Server login: ${error.message}\n`);
+      }
     }
   }
 }

@@ -22,7 +22,7 @@ In the current session-identity-first card design, the primary card-level visual
 
 1. The web app loads `/api/context`, opens the WebSocket, and receives task snapshots and output updates over WebSocket.
 2. The New Agent Session form creates a TaskDeck task that represents a Codex App Server thread session for the selected project.
-3. The server starts the current App Server runtime for that thread session and sends `thread/start` with the selected project cwd. The current implementation uses one stdio App Server subprocess per parent thread session, but TaskDeck task semantics should depend on the App Server thread/session metadata rather than on process ownership.
+3. The server starts or reuses the shared App Server runtime and sends `thread/start` with the selected project cwd. One stdio App Server subprocess can host multiple parent thread sessions, and TaskDeck task semantics depend on App Server thread/session metadata rather than process ownership.
 4. App Server thread messages are reduced to human-readable task output, pending request state, and task state updates. Output is appended to bounded in-memory and persisted logs, broadcast over WebSocket, and rendered in the output pane.
 5. Server-side lifecycle observations and App Server status/request events update `agentState` and `attentionState` without treating silence as thinking.
 6. Task, log, preset, session-label, and attachment state is persisted under `.taskdeck/`.
@@ -69,7 +69,7 @@ The server persists local runtime state under `.taskdeck/`, which is intentional
 
 `.taskdeck/` may contain sensitive task metadata, logs, session labels, attachments, and agent output. Do not commit or share it.
 
-For running Codex App Server work, server memory keeps App Server runtime handles separate from App Server thread-session handles. The current runtime id is still one-to-one with the parent task id, but routing should go through task/thread maps such as task id -> thread session and App Server thread id -> TaskDeck task id so a future shared runtime can host multiple project threads without changing task semantics. App Server messages that include a thread id are routed through that map before they update task state, request state, or logs.
+For running Codex App Server work, server memory keeps App Server runtime handles separate from App Server thread-session handles. The committed App Server runtime is shared for parent Codex tasks, while each TaskDeck task owns a thread-session handle. Routing goes through task/thread maps such as task id -> thread session and App Server thread id -> TaskDeck task id so one runtime can host multiple project threads without changing task semantics. App Server messages that include a thread id are routed through that map before they update task state, request state, or logs.
 
 ## Domain Concepts
 
@@ -83,7 +83,7 @@ For running Codex App Server work, server memory keeps App Server runtime handle
 
 ## Task And Session Behavior
 
-Multiple tasks can exist in the task list, and multiple App Server thread sessions can run at the same time. The committed launch surface currently backs each parent Codex thread session with a stdio App Server subprocess as an implementation detail. Bulk clearing removes tasks and their logs. Clearing an individual running task stops its active runtime and removes that task.
+Multiple tasks can exist in the task list, and multiple App Server thread sessions can run at the same time. The committed launch surface reuses one shared stdio App Server runtime for parent Codex thread sessions. Bulk clearing removes tasks and their logs. Clearing an individual running task removes that thread-session handle and only stops the shared runtime when no active thread sessions remain.
 
 Tasks carry a low-level process `status`, a supervisor-facing `agentState`, and a primary `attentionState` that answers whether the operator should look at the task now. `attentionState` can be `none`, `may_need_user`, `needs_input`, `needs_approval`, `review_ready`, or `failed`, with source/confidence/reason metadata. For Codex work sessions, attention should come from TaskDeck lifecycle events, App Server status/request events, child-status reports, manager actions, or explicit UI actions.
 
@@ -132,7 +132,7 @@ Codex App Server launches through `codex --sandbox danger-full-access --ask-for-
 - Project dropdown / project roots: `apps/server/src/server.js` functions around `resolveProjectRoots`, `buildProjectSuggestions`, `selectDefaultProjectCwd`, and web form handling in `apps/web/src/components/TaskCreateForm.tsx`.
 - Config loading: `apps/server/src/server.js` config candidate loading and profile/project-root normalization.
 - Agent profiles: Built-in profile definitions and profile merge/sanitize logic in `apps/server/src/server.js`; frontend profile types in `apps/web/src/types.ts`; launch-command selection in `TaskCreateForm.tsx`.
-- App Server lifecycle and input/output: Task/thread-session creation, current App Server runtime spawn/stdin/stdout handling, log append, and WebSocket output handling in `apps/server/src/server.js`; output rendering in `OutputPane.tsx`; composer behavior in `InputComposer.tsx`.
+- App Server lifecycle and input/output: Task/thread-session creation, shared App Server runtime spawn/stdin/stdout handling, log append, and WebSocket output handling in `apps/server/src/server.js`; output rendering in `OutputPane.tsx`; composer behavior in `InputComposer.tsx`.
 - Attention/supervision logic: App Server status/request handling, child-status handling, manager actions, and task state marking in `apps/server/src/server.js`; task-card display in `apps/web/src/components/TaskList.tsx`.
 - Output and input UI: `apps/web/src/components/OutputPane.tsx`, `InputComposer.tsx`, related output/composer CSS in `apps/web/src/styles.css`.
 - Diagnostics: `/api/diagnostics` plus container inspection/start helpers in `apps/server/src/server.js`; a dedicated diagnostics UI would be future work.
@@ -144,7 +144,7 @@ Codex App Server launches through `codex --sandbox danger-full-access --ask-for-
 - `config`: Config file discovery, project-root normalization, profile merging, and profile sanitization.
 - `profiles`: Built-in agent profile definitions, launch helper behavior, Docker-wrapper workdir correction, and profile diagnostics metadata.
 - `tasks`: Task persistence, task mutation helpers, task cleanup, presets, and attachment persistence.
-- `codex-app-server`: App Server thread-session lifecycle, current runtime spawn, JSON-RPC request/notification handling, pending request state, auth/device-login flow, and structured output rendering.
+- `codex-app-server`: App Server thread-session lifecycle, shared runtime spawn, JSON-RPC request/notification handling, pending request state, auth/device-login flow, and structured output rendering.
 - `supervision`: App Server request/status reduction, child-status attention, manager-action state changes, and task-card supervision display.
 - `diagnostics`: Optional local Docker reachability, container inspection/start, and workspace checks for locally overridden profiles.
 - `api`: Express route registration separated from business logic.
