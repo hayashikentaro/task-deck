@@ -116,6 +116,7 @@ const codexAppServerDebugEnabled = process.env.TASKDECK_CODEX_APP_SERVER_DEBUG =
 const clients = new Set();
 const tasks = new Map();
 const logs = new Map();
+const taskLogWriteQueues = new Map();
 const sessionLabels = new Map();
 let presets = [];
 const maxLogLength = 250_000;
@@ -789,11 +790,13 @@ async function startCodexAppServerThreadSession({ task, commandForProcess, proce
   send(socket, { type: "started", taskId: task.id });
   appendAndBroadcast(task.id, "[TaskDeck] Starting Codex App Server thread session.\n");
 
-  appServerProcess.stdout.on("data", (chunk) => {
-    handleCodexAppServerOutput(activeAppServer, chunk.toString(), "stdout");
+  appServerProcess.stdout.setEncoding("utf8");
+  appServerProcess.stderr.setEncoding("utf8");
+  appServerProcess.stdout.on("data", (data) => {
+    handleCodexAppServerOutput(activeAppServer, data, "stdout");
   });
-  appServerProcess.stderr.on("data", (chunk) => {
-    handleCodexAppServerOutput(activeAppServer, chunk.toString(), "stderr");
+  appServerProcess.stderr.on("data", (data) => {
+    handleCodexAppServerOutput(activeAppServer, data, "stderr");
   });
   appServerProcess.on("error", (error) => {
     appendAndBroadcast(task.id, `[TaskDeck] Codex App Server process error: ${error.message}\n`);
@@ -4883,23 +4886,33 @@ async function readTaskLog(taskId) {
 }
 
 function writeTaskLog(taskId, data) {
-  fs.writeFile(logPathForTask(taskId), data).catch((error) => {
-    console.error(`TaskDeck could not write log for ${taskId}: ${error.message}`);
-  });
+  enqueueTaskLogWrite(taskId, "write", () => fs.writeFile(logPathForTask(taskId), data));
 }
 
 function appendTaskLog(taskId, data) {
-  fs.appendFile(logPathForTask(taskId), data).catch((error) => {
-    console.error(`TaskDeck could not append log for ${taskId}: ${error.message}`);
-  });
+  enqueueTaskLogWrite(taskId, "append", () => fs.appendFile(logPathForTask(taskId), data));
 }
 
 async function deleteTaskLog(taskId) {
-  try {
-    await fs.rm(logPathForTask(taskId), { force: true });
-  } catch (error) {
-    console.error(`TaskDeck could not delete log for ${taskId}: ${error.message}`);
-  }
+  await enqueueTaskLogWrite(taskId, "delete", () => fs.rm(logPathForTask(taskId), { force: true }));
+}
+
+function enqueueTaskLogWrite(taskId, operationLabel, operation) {
+  const previousWrite = taskLogWriteQueues.get(taskId) || Promise.resolve();
+  const queuedWrite = previousWrite
+    .catch(() => {})
+    .then(operation)
+    .catch((error) => {
+      console.error(`TaskDeck could not ${operationLabel} log for ${taskId}: ${error.message}`);
+    });
+
+  taskLogWriteQueues.set(taskId, queuedWrite);
+  queuedWrite.finally(() => {
+    if (taskLogWriteQueues.get(taskId) === queuedWrite) {
+      taskLogWriteQueues.delete(taskId);
+    }
+  });
+  return queuedWrite;
 }
 
 async function deleteTaskAttachments(taskId) {
