@@ -179,6 +179,7 @@ export type TaskDeckContext = {
   cwdSuggestions: CwdSuggestion[];
   projectRoots?: string[];
   projectSuggestions?: ProjectSuggestion[];
+  defaultModel?: string;
   agentProfiles: AgentProfile[];
   agentProfileConfig?: AgentProfileConfigSummary;
 };

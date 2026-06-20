@@ -42,6 +42,7 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
       cwd: effectiveCwd,
       agentProfileId: codexAppServerProfile?.id || defaultAgentProfileId,
       agentLabel: codexAppServerProfile?.label || "Codex App Server",
+      agentModel: context?.defaultModel?.trim() || undefined,
       sessionMode: "new",
     });
   };

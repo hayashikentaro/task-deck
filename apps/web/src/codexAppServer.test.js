@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildCodexAppServerThreadStartParams,
   codexAppServerThreadIdFromMessage,
   isCodexAppServerAuthError,
   resolveCodexAppServerTaskIdForThread,
@@ -58,5 +59,16 @@ describe("Codex App Server helper contracts", () => {
       defaultTaskId: "task-default",
       taskIdByThreadId,
     })).toBe("task-default");
+  });
+
+  it("applies an explicit model to thread/start without inventing one", () => {
+    expect(buildCodexAppServerThreadStartParams({ cwd: "/workspace/project", model: " gpt-5.5 " })).toEqual({
+      cwd: "/workspace/project",
+      ephemeral: true,
+      sandbox: "danger-full-access",
+      approvalPolicy: "never",
+      model: "gpt-5.5",
+    });
+    expect(buildCodexAppServerThreadStartParams({ cwd: "/workspace/project" })).not.toHaveProperty("model");
   });
 });

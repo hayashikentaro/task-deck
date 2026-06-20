@@ -1,3 +1,4 @@
 {
-  "projectRoot": "/path/to/your/projects"
+  "projectRoot": "/path/to/your/projects",
+  "defaultModel": "gpt-5.5"
 }

@@ -39,6 +39,7 @@ import {
   validateManagerEvent,
 } from "@taskdeck/core/manager-inbox";
 import {
+  buildCodexAppServerThreadStartParams,
   codexAppServerThreadIdFromMessage,
   isCodexAppServerAuthError,
   resolveCodexAppServerTaskIdForThread,
@@ -164,6 +165,7 @@ app.get("/api/context", async (_request, response) => {
     cwdSuggestions: await buildCwdSuggestions(),
     projectRoots,
     projectSuggestions,
+    defaultModel: await loadDefaultModel(),
     agentProfiles: await loadAgentProfiles(),
     agentProfileConfig: await getAgentProfileConfigSummary(),
   });
@@ -651,6 +653,7 @@ async function startTaskNow({
 
   const resolvedCwd = cwdValidation.resolvedCwd;
   const effectiveCommand = await commandForTaskCwd(command, resolvedCwd);
+  const resolvedAgentModel = agentModel || modelFromCommand(effectiveCommand) || await loadDefaultModel();
   const launchInitialInstruction = await initialInstructionForTaskLaunch({
     isManagerLaunch,
     command: effectiveCommand,
@@ -671,7 +674,7 @@ async function startTaskNow({
     cwd: resolvedCwd,
     agentProfileId,
     agentLabel,
-    agentModel: agentModel || modelFromCommand(effectiveCommand),
+    agentModel: resolvedAgentModel,
     sessionMode,
     resumeCommand,
     identityColorSlot,
@@ -1171,12 +1174,11 @@ function sendCodexAppServerThreadStart(activeAppServer) {
   activeAppServer.threadStartRequested = true;
   taskVisibleHostPath(task.command, task.cwd)
     .then((cwd) => {
-      const requestId = sendCodexAppServerRequest(activeAppServer, "thread/start", {
-        cwd,
-        ephemeral: true,
-        sandbox: "danger-full-access",
-        approvalPolicy: "never",
-      });
+      const requestId = sendCodexAppServerRequest(
+        activeAppServer,
+        "thread/start",
+        buildCodexAppServerThreadStartParams({ cwd, model: task.agentModel }),
+      );
       if (requestId === null) {
         activeAppServer.threadStartRequested = false;
       }
@@ -4881,6 +4883,31 @@ function getAgentProfileConfigCandidates() {
     { source: "taskdeck.local.json", path: localConfigPath },
     ...(envConfigPath ? [{ source: "TASKDECK_CONFIG", path: envConfigPath }] : []),
   ];
+}
+
+async function loadDefaultModel() {
+  let defaultModel = "";
+
+  for (const configCandidate of getAgentProfileConfigCandidates()) {
+    try {
+      const rawContents = await fs.readFile(configCandidate.path, "utf8");
+      const parsed = JSON.parse(rawContents);
+      if (!Object.prototype.hasOwnProperty.call(parsed || {}, "defaultModel")) {
+        continue;
+      }
+      if (typeof parsed.defaultModel !== "string") {
+        console.warn(`TaskDeck ignored defaultModel in ${configCandidate.path} because it was not a string.`);
+        continue;
+      }
+      defaultModel = parsed.defaultModel.trim();
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        console.warn(`TaskDeck could not read ${configCandidate.path}: ${error.message}`);
+      }
+    }
+  }
+
+  return defaultModel;
 }
 
 function sanitizeAgentProfiles(rawProfiles) {

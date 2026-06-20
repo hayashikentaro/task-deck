@@ -43,3 +43,14 @@ export function resolveCodexAppServerTaskIdForThread({ threadId, defaultTaskId, 
   }
   return taskIdByThreadId?.get?.(normalizedThreadId) || defaultTaskId;
 }
+
+export function buildCodexAppServerThreadStartParams({ cwd, model = "" }) {
+  const normalizedModel = String(model || "").trim();
+  return {
+    cwd,
+    ephemeral: true,
+    sandbox: "danger-full-access",
+    approvalPolicy: "never",
+    ...(normalizedModel ? { model: normalizedModel } : {}),
+  };
+}

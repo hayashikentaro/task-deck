@@ -62,11 +62,12 @@ Then edit `taskdeck.local.json`:
 
 ```json
 {
-  "projectRoot": "/Users/you/Projects"
+  "projectRoot": "/Users/you/Projects",
+  "defaultModel": "gpt-5.5"
 }
 ```
 
-`projectRoot` is a parent directory whose immediate child directories become Project choices. `taskdeck.local.json` is ignored by Git and is the right place for machine-local paths.
+`projectRoot` is a parent directory whose immediate child directories become Project choices. `defaultModel` is optional; when set, TaskDeck passes it to Codex App Server for each new thread. Without it, Codex uses its own configured default. `taskdeck.local.json` is ignored by Git and is the right place for machine-local paths and model defaults.
 
 ## Configure Agent Profiles
 
@@ -78,7 +79,7 @@ codex --sandbox danger-full-access --ask-for-approval never app-server --listen 
 
 That command runs directly in the TaskDeck server environment. Do not assume TaskDeck will start or enter a separate Docker container. If a local machine needs a wrapper, put that override in ignored local config; do not treat the wrapper as the product route for this branch.
 
-Keep normal fresh-clone project setup minimal by putting only `projectRoot` in `taskdeck.local.json`. If you need a machine-local launch wrapper, override the `codex-app-server` profile in `taskdeck.local.json`, copy `taskdeck.profiles.example.json` into another ignored local config file, or point `TASKDECK_CONFIG` at another config file. Additional profile ids are ignored by the current App Server-only launch surface.
+Keep normal fresh-clone project setup minimal by putting `projectRoot` and, when needed, `defaultModel` in `taskdeck.local.json`. If you need a machine-local launch wrapper, override the `codex-app-server` profile in `taskdeck.local.json`, copy `taskdeck.profiles.example.json` into another ignored local config file, or point `TASKDECK_CONFIG` at another config file. Additional profile ids are ignored by the current App Server-only launch surface.
 
 For example:
 

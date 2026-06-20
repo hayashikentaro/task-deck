@@ -119,6 +119,8 @@ Agent state inference on this branch is App Server-first. True `thinking` is not
 
 Project suggestions come from `projectRoot` in `taskdeck.local.json` or `taskdeck.config.json`, with `TASKDECK_PROJECT_ROOT` available as an environment override. `projectRoot` means the parent directory whose immediate child directories appear as Project choices. Public defaults fall back to the TaskDeck repository itself, so a fresh clone may show only `task-deck` in the Project dropdown.
 
+`defaultModel` can be set in `taskdeck.config.json`, ignored `taskdeck.local.json`, or `TASKDECK_CONFIG`. Later config sources override earlier ones. TaskDeck exposes the resolved value to the launch form, records it on new tasks, and passes it as the App Server `thread/start` model. When no value is configured, TaskDeck leaves the model unset so Codex uses its own default.
+
 For maintainer environments, user-specific paths such as `/Users/hayashikentarou/Documents` belong in `taskdeck.local.json`, not committed config. Existing `projectRoots`, `TASKDECK_PROJECT_ROOT`, and `TASKDECK_PROJECT_ROOTS` values are still accepted for compatibility.
 
 Agent profiles can be changed without editing application code. TaskDeck merges profiles by `id`: built-in defaults are loaded first, then `taskdeck.config.json`, then ignored `taskdeck.local.json`, then `TASKDECK_CONFIG`. Later files override matching ids and append new ids, and the server exposes the merged profile list.
