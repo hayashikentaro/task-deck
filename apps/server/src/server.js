@@ -1074,6 +1074,7 @@ function sendTaskInputToCodexAppServer(taskId, data, source = "client") {
     attentionSource: AgentStateSource.TASKDECK_EVENT,
     attentionConfidence: AgentStateConfidence.HIGH,
   });
+  appendCodexAppServerUserInput(activeAppServer, text);
 
   if (!activeAppServer.threadId) {
     activeAppServer.pendingInputs.push(text);
@@ -2274,6 +2275,17 @@ function formatCodexAppServerAssistantText(activeAppServer, delta, taskId = acti
   return `${prefix}[Assistant]\n${delta}`;
 }
 
+function appendCodexAppServerUserInput(activeAppServer, text, taskId = activeAppServer.taskId) {
+  const normalizedText = String(text || "").trimEnd();
+  if (!normalizedText) {
+    return;
+  }
+  setCodexAppServerAssistantMessageOpen(activeAppServer, taskId, false);
+  const currentLog = logs.get(taskId) || "";
+  const prefix = currentLog && !currentLog.endsWith("\n") ? "\n" : "";
+  appendAndBroadcast(taskId, `${prefix}[You]\n${normalizedText}\n`);
+}
+
 function appendCodexAppServerStatus(activeAppServer, data) {
   appendCodexAppServerStatusForTask(activeAppServer, activeAppServer.taskId, data);
 }
@@ -2634,6 +2646,7 @@ function flushCodexAppServerPendingInputs(activeAppServer) {
   const initialInstruction = String(tasks.get(activeAppServer.taskId)?.initialInstruction || "").trim();
   const pendingInputs = activeAppServer.pendingInputs.splice(0);
   if (initialInstruction) {
+    appendCodexAppServerUserInput(activeAppServer, initialInstruction);
     pendingInputs.unshift(initialInstruction);
   }
   if (pendingInputs.length === 0) {
