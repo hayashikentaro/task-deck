@@ -63,6 +63,7 @@ export type Task = {
   agentProfileId?: string;
   agentLabel?: string;
   agentModel?: string;
+  agentReasoningEffort?: string;
   sessionMode?: string;
   resumeCommand?: string;
   agentSessionId?: string;
@@ -136,6 +137,21 @@ export type TaskPreset = CreateTaskInput;
 export type ModelOption = {
   id: string;
   label: string;
+};
+
+export type CodexReasoningEffortOption = {
+  reasoningEffort: string;
+  description: string;
+};
+
+export type CodexModel = {
+  id: string;
+  model: string;
+  displayName: string;
+  description: string;
+  isDefault: boolean;
+  defaultReasoningEffort: string;
+  supportedReasoningEfforts: CodexReasoningEffortOption[];
 };
 
 export type AgentProfile = {

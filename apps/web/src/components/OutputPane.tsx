@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { InputComposer } from "./InputComposer";
 import { taskIdentityCssProperties } from "../taskIdentity";
-import type { OutputEvent, Task } from "../types";
+import type { CodexModel, OutputEvent, Task } from "../types";
 import { IconButton } from "./ui/IconButton";
 
 type OutputPaneProps = {
+  codexModels: CodexModel[];
   composerValue: string;
   isConnected: boolean;
   task: Task | null;
@@ -22,6 +23,7 @@ const outputFontSizes = [11, 12, 13, 14, 15, 16, 18];
 const outputBottomScrollTolerancePx = 16;
 
 export function OutputPane({
+  codexModels,
   composerValue,
   isConnected,
   task,
@@ -214,6 +216,7 @@ export function OutputPane({
         </div>
       </div>
       <InputComposer
+        codexModels={codexModels}
         isConnected={isConnected}
         task={task}
         value={composerValue}

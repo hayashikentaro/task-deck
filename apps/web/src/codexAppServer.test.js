@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCodexAppServerThreadStartParams,
+  buildCodexAppServerTurnStartParams,
   codexAppServerThreadIdFromMessage,
   isCodexAppServerAuthError,
+  normalizeCodexAppServerModels,
   resolveCodexAppServerTaskIdForThread,
   shouldIgnoreCodexAppServerMessageAfterAuthFailure,
   shouldSuppressCodexAppServerAuthErrorLine,
@@ -70,5 +72,52 @@ describe("Codex App Server helper contracts", () => {
       model: "gpt-5.5",
     });
     expect(buildCodexAppServerThreadStartParams({ cwd: "/workspace/project" })).not.toHaveProperty("model");
+  });
+
+  it("applies model and reasoning effort to the next turn", () => {
+    expect(buildCodexAppServerTurnStartParams({
+      threadId: "thread-1",
+      text: "Review this change.",
+      model: " gpt-5.5 ",
+      effort: " xhigh ",
+    })).toEqual({
+      threadId: "thread-1",
+      approvalPolicy: "never",
+      sandboxPolicy: { type: "dangerFullAccess" },
+      input: [{ type: "text", text: "Review this change." }],
+      model: "gpt-5.5",
+      effort: "xhigh",
+    });
+  });
+
+  it("normalizes the App Server model catalog", () => {
+    expect(normalizeCodexAppServerModels([
+      {
+        id: "gpt-5.5",
+        model: "gpt-5.5",
+        displayName: "GPT-5.5",
+        description: "Primary model",
+        isDefault: true,
+        defaultReasoningEffort: "medium",
+        supportedReasoningEfforts: [
+          { reasoningEffort: "medium", description: "Balanced" },
+          { reasoningEffort: "xhigh", description: "Deep reasoning" },
+        ],
+      },
+      { id: "duplicate", model: "gpt-5.5" },
+    ])).toEqual([
+      {
+        id: "gpt-5.5",
+        model: "gpt-5.5",
+        displayName: "GPT-5.5",
+        description: "Primary model",
+        isDefault: true,
+        defaultReasoningEffort: "medium",
+        supportedReasoningEfforts: [
+          { reasoningEffort: "medium", description: "Balanced" },
+          { reasoningEffort: "xhigh", description: "Deep reasoning" },
+        ],
+      },
+    ]);
   });
 });

@@ -1,8 +1,9 @@
-import { ChangeEvent, FormEvent, KeyboardEvent, useLayoutEffect, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, KeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button } from "./ui/Button";
-import type { PendingTaskAttachment, Task } from "../types";
+import type { CodexModel, PendingTaskAttachment, Task } from "../types";
 
 type InputComposerProps = {
+  codexModels: CodexModel[];
   isConnected: boolean;
   task: Task | null;
   value: string;
@@ -11,17 +12,20 @@ type InputComposerProps = {
 };
 
 const maxComposerHeight = 140;
+const fallbackReasoningEfforts = ["minimal", "low", "medium", "high", "xhigh"];
 type SelectedImageAttachment = {
   id: string;
   file: File;
 };
 type ComposerInputState = "ready" | "locked" | "busy" | "readonly" | "disconnected" | "empty";
 
-export function InputComposer({ isConnected, task, value, onValueChange, send }: InputComposerProps) {
+export function InputComposer({ codexModels, isConnected, task, value, onValueChange, send }: InputComposerProps) {
   const [isComposing, setIsComposing] = useState(false);
   const [selectedImages, setSelectedImages] = useState<SelectedImageAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState("");
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
+  const [selectedModel, setSelectedModel] = useState("");
+  const [selectedReasoningEffort, setSelectedReasoningEffort] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const isInputLocked = Boolean(task?.inputLockedAt);
@@ -46,6 +50,32 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
       : "Input to running task"
     : modeText;
   const inputState = getComposerInputState({ task, isConnected, isUploadingAttachments });
+  const modelOptions = useMemo(
+    () => ensureSelectedModelOption(codexModels, selectedModel || task?.agentModel || ""),
+    [codexModels, selectedModel, task?.agentModel],
+  );
+  const selectedModelOption = modelOptions.find((model) => model.model === selectedModel) ?? null;
+  const reasoningEffortOptions = useMemo(
+    () => getReasoningEffortOptions(selectedModelOption, selectedReasoningEffort),
+    [selectedModelOption, selectedReasoningEffort],
+  );
+  const canConfigureTurn = Boolean(isCodexAppServerTask && canInteractWithRunningTask && !isInputLocked);
+
+  useEffect(() => {
+    setSelectedModel(String(task?.agentModel || "").trim());
+    setSelectedReasoningEffort(String(task?.agentReasoningEffort || "").trim());
+  }, [task?.agentModel, task?.agentReasoningEffort, task?.id]);
+
+  useEffect(() => {
+    if (!selectedModel && modelOptions.length > 0) {
+      const defaultModel = modelOptions.find((model) => model.isDefault) ?? modelOptions[0];
+      setSelectedModel(defaultModel.model);
+      return;
+    }
+    if (!selectedReasoningEffort && selectedModelOption?.defaultReasoningEffort) {
+      setSelectedReasoningEffort(selectedModelOption.defaultReasoningEffort);
+    }
+  }, [modelOptions, selectedModel, selectedModelOption, selectedReasoningEffort]);
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -141,7 +171,20 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
       return false;
     }
     const data = normalizeComposerInput(input);
-    return send({ type: "input", taskId: task.id, data, source: "composer-agent" });
+    return send({
+      type: "input",
+      taskId: task.id,
+      data,
+      source: "composer-agent",
+      agentModel: selectedModel,
+      agentReasoningEffort: selectedReasoningEffort,
+    });
+  };
+
+  const changeSelectedModel = (model: string) => {
+    setSelectedModel(model);
+    const nextModel = modelOptions.find((option) => option.model === model);
+    setSelectedReasoningEffort(nextModel?.defaultReasoningEffort || "");
   };
 
   return (
@@ -210,26 +253,6 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
       ) : null}
       {attachmentError ? <small className="attachment-error input-attachment-error">{attachmentError}</small> : null}
       <div className="input-composer-inner">
-        <button
-          aria-label="Attach image"
-          className="add-context-button input-attach-button"
-          disabled={!canSend || isUploadingAttachments}
-          onClick={() => imageInputRef.current?.click()}
-          title="Attach image"
-          type="button"
-        >
-          <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
-            <path d="M8 3v10M3 8h10" />
-          </svg>
-        </button>
-        <input
-          ref={imageInputRef}
-          accept="image/png,image/jpeg,image/webp"
-          className="visually-hidden"
-          multiple
-          onChange={handleImageSelection}
-          type="file"
-        />
         <textarea
           ref={textareaRef}
           autoCapitalize="off"
@@ -245,21 +268,112 @@ export function InputComposer({ isConnected, task, value, onValueChange, send }:
           spellCheck={false}
           value={value}
         />
-        <button
-          aria-label={actionLabel}
-          className="input-primary-action-button"
-          disabled={!canSubmit}
-          onClick={handlePrimaryAction}
-          title={actionLabel}
-          type="button"
-        >
-          <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
-            <path d="M8 13V3M4 7l4-4 4 4" />
-          </svg>
-        </button>
+        <div className="input-composer-footer">
+          <div className="input-composer-footer-start">
+            <button
+              aria-label="Attach image"
+              className="add-context-button input-attach-button"
+              disabled={!canSend || isUploadingAttachments}
+              onClick={() => imageInputRef.current?.click()}
+              title="Attach image"
+              type="button"
+            >
+              <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+                <path d="M8 3v10M3 8h10" />
+              </svg>
+            </button>
+            <input
+              ref={imageInputRef}
+              accept="image/png,image/jpeg,image/webp"
+              className="visually-hidden"
+              multiple
+              onChange={handleImageSelection}
+              type="file"
+            />
+          </div>
+          <div className="input-composer-footer-end">
+            {isCodexAppServerTask ? (
+              <>
+                <label className="composer-option-control" title={selectedModelOption?.description || "Model"}>
+                  <span className="visually-hidden">Model</span>
+                  <select
+                    aria-label="Model for next instruction"
+                    disabled={!canConfigureTurn || modelOptions.length === 0}
+                    onChange={(event) => changeSelectedModel(event.target.value)}
+                    value={selectedModel}
+                  >
+                    {modelOptions.map((model) => (
+                      <option key={model.model} value={model.model}>{model.displayName}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="composer-option-control">
+                  <span className="visually-hidden">Reasoning effort</span>
+                  <select
+                    aria-label="Reasoning effort for next instruction"
+                    disabled={!canConfigureTurn || reasoningEffortOptions.length === 0}
+                    onChange={(event) => setSelectedReasoningEffort(event.target.value)}
+                    value={selectedReasoningEffort}
+                  >
+                    {reasoningEffortOptions.map((effort) => (
+                      <option key={effort} value={effort}>{formatReasoningEffort(effort)}</option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            ) : null}
+            <button
+              aria-label={actionLabel}
+              className="input-primary-action-button"
+              disabled={!canSubmit}
+              onClick={handlePrimaryAction}
+              title={actionLabel}
+              type="button"
+            >
+              <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+                <path d="M8 13V3M4 7l4-4 4 4" />
+              </svg>
+            </button>
+          </div>
+        </div>
       </div>
     </form>
   );
+}
+
+function ensureSelectedModelOption(models: CodexModel[], selectedModel: string) {
+  if (!selectedModel || models.some((model) => model.model === selectedModel)) {
+    return models;
+  }
+  return [
+    {
+      id: selectedModel,
+      model: selectedModel,
+      displayName: selectedModel,
+      description: "",
+      isDefault: false,
+      defaultReasoningEffort: "",
+      supportedReasoningEfforts: [],
+    },
+    ...models,
+  ];
+}
+
+function getReasoningEffortOptions(model: CodexModel | null, selectedEffort: string) {
+  const advertised = model?.supportedReasoningEfforts.map((option) => option.reasoningEffort) ?? [];
+  const options = advertised.length > 0 ? advertised : ["", ...fallbackReasoningEfforts];
+  return selectedEffort && !options.includes(selectedEffort) ? [selectedEffort, ...options] : options;
+}
+
+function formatReasoningEffort(effort: string) {
+  if (!effort) return "Default";
+  if (effort === "none") return "None";
+  if (effort === "minimal") return "Minimal";
+  if (effort === "low") return "Low";
+  if (effort === "medium") return "Medium";
+  if (effort === "high") return "High";
+  if (effort === "xhigh") return "Extra high";
+  return effort;
 }
 
 async function uploadSelectedImages(images: SelectedImageAttachment[]) {

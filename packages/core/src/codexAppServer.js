@@ -54,3 +54,52 @@ export function buildCodexAppServerThreadStartParams({ cwd, model = "" }) {
     ...(normalizedModel ? { model: normalizedModel } : {}),
   };
 }
+
+export function buildCodexAppServerTurnStartParams({ threadId, text, model = "", effort = "" }) {
+  const normalizedModel = String(model || "").trim();
+  const normalizedEffort = String(effort || "").trim();
+  return {
+    threadId,
+    approvalPolicy: "never",
+    sandboxPolicy: { type: "dangerFullAccess" },
+    input: [{ type: "text", text }],
+    ...(normalizedModel ? { model: normalizedModel } : {}),
+    ...(normalizedEffort ? { effort: normalizedEffort } : {}),
+  };
+}
+
+export function normalizeCodexAppServerModels(rawModels) {
+  if (!Array.isArray(rawModels)) {
+    return [];
+  }
+
+  const models = [];
+  const seenModels = new Set();
+  for (const rawModel of rawModels) {
+    const model = String(rawModel?.model || rawModel?.id || "").trim();
+    if (!model || seenModels.has(model)) {
+      continue;
+    }
+    seenModels.add(model);
+    const supportedReasoningEfforts = Array.isArray(rawModel?.supportedReasoningEfforts)
+      ? rawModel.supportedReasoningEfforts
+          .map((option) => ({
+            reasoningEffort: typeof option === "string"
+              ? option.trim()
+              : String(option?.reasoningEffort || "").trim(),
+            description: typeof option === "object" ? String(option?.description || "").trim() : "",
+          }))
+          .filter((option) => option.reasoningEffort)
+      : [];
+    models.push({
+      id: String(rawModel?.id || model).trim() || model,
+      model,
+      displayName: String(rawModel?.displayName || model).trim() || model,
+      description: String(rawModel?.description || "").trim(),
+      isDefault: rawModel?.isDefault === true,
+      defaultReasoningEffort: String(rawModel?.defaultReasoningEffort || "").trim(),
+      supportedReasoningEfforts,
+    });
+  }
+  return models;
+}

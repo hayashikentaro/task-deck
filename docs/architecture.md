@@ -121,6 +121,8 @@ Project suggestions come from `projectRoot` in `taskdeck.local.json` or `taskdec
 
 `defaultModel` can be set in `taskdeck.config.json`, ignored `taskdeck.local.json`, or `TASKDECK_CONFIG`. Later config sources override earlier ones. TaskDeck exposes the resolved value to the launch form, records it on new tasks, and passes it as the App Server `thread/start` model. When no value is configured, TaskDeck leaves the model unset so Codex uses its own default.
 
+After App Server authentication is ready, TaskDeck requests `model/list` and broadcasts the normalized catalog to connected web clients. The selected task's composer uses that catalog for model and reasoning-effort controls. Each submitted instruction carries its selection atomically; the server records it on the task and passes `model` and `effort` to `turn/start`, so changes apply to that turn and subsequent turns without restarting the shared runtime or thread. Inputs queued before thread readiness retain the selection made when they were submitted.
+
 For maintainer environments, user-specific paths such as `/Users/hayashikentarou/Documents` belong in `taskdeck.local.json`, not committed config. Existing `projectRoots`, `TASKDECK_PROJECT_ROOT`, and `TASKDECK_PROJECT_ROOTS` values are still accepted for compatibility.
 
 Agent profiles can be changed without editing application code. TaskDeck merges profiles by `id`: built-in defaults are loaded first, then `taskdeck.config.json`, then ignored `taskdeck.local.json`, then `TASKDECK_CONFIG`. Later files override matching ids and append new ids, and the server exposes the merged profile list.

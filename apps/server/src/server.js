@@ -40,8 +40,10 @@ import {
 } from "@taskdeck/core/manager-inbox";
 import {
   buildCodexAppServerThreadStartParams,
+  buildCodexAppServerTurnStartParams,
   codexAppServerThreadIdFromMessage,
   isCodexAppServerAuthError,
+  normalizeCodexAppServerModels,
   resolveCodexAppServerTaskIdForThread,
   shouldSuppressCodexAppServerAuthErrorLine,
 } from "@taskdeck/core/codex-app-server";
@@ -142,6 +144,7 @@ let persistTasksQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
 let persistSessionLabelsQueue = Promise.resolve();
 let childStatusPollInFlight = false;
+let codexModels = [];
 
 const managerActionTypes = new Set(["ack", "review", "close"]);
 
@@ -237,6 +240,7 @@ app.get("/api/tasks", (_request, response) => {
     tasks: listTasks(),
     runningTaskId: getPrimaryRunningTaskId(),
     runningTaskIds: getRunningTaskIds(),
+    codexModels,
   });
 });
 
@@ -497,6 +501,7 @@ wss.on("connection", (socket) => {
     presets,
     runningTaskId: getPrimaryRunningTaskId(),
     runningTaskIds: getRunningTaskIds(),
+    codexModels,
   });
 
   socket.on("message", (rawMessage) => {
@@ -535,7 +540,10 @@ wss.on("connection", (socket) => {
 
     if (message.type === "input") {
       const taskId = String(message.taskId || "").trim();
-      const inputResult = sendTaskInput(taskId, message.data, message.source || "client");
+      const inputResult = sendTaskInput(taskId, message.data, message.source || "client", {
+        agentModel: String(message.agentModel || "").trim(),
+        agentReasoningEffort: String(message.agentReasoningEffort || "").trim(),
+      });
       if (!inputResult.ok) {
         if (inputResult.reason === "input-locked") {
           send(socket, { type: "error", message: "Input is locked for this task." });
@@ -745,10 +753,10 @@ function assignTaskIdentityColorSlot() {
   return selectedSlot;
 }
 
-function sendTaskInput(taskId, data, source = "client") {
+function sendTaskInput(taskId, data, source = "client", turnSelection = {}) {
   const normalizedTaskId = String(taskId || "").trim();
   if (activeCodexThreadSessions.has(normalizedTaskId)) {
-    return sendTaskInputToCodexAppServer(normalizedTaskId, data, source);
+    return sendTaskInputToCodexAppServer(normalizedTaskId, data, source, turnSelection);
   }
   return { ok: false, reason: "no-active-app-server-or-invalid-data" };
 }
@@ -829,6 +837,8 @@ function startOrReuseCodexAppServerRuntime({ launchCommand, task }) {
     defaultTaskId: task.id,
   });
   activeCodexRuntimes.set(nextRuntime.id, nextRuntime);
+  codexModels = [];
+  broadcast({ type: "codex-models", models: codexModels });
 
   runtimeProcess.stdout.setEncoding("utf8");
   runtimeProcess.stderr.setEncoding("utf8");
@@ -875,6 +885,8 @@ function createActiveCodexRuntime({ runtimeId, runtimeProcess, launchCommand, de
     loginId: "",
     loginCompletedAt: 0,
     forcedAccountRefreshAttempted: false,
+    modelListRequested: false,
+    modelCatalog: [],
   };
 }
 
@@ -1045,7 +1057,7 @@ function recordCodexAppServerThreadSession(activeAppServer, threadId) {
   return true;
 }
 
-function sendTaskInputToCodexAppServer(taskId, data, source = "client") {
+function sendTaskInputToCodexAppServer(taskId, data, source = "client", turnSelection = {}) {
   const task = tasks.get(taskId);
   const activeAppServer = activeCodexThreadSessions.get(taskId);
   if (task?.inputLockedAt || task?.terminalInputLockedAt) {
@@ -1067,6 +1079,9 @@ function sendTaskInputToCodexAppServer(taskId, data, source = "client") {
     return { ok: false, reason: "codex-app-server-auth-failed" };
   }
 
+  const turnInput = buildCodexTurnInput(task, text, turnSelection);
+  updateTaskCodexTurnSelection(task, turnInput);
+
   logInputDebug(taskId, data, source);
   updateAgentStateFromTaskDeckEvent(taskId, AgentState.WORKING, {
     reason: "User input was sent to Codex App Server.",
@@ -1080,12 +1095,12 @@ function sendTaskInputToCodexAppServer(taskId, data, source = "client") {
   appendCodexAppServerUserInput(activeAppServer, text);
 
   if (!activeAppServer.threadId) {
-    activeAppServer.pendingInputs.push(text);
+    activeAppServer.pendingInputs.push(turnInput);
     appendAndBroadcast(taskId, "[TaskDeck] Queued input until Codex App Server thread is ready.\n");
     return { ok: true };
   }
 
-  sendCodexAppServerTurn(activeAppServer, text);
+  sendCodexAppServerTurn(activeAppServer, turnInput);
   return { ok: true };
 }
 
@@ -1093,6 +1108,27 @@ function normalizeCodexAppServerInput(data) {
   return String(data || "")
     .replace(/\r/g, "\n")
     .trim();
+}
+
+function buildCodexTurnInput(task, text, turnSelection = {}) {
+  return {
+    text,
+    model: String(turnSelection.agentModel || task?.agentModel || "").trim(),
+    effort: String(turnSelection.agentReasoningEffort || task?.agentReasoningEffort || "").trim(),
+  };
+}
+
+function updateTaskCodexTurnSelection(task, turnInput) {
+  if (!task || (task.agentModel === turnInput.model && task.agentReasoningEffort === turnInput.effort)) {
+    return;
+  }
+  setTask({
+    ...task,
+    agentModel: turnInput.model,
+    agentReasoningEffort: turnInput.effort,
+    updatedAt: new Date().toISOString(),
+  });
+  broadcastTasks();
 }
 
 function sendCodexAppServerInitialize(activeAppServer) {
@@ -1123,6 +1159,21 @@ function sendCodexAppServerAccountRead(activeAppServer, { refreshToken = false }
   });
   if (requestId === null) {
     activeRuntime.accountReadInFlight = false;
+  }
+}
+
+function sendCodexAppServerModelList(activeAppServer, cursor = "") {
+  const activeRuntime = codexRuntimeForThreadSession(activeAppServer);
+  if (!activeRuntime || (activeRuntime.modelListRequested && !cursor)) {
+    return;
+  }
+  activeRuntime.modelListRequested = true;
+  const requestId = sendCodexAppServerRequest(activeAppServer, "model/list", {
+    limit: 100,
+    ...(cursor ? { cursor } : {}),
+  });
+  if (requestId === null) {
+    activeRuntime.modelListRequested = false;
   }
 }
 
@@ -1198,22 +1249,24 @@ function sendCodexAppServerThreadStart(activeAppServer) {
     });
 }
 
-function sendCodexAppServerTurn(activeAppServer, text) {
+function sendCodexAppServerTurn(activeAppServer, input) {
+  const turnInput = typeof input === "string"
+    ? buildCodexTurnInput(tasks.get(activeAppServer.taskId), input)
+    : input;
   if (!activeAppServer.threadId) {
-    activeAppServer.pendingInputs.push(text);
+    activeAppServer.pendingInputs.push(turnInput);
     return;
   }
-  sendCodexAppServerRequest(activeAppServer, "turn/start", {
-    threadId: activeAppServer.threadId,
-    approvalPolicy: "never",
-    sandboxPolicy: { type: "dangerFullAccess" },
-    input: [
-      {
-        type: "text",
-        text,
-      },
-    ],
-  });
+  sendCodexAppServerRequest(
+    activeAppServer,
+    "turn/start",
+    buildCodexAppServerTurnStartParams({
+      threadId: activeAppServer.threadId,
+      text: turnInput.text,
+      model: turnInput.model,
+      effort: turnInput.effort,
+    }),
+  );
 }
 
 function sendCodexAppServerRequest(activeAppServer, method, params) {
@@ -1461,6 +1514,9 @@ function handleCodexAppServerResponse(activeAppServer, message, pendingRequest =
     activeAppServer.threadStartRequested = false;
   }
   if (message.error) {
+    if (method === "model/list") {
+      activeRuntime.modelListRequested = false;
+    }
     if (isCodexAppServerAuthError(message.error)) {
       preserveCodexAppServerPendingAuthRetry(activeAppServer, pendingRequest);
       if (activeRuntime.authFailureDetected) {
@@ -1485,6 +1541,10 @@ function handleCodexAppServerResponse(activeAppServer, message, pendingRequest =
       }
       appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server authentication refresh failed; ChatGPT device login is required.\n");
       handleCodexAppServerAuthRequired(activeAppServer, pendingRequest);
+      return;
+    }
+    if (method === "model/list") {
+      appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server model list unavailable: ${JSON.stringify(message.error)}\n`);
       return;
     }
     if (codexRuntimeRequestCanMoveToAnotherThreadSession(method)) {
@@ -1535,6 +1595,7 @@ function handleCodexAppServerResponse(activeAppServer, message, pendingRequest =
     }
     activeRuntime.accountReady = true;
     activeRuntime.loginInProgress = false;
+    sendCodexAppServerModelList(activeAppServer);
     appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server account is ready; starting thread.\n");
     resumeCodexAppServerRuntimeThreadStarts(activeRuntime, activeAppServer);
     return;
@@ -1542,6 +1603,23 @@ function handleCodexAppServerResponse(activeAppServer, message, pendingRequest =
 
   if (method === "account/login/start") {
     handleCodexAppServerLoginStartResponse(activeAppServer, message.result);
+    return;
+  }
+
+  if (method === "model/list") {
+    const nextModels = normalizeCodexAppServerModels(message.result?.data);
+    activeRuntime.modelCatalog = normalizeCodexAppServerModels([
+      ...activeRuntime.modelCatalog,
+      ...nextModels,
+    ]);
+    codexModels = activeRuntime.modelCatalog;
+    broadcast({ type: "codex-models", models: codexModels });
+    const nextCursor = String(message.result?.nextCursor || "").trim();
+    if (nextCursor) {
+      sendCodexAppServerModelList(activeAppServer, nextCursor);
+    } else {
+      activeRuntime.modelListRequested = false;
+    }
     return;
   }
 
@@ -1687,6 +1765,8 @@ function handleCodexAppServerAccountUpdated(activeAppServer) {
 
 function resumeCodexAppServerAfterLogin(activeAppServer) {
   const activeRuntime = codexRuntimeStateForThreadSession(activeAppServer);
+  activeRuntime.modelListRequested = false;
+  sendCodexAppServerModelList(activeAppServer);
   for (const threadSession of codexThreadSessionsForRuntime(activeRuntime)) {
     const pendingAuthRetry = threadSession.pendingAuthRetry;
     threadSession.pendingAuthRetry = null;
@@ -2649,7 +2729,7 @@ function flushCodexAppServerPendingInputs(activeAppServer) {
   const pendingInputs = activeAppServer.pendingInputs.splice(0);
   if (initialInstruction) {
     appendCodexAppServerUserInput(activeAppServer, initialInstruction);
-    pendingInputs.unshift(initialInstruction);
+    pendingInputs.unshift(buildCodexTurnInput(tasks.get(activeAppServer.taskId), initialInstruction));
   }
   if (pendingInputs.length === 0) {
     updateCodexAppServerReady(activeAppServer, "Codex App Server adapter is ready.");
@@ -4564,7 +4644,7 @@ function cleanupCodexRuntimeRequestsForStoppedThreadSession(activeRuntime, stopp
 }
 
 function codexRuntimeRequestCanMoveToAnotherThreadSession(method) {
-  return method === "initialize" || method === "account/read" || method === "account/login/start";
+  return method === "initialize" || method === "account/read" || method === "account/login/start" || method === "model/list";
 }
 
 function cancelCodexAppServerLoginIfNeeded(activeRuntime, logThreadSession = null) {

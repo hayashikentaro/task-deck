@@ -103,4 +103,15 @@ describe("legacy task metadata", () => {
       attentionStateSource: "",
     });
   });
+
+  it("persists minimal Codex reasoning effort", () => {
+    const task = createTask({
+      title: "Model selection",
+      command: "codex app-server",
+      cwd: "/workspace/task-deck",
+      agentReasoningEffort: "minimal",
+    });
+
+    expect(serializeTask(task).agentReasoningEffort).toBe("minimal");
+  });
 });

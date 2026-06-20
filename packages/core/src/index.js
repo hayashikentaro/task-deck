@@ -54,7 +54,7 @@ export const ChildReportedState = Object.freeze({
 
 const childReportedStates = new Set(Object.values(ChildReportedState));
 const agentStateSources = new Set(Object.values(AgentStateSource));
-const agentReasoningEfforts = new Set(["low", "medium", "high", "xhigh"]);
+const agentReasoningEfforts = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
 
 const dangerousPatterns = [
   /\brm\s+-rf\b/,

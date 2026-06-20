@@ -48,7 +48,7 @@ The dev command runs the local Node server and mounts Vite middleware for the Re
 3. Start the task.
 4. Send instructions from the composer attached to the task log.
 
-Task cards in the left rail show the active tasks and their supervision state. The center pane shows the selected task's live output and persisted log view. For Codex App Server tasks, TaskDeck renders structured App Server messages as human-readable task output and handles user-input requests through the UI.
+Task cards in the left rail show the active tasks and their supervision state. The center pane shows the selected task's live output and persisted log view. For Codex App Server tasks, TaskDeck renders structured App Server messages as human-readable task output, handles user-input requests through the UI, and exposes model and reasoning-effort selectors in the composer. Selector changes apply to the next instruction and later turns.
 
 ## Configure Projects
 
@@ -67,7 +67,7 @@ Then edit `taskdeck.local.json`:
 }
 ```
 
-`projectRoot` is a parent directory whose immediate child directories become Project choices. `defaultModel` is optional; when set, TaskDeck passes it to Codex App Server for each new thread. Without it, Codex uses its own configured default. `taskdeck.local.json` is ignored by Git and is the right place for machine-local paths and model defaults.
+`projectRoot` is a parent directory whose immediate child directories become Project choices. `defaultModel` is optional; when set, TaskDeck passes it to Codex App Server for each new thread. Without it, Codex uses its own configured default. Once App Server is initialized, TaskDeck loads the available model catalog for the composer selector. `taskdeck.local.json` is ignored by Git and is the right place for machine-local paths and model defaults.
 
 ## Configure Agent Profiles
 

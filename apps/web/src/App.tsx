@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TaskCreateForm } from "./components/TaskCreateForm";
 import { TaskList } from "./components/TaskList";
 import { OutputPane } from "./components/OutputPane";
-import type { CreateTaskInput, OutputEvent, Task, TaskDeckContext } from "./types";
+import type { CodexModel, CreateTaskInput, OutputEvent, Task, TaskDeckContext } from "./types";
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
 
@@ -12,10 +12,12 @@ type ServerMessage =
       tasks: Task[];
       runningTaskId?: string | null;
       runningTaskIds?: string[];
+      codexModels?: CodexModel[];
     }
   | { type: "tasks"; tasks: Task[]; runningTaskId?: string | null; runningTaskIds?: string[] }
   | { type: "started"; taskId: string }
   | { type: "output"; taskId: string; data: string }
+  | { type: "codex-models"; models: CodexModel[] }
   | { type: "error"; message: string };
 
 export function App() {
@@ -27,6 +29,7 @@ export function App() {
   const [taskDeckContext, setTaskDeckContext] = useState<TaskDeckContext | null>(null);
   const [composerValue, setComposerValue] = useState("");
   const [outputMessage, setOutputMessage] = useState("");
+  const [codexModels, setCodexModels] = useState<CodexModel[]>([]);
   const socketRef = useRef<WebSocket | null>(null);
   const outputSeqRef = useRef(0);
   const selectedTaskIdRef = useRef<string | null>(null);
@@ -78,6 +81,9 @@ export function App() {
           const nextRunningTaskIds = getRunningTaskIdsFromMessage(message);
           setTasks(message.tasks);
           setRunningTaskIds(nextRunningTaskIds);
+          if (message.type === "snapshot" && message.codexModels) {
+            setCodexModels(message.codexModels);
+          }
           setSelectedTaskId((current) => {
             if (current && message.tasks.some((task) => task.id === current)) {
               return current;
@@ -98,6 +104,11 @@ export function App() {
         if (message.type === "output") {
           outputSeqRef.current += 1;
           setLastOutput({ seq: outputSeqRef.current, taskId: message.taskId, data: message.data });
+          return;
+        }
+
+        if (message.type === "codex-models") {
+          setCodexModels(message.models);
           return;
         }
 
@@ -245,6 +256,7 @@ export function App() {
           onToggleInputLock={toggleInputLock}
         />
         <OutputPane
+          codexModels={codexModels}
           composerValue={composerValue}
           isConnected={connectionState === "connected"}
           task={selectedTask}
