@@ -1375,14 +1375,26 @@ dd {
 }
 
 .output-surface {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   min-height: 100%;
   margin: 0;
   color: var(--text-secondary);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family:
+    "SFMono-Regular",
+    Consolas,
+    "Liberation Mono",
+    "Noto Sans Mono CJK JP",
+    "Noto Sans Mono JP",
+    "Source Han Mono",
+    "Source Han Code JP",
+    "Yu Gothic Mono",
+    "MS Gothic",
+    monospace;
   line-height: 1.45;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .right-rail {
