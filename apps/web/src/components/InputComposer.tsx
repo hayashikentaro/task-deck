@@ -37,6 +37,7 @@ export function InputComposer({ codexModels, isConnected, task, value, onValueCh
   const isCodexAppServerTurnActive = Boolean(isCodexAppServerTask && task?.codexAppServerTurnActive);
   const canInteractWithRunningTask = Boolean(task && task.status === "running" && isConnected);
   const canStopCodexAppServerTurn = Boolean(canInteractWithRunningTask && isCodexAppServerTurnActive && !isStopRequested);
+  const canEditComposer = canInteractWithRunningTask && !isInputLocked && !isCodexAppServerNeedsAttention;
   const canSend = canInteractWithRunningTask && !isInputLocked && !isCodexAppServerTurnActive && !isCodexAppServerNeedsAttention;
   const hasComposerContent = Boolean(value || selectedImages.length);
   const canSubmit = canSend && hasComposerContent && !isUploadingAttachments;
@@ -291,7 +292,7 @@ export function InputComposer({ codexModels, isConnected, task, value, onValueCh
           autoCapitalize="off"
           autoComplete="off"
           autoCorrect="off"
-          disabled={!canSend}
+          disabled={!canEditComposer}
           onChange={(event) => onValueChange(event.target.value)}
           onCompositionEnd={() => setIsComposing(false)}
           onCompositionStart={() => setIsComposing(true)}
