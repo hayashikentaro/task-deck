@@ -96,8 +96,10 @@ Agent profiles merge by `id`: built-in defaults load first, then committed confi
 TaskDeck can send a manual one-way decision request to Decision Gateway from a task card. Configure the gateway URL before starting TaskDeck:
 
 ```bash
-DECISION_GATEWAY_URL=http://localhost:3000 npm run dev
+PORT=3001 DECISION_GATEWAY_URL=http://localhost:3000 npm run dev
 ```
+
+The `PORT=3001` example keeps TaskDeck from colliding with a local Decision Gateway dev server running on `localhost:3000`. If Decision Gateway is running elsewhere, set `DECISION_GATEWAY_URL` to that base URL.
 
 When configured, use **Ask for decision** on a task card. TaskDeck sends source context and a bounded redacted recent-output snippet to `POST /api/decision-requests` on Decision Gateway, then shows the returned Decision Workspace URL.
 
