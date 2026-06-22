@@ -106,6 +106,7 @@ export type Task = {
   initialInstruction?: string;
   attachments?: TaskAttachment[];
   codexAppServerRequest?: CodexAppServerRequest | null;
+  codexAppServerTurnActive?: boolean;
 };
 
 export type OutputEvent = {

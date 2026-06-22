@@ -26,6 +26,7 @@ export function InputComposer({ codexModels, isConnected, task, value, onValueCh
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const [selectedModel, setSelectedModel] = useState("");
   const [selectedReasoningEffort, setSelectedReasoningEffort] = useState("");
+  const [isStopRequested, setIsStopRequested] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const isInputLocked = Boolean(task?.inputLockedAt);
@@ -33,23 +34,23 @@ export function InputComposer({ codexModels, isConnected, task, value, onValueCh
   const codexAppServerRequest = task?.codexAppServerRequest ?? null;
   const needsUserAttention = taskNeedsUserAttention(task);
   const isCodexAppServerNeedsAttention = Boolean(isCodexAppServerTask && needsUserAttention);
-  const isActiveInstruction = Boolean(task?.agentState === "working" && !needsUserAttention);
-  const isUnsupportedCancelActiveTask = Boolean(isCodexAppServerTask && isActiveInstruction);
+  const isCodexAppServerTurnActive = Boolean(isCodexAppServerTask && task?.codexAppServerTurnActive);
   const canInteractWithRunningTask = Boolean(task && task.status === "running" && isConnected);
-  const canSend = canInteractWithRunningTask && !isInputLocked && !isUnsupportedCancelActiveTask && !isCodexAppServerNeedsAttention;
+  const canStopCodexAppServerTurn = Boolean(canInteractWithRunningTask && isCodexAppServerTurnActive && !isStopRequested);
+  const canSend = canInteractWithRunningTask && !isInputLocked && !isCodexAppServerTurnActive && !isCodexAppServerNeedsAttention;
   const hasComposerContent = Boolean(value || selectedImages.length);
   const canSubmit = canSend && hasComposerContent && !isUploadingAttachments;
   const canResolveCodexAppServerRequest = Boolean(canInteractWithRunningTask && codexAppServerRequest);
-  const actionLabel = isUnsupportedCancelActiveTask
-    ? "Task is running"
+  const actionLabel = isCodexAppServerTurnActive
+    ? "Stop active Codex turn"
     : "Send input to running task";
-  const modeText = getComposerMode(task, isConnected, { isCodexAppServerNeedsAttention, isUnsupportedCancelActiveTask });
+  const modeText = getComposerMode(task, isConnected, { isCodexAppServerNeedsAttention, isCodexAppServerTurnActive });
   const inputPlaceholder = canSend
     ? isCodexAppServerTask
       ? "Send input to Codex App Server task"
       : "Input to running task"
     : modeText;
-  const inputState = getComposerInputState({ task, isConnected, isUploadingAttachments });
+  const inputState = getComposerInputState({ task, isConnected, isUploadingAttachments, isCodexAppServerTurnActive });
   const modelOptions = useMemo(
     () => ensureSelectedModelOption(codexModels, selectedModel || task?.agentModel || ""),
     [codexModels, selectedModel, task?.agentModel],
@@ -59,12 +60,27 @@ export function InputComposer({ codexModels, isConnected, task, value, onValueCh
     () => getReasoningEffortOptions(selectedModelOption, selectedReasoningEffort),
     [selectedModelOption, selectedReasoningEffort],
   );
-  const canConfigureTurn = Boolean(isCodexAppServerTask && canInteractWithRunningTask && !isInputLocked);
+  const canConfigureTurn = Boolean(isCodexAppServerTask && canInteractWithRunningTask && !isInputLocked && !isCodexAppServerTurnActive);
 
   useEffect(() => {
     setSelectedModel(String(task?.agentModel || "").trim());
     setSelectedReasoningEffort(String(task?.agentReasoningEffort || "").trim());
+    setIsStopRequested(false);
   }, [task?.agentModel, task?.agentReasoningEffort, task?.id]);
+
+  useEffect(() => {
+    if (!isCodexAppServerTurnActive) {
+      setIsStopRequested(false);
+    }
+  }, [isCodexAppServerTurnActive]);
+
+  useEffect(() => {
+    if (!isStopRequested || !isCodexAppServerTurnActive) {
+      return;
+    }
+    const retryTimer = window.setTimeout(() => setIsStopRequested(false), 2000);
+    return () => window.clearTimeout(retryTimer);
+  }, [isCodexAppServerTurnActive, isStopRequested]);
 
   useEffect(() => {
     if (!selectedModel && modelOptions.length > 0) {
@@ -92,6 +108,10 @@ export function InputComposer({ codexModels, isConnected, task, value, onValueCh
   };
 
   const handlePrimaryAction = () => {
+    if (isCodexAppServerTurnActive) {
+      stopCodexAppServerTurn();
+      return;
+    }
     sendValue();
   };
 
@@ -142,6 +162,19 @@ export function InputComposer({ codexModels, isConnected, task, value, onValueCh
       requestId: codexAppServerRequest.id,
       action,
     });
+  };
+
+  const stopCodexAppServerTurn = () => {
+    if (!task || !canStopCodexAppServerTurn) {
+      return;
+    }
+    const didSend = send({
+      type: "codex-app-server-interrupt-turn",
+      taskId: task.id,
+    });
+    if (didSend) {
+      setIsStopRequested(true);
+    }
   };
 
   const sendValue = async () => {
@@ -325,14 +358,21 @@ export function InputComposer({ codexModels, isConnected, task, value, onValueCh
             <button
               aria-label={actionLabel}
               className="input-primary-action-button"
-              disabled={!canSubmit}
+              data-action={isCodexAppServerTurnActive ? "stop" : "send"}
+              disabled={isCodexAppServerTurnActive ? !canStopCodexAppServerTurn : !canSubmit}
               onClick={handlePrimaryAction}
               title={actionLabel}
               type="button"
             >
-              <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
-                <path d="M8 13V3M4 7l4-4 4 4" />
-              </svg>
+              {isCodexAppServerTurnActive ? (
+                <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+                  <rect height="7" rx="1" width="7" x="4.5" y="4.5" />
+                </svg>
+              ) : (
+                <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+                  <path d="M8 13V3M4 7l4-4 4 4" />
+                </svg>
+              )}
             </button>
           </div>
         </div>
@@ -481,8 +521,8 @@ function getComposerMode(
   isConnected: boolean,
   {
     isCodexAppServerNeedsAttention = false,
-    isUnsupportedCancelActiveTask = false,
-  }: { isCodexAppServerNeedsAttention?: boolean; isUnsupportedCancelActiveTask?: boolean } = {},
+    isCodexAppServerTurnActive = false,
+  }: { isCodexAppServerNeedsAttention?: boolean; isCodexAppServerTurnActive?: boolean } = {},
 ) {
   if (!task) {
     return "No task selected";
@@ -499,8 +539,8 @@ function getComposerMode(
   if (isCodexAppServerNeedsAttention) {
     return "Task needs your attention";
   }
-  if (isUnsupportedCancelActiveTask) {
-    return "Task is running";
+  if (isCodexAppServerTurnActive) {
+    return "Codex is running";
   }
   return "Interactive task";
 }
@@ -509,9 +549,11 @@ function getComposerInputState({
   task,
   isConnected,
   isUploadingAttachments,
+  isCodexAppServerTurnActive,
 }: {
   isConnected: boolean;
   isUploadingAttachments: boolean;
+  isCodexAppServerTurnActive: boolean;
   task: Task | null;
 }): ComposerInputState {
   if (!task) {
@@ -523,7 +565,7 @@ function getComposerInputState({
   if (task.inputLockedAt) {
     return "locked";
   }
-  if (isUploadingAttachments) {
+  if (isUploadingAttachments || isCodexAppServerTurnActive) {
     return "busy";
   }
   if (task.status !== "running") {

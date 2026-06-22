@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCodexAppServerThreadStartParams,
+  buildCodexAppServerTurnInterruptParams,
   buildCodexAppServerTurnStartParams,
   codexAppServerThreadIdFromMessage,
   isCodexAppServerAuthError,
@@ -87,6 +88,16 @@ describe("Codex App Server helper contracts", () => {
       input: [{ type: "text", text: "Review this change." }],
       model: "gpt-5.5",
       effort: "xhigh",
+    });
+  });
+
+  it("builds App Server turn interrupt params", () => {
+    expect(buildCodexAppServerTurnInterruptParams({
+      threadId: " thread-1 ",
+      turnId: " turn-1 ",
+    })).toEqual({
+      threadId: "thread-1",
+      turnId: "turn-1",
     });
   });
 

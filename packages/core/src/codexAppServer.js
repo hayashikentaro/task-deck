@@ -68,6 +68,13 @@ export function buildCodexAppServerTurnStartParams({ threadId, text, model = "",
   };
 }
 
+export function buildCodexAppServerTurnInterruptParams({ threadId, turnId }) {
+  return {
+    threadId: String(threadId || "").trim(),
+    turnId: String(turnId || "").trim(),
+  };
+}
+
 export function normalizeCodexAppServerModels(rawModels) {
   if (!Array.isArray(rawModels)) {
     return [];

@@ -40,6 +40,7 @@ import {
 } from "@taskdeck/core/manager-inbox";
 import {
   buildCodexAppServerThreadStartParams,
+  buildCodexAppServerTurnInterruptParams,
   buildCodexAppServerTurnStartParams,
   codexAppServerThreadIdFromMessage,
   isCodexAppServerAuthError,
@@ -640,6 +641,15 @@ wss.on("connection", (socket) => {
       return;
     }
 
+    if (message.type === "codex-app-server-interrupt-turn") {
+      const taskId = String(message.taskId || "").trim();
+      const result = interruptCodexAppServerTurn(taskId);
+      if (!result.ok) {
+        send(socket, { type: "error", message: result.error || "Unable to stop Codex App Server turn." });
+      }
+      return;
+    }
+
     send(socket, { type: "error", message: `Unsupported message type: ${message.type}` });
   });
 
@@ -1178,6 +1188,52 @@ function sendTaskInputToCodexAppServer(taskId, data, source = "client", turnSele
   return { ok: true };
 }
 
+function interruptCodexAppServerTurn(taskId) {
+  const task = tasks.get(taskId);
+  if (!task) {
+    return { ok: false, error: "Task not found." };
+  }
+  if (task.status !== TaskStatus.RUNNING) {
+    return { ok: false, error: "Only running tasks can be stopped." };
+  }
+  if (isCodexAppServerNativeSubagentTask(task)) {
+    return { ok: false, error: "Native subagent cards are read-only." };
+  }
+
+  const activeAppServer = activeCodexThreadSessions.get(taskId);
+  if (!activeAppServer) {
+    return { ok: false, error: "No active Codex App Server thread session is available." };
+  }
+  if (!activeAppServer.threadId || !activeAppServer.activeTurnId || !activeAppServer.turnActive) {
+    return { ok: false, error: "No active Codex App Server turn is available to stop." };
+  }
+
+  const requestId = sendCodexAppServerRequest(
+    activeAppServer,
+    "turn/interrupt",
+    buildCodexAppServerTurnInterruptParams({
+      threadId: activeAppServer.threadId,
+      turnId: activeAppServer.activeTurnId,
+    }),
+  );
+  if (requestId === null) {
+    return { ok: false, error: "Codex App Server runtime is not writable." };
+  }
+
+  appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Stop requested for active Codex App Server turn.\n");
+  updateAgentStateFromTaskDeckEvent(taskId, AgentState.WORKING, {
+    reason: "Stop requested for active Codex App Server turn.",
+    source: AgentStateSource.TASKDECK_EVENT,
+    confidence: AgentStateConfidence.HIGH,
+    attentionState: AttentionState.NONE,
+    attentionReason: "Stop requested for active Codex App Server turn.",
+    attentionSource: AgentStateSource.TASKDECK_EVENT,
+    attentionConfidence: AgentStateConfidence.HIGH,
+  });
+  broadcastTasks();
+  return { ok: true };
+}
+
 function normalizeCodexAppServerInput(data) {
   return String(data || "")
     .replace(/\r/g, "\n")
@@ -1621,6 +1677,10 @@ function handleCodexAppServerResponse(activeAppServer, message, pendingRequest =
       appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server model list unavailable: ${JSON.stringify(message.error)}\n`);
       return;
     }
+    if (method === "turn/interrupt") {
+      appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server turn stop failed: ${JSON.stringify(message.error)}\n`);
+      return;
+    }
     if (codexRuntimeRequestCanMoveToAnotherThreadSession(method)) {
       finishCodexAppServerRuntime(activeRuntime, {
         exitCode: 1,
@@ -1715,6 +1775,12 @@ function handleCodexAppServerResponse(activeAppServer, message, pendingRequest =
     activeAppServer.turnActive = true;
     activeAppServer.assistantMessageOpen = false;
     appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server turn accepted${turnId ? `: ${turnId}` : ""}.\n`);
+    broadcastTasks();
+    return;
+  }
+
+  if (method === "turn/interrupt") {
+    appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server turn stop accepted.\n");
     return;
   }
 }
@@ -2231,6 +2297,10 @@ function handleCodexAppServerNotification(activeAppServer, message) {
       updateCodexAppServerNativeSubagentWorking(activeAppServer, threadId, "Codex App Server native subagent turn started.");
       return;
     }
+    const turnId = String(message.params?.turn?.id || message.params?.turnId || "").trim();
+    if (turnId) {
+      activeAppServer.activeTurnId = turnId;
+    }
     activeAppServer.turnActive = true;
     activeAppServer.assistantMessageOpen = false;
     updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WORKING, {
@@ -2280,6 +2350,11 @@ function handleCodexAppServerNotification(activeAppServer, message) {
     activeAppServer.activeTurnId = "";
     activeAppServer.turnActive = false;
     activeAppServer.assistantMessageOpen = false;
+    if (codexAppServerTurnWasInterrupted(message.params)) {
+      appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server turn stopped; ready for next input.\n");
+      updateCodexAppServerReady(activeAppServer, "Codex App Server turn stopped.");
+      return;
+    }
     appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server turn completed; ready for next input.\n");
     updateCodexAppServerReady(activeAppServer, "Codex App Server turn completed.");
     return;
@@ -2793,6 +2868,11 @@ function updateCodexAppServerStatus(activeAppServer, status) {
       attentionConfidence: AgentStateConfidence.HIGH,
     });
   }
+}
+
+function codexAppServerTurnWasInterrupted(params) {
+  const status = String(params?.status || params?.turn?.status || "").trim();
+  return status === "interrupted";
 }
 
 function flushCodexAppServerPendingInputs(activeAppServer) {
@@ -4460,10 +4540,12 @@ function serializeTaskForClient(task) {
     return null;
   }
   const serializedTask = serializeTask(task);
+  const activeAppServer = activeCodexThreadSessions.get(task.id);
   return {
     ...serializedTask,
     sessionLabel: taskSessionLabel(task),
     codexAppServerRequest: codexAppServerRequestForClient(task.id),
+    codexAppServerTurnActive: Boolean(activeAppServer?.turnActive && activeAppServer?.activeTurnId),
   };
 }
 

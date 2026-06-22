@@ -1655,6 +1655,17 @@ dd {
   background: var(--text-secondary);
 }
 
+.input-primary-action-button[data-action="stop"] {
+  border-color: color-mix(in srgb, var(--status-stopped) 72%, var(--line-strong));
+  background: var(--status-stopped);
+  color: var(--surface-input);
+}
+
+.input-primary-action-button[data-action="stop"]:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--status-stopped) 86%, var(--line-strong));
+  background: color-mix(in srgb, var(--status-stopped) 82%, var(--text));
+}
+
 .input-primary-action-button:disabled {
   border-color: var(--line);
   background: var(--panel-soft);
