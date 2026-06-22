@@ -351,7 +351,7 @@ export function TaskList({
                         ? "Send a manual decision request to Decision Gateway"
                         : "Set DECISION_GATEWAY_URL to enable Decision Gateway"
                   }
-                  variant="secondary"
+                  variant="ghost"
                 >
                   <svg aria-hidden="true" className="task-decision-gateway-icon" focusable="false" viewBox="0 0 16 16">
                     <path d="M8 2.5v7" />
