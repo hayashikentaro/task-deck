@@ -10,6 +10,12 @@ let child = null;
 let isShuttingDown = false;
 let restartTimer = null;
 
+function createChildEnv() {
+  const env = { ...process.env };
+  delete env._VOLTA_TOOL_RECURSION;
+  return env;
+}
+
 function startServer() {
   if (child) {
     return;
@@ -17,7 +23,7 @@ function startServer() {
 
   child = spawn(serverCommand, serverArgs, {
     cwd: process.cwd(),
-    env: process.env,
+    env: createChildEnv(),
     stdio: "inherit",
   });
 

@@ -160,6 +160,12 @@ const managerActionTypes = new Set(["ack", "review", "close"]);
 
 app.use(express.json());
 
+function createProcessEnvForChild() {
+  const env = { ...process.env };
+  delete env._VOLTA_TOOL_RECURSION;
+  return env;
+}
+
 app.get("/api/context", async (_request, response) => {
   const projectRoots = await buildProjectRoots();
   const projectSuggestions = await buildProjectSuggestions(projectRoots);
@@ -921,7 +927,7 @@ function startOrReuseCodexAppServerRuntime({ launchCommand, task }) {
 
   const runtimeProcess = spawn(shell, ["-lc", launchCommand], {
     cwd: repoRoot,
-    env: process.env,
+    env: createProcessEnvForChild(),
     stdio: ["pipe", "pipe", "pipe"],
   });
   const nextRuntime = createActiveCodexRuntime({
