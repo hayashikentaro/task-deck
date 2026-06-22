@@ -792,7 +792,8 @@ dd {
   overflow: hidden;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 2px;
+  column-gap: 6px;
+  row-gap: 2px;
   align-items: start;
   border: 1px solid color-mix(in srgb, var(--task-card-border) 72%, var(--line));
   border-radius: 6px;
@@ -941,7 +942,7 @@ dd {
   background: transparent;
   color: inherit;
   cursor: pointer;
-  padding: 10px 36px 10px 14px;
+  padding: 10px 0 10px 14px;
   text-align: left;
 }
 
@@ -1931,8 +1932,12 @@ dd {
 
 .task-card-actions {
   display: flex;
+  flex-wrap: nowrap;
   gap: 8px;
   align-items: center;
+  justify-content: flex-end;
+  min-width: max-content;
+  max-width: 202px;
   padding: 10px 8px 0 0;
 }
 
@@ -1947,8 +1952,9 @@ dd {
 }
 
 .task-decision-gateway-button {
-  min-width: 0;
-  max-width: 124px;
+  flex: 0 1 138px;
+  min-width: 118px;
+  max-width: 138px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
