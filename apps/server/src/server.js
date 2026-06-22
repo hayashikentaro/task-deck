@@ -128,8 +128,10 @@ const clients = new Set();
 const tasks = new Map();
 const logs = new Map();
 const taskLogWriteQueues = new Map();
+const taskOutputSequences = new Map();
 const sessionLabels = new Map();
 let presets = [];
+let outputSequence = 0;
 const maxLogLength = 250_000;
 const childStatusPollIntervalMs = 2000;
 const defaultContainerWorkspaceRoot = "/workspace";
@@ -425,6 +427,8 @@ app.get("/api/tasks/:taskId/logs", (request, response) => {
         taskId: request.params.taskId,
         logs: logsForResponse,
         truncated: logsForResponse.length < taskLog.length,
+        outputSeq: outputSequence,
+        taskSeq: outputSequenceForTask(request.params.taskId),
       });
     })
     .catch((error) => {
@@ -578,6 +582,7 @@ wss.on("connection", (socket) => {
     runningTaskId: getPrimaryRunningTaskId(),
     runningTaskIds: getRunningTaskIds(),
     codexModels,
+    outputSeq: outputSequence,
   });
 
   socket.on("message", (rawMessage) => {
@@ -785,6 +790,7 @@ async function startTaskNow({
   });
   tasks.set(task.id, task);
   logs.set(task.id, "");
+  taskOutputSequences.set(task.id, 0);
   persistTasks();
   savePreset({
     title: task.title,
@@ -849,9 +855,11 @@ function sendTaskInput(taskId, data, source = "client", turnSelection = {}) {
 async function startCodexAppServerThreadSession({ task, launchCommand, socket }) {
   const command = String(launchCommand || task.command || "").trim();
   if (!command) {
-    appendLog(task.id, "\r\n[TaskDeck] Failed to start Codex App Server: empty launch command.\r\n");
+    appendAndBroadcast(task.id, "\r\n[TaskDeck] Failed to start Codex App Server: empty launch command.\r\n", {
+      role: "taskdeck",
+      kind: "status",
+    });
     setTask(markTaskExited(tasks.get(task.id), { exitCode: 1, signal: null }));
-    broadcast({ type: "output", taskId: task.id, data: logs.get(task.id) });
     broadcastTasks();
     return { ok: true, taskId: task.id };
   }
@@ -876,6 +884,7 @@ async function startCodexAppServerThreadSession({ task, launchCommand, socket })
     activeRuntime.initialized
       ? "[TaskDeck] Reusing shared Codex App Server runtime; starting thread session.\n"
       : "[TaskDeck] Starting shared Codex App Server runtime and thread session.\n",
+    { role: "taskdeck", kind: "status" },
   );
 
   if (activeRuntime.initialized) {
@@ -1018,7 +1027,7 @@ function finishCodexAppServerRuntime(activeRuntime, { exitCode, signal, statusMe
     if (!task) {
       continue;
     }
-    appendAndBroadcast(taskId, `${statusMessage}\n`);
+    appendAndBroadcast(taskId, `${statusMessage}\n`, { role: "taskdeck", kind: "status" });
     if (task.status !== TaskStatus.RUNNING) {
       continue;
     }
@@ -1181,7 +1190,10 @@ function sendTaskInputToCodexAppServer(taskId, data, source = "client", turnSele
 
   if (!activeAppServer.threadId) {
     activeAppServer.pendingInputs.push(turnInput);
-    appendAndBroadcast(taskId, "[TaskDeck] Queued input until Codex App Server thread is ready.\n");
+    appendAndBroadcast(taskId, "[TaskDeck] Queued input until Codex App Server thread is ready.\n", {
+      role: "taskdeck",
+      kind: "status",
+    });
     return { ok: true };
   }
 
@@ -1411,7 +1423,10 @@ function sendCodexAppServerRequest(activeAppServer, method, params) {
   const message = { jsonrpc: "2.0", id, method, params };
   activeRuntime.pendingRequests.set(id, { method, params, threadSession: activeAppServer });
   if (codexAppServerDebugEnabled) {
-    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`);
+    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`, {
+      role: "taskdeck",
+      kind: "debug",
+    });
   }
   if (!writeCodexAppServerRuntimeMessage(activeAppServer, message)) {
     activeRuntime.pendingRequests.delete(id);
@@ -1423,7 +1438,10 @@ function sendCodexAppServerRequest(activeAppServer, method, params) {
 function sendCodexAppServerResponse(activeAppServer, id, result) {
   const message = { jsonrpc: "2.0", id, result };
   if (codexAppServerDebugEnabled) {
-    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`);
+    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`, {
+      role: "taskdeck",
+      kind: "debug",
+    });
   }
   writeCodexAppServerRuntimeMessage(activeAppServer, message);
 }
@@ -1438,7 +1456,10 @@ function sendCodexAppServerRequestError(activeAppServer, id, messageText, code =
     },
   };
   if (codexAppServerDebugEnabled) {
-    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`);
+    appendAndBroadcast(activeAppServer.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`, {
+      role: "taskdeck",
+      kind: "debug",
+    });
   }
   writeCodexAppServerRuntimeMessage(activeAppServer, message);
 }
@@ -1536,7 +1557,7 @@ function appendCodexRuntimeDiagnostic(activeRuntime, data) {
   if (!activeAppServer) {
     return;
   }
-  appendAndBroadcast(activeAppServer.taskId, data);
+  appendAndBroadcast(activeAppServer.taskId, data, { role: "taskdeck", kind: "diagnostic" });
 }
 
 function isIgnorableCodexAppServerTextDiagnostic(line) {
@@ -2497,7 +2518,10 @@ function handleCodexAppServerAgentMessageDelta(activeAppServer, params) {
   if (!delta) {
     return;
   }
-  appendAndBroadcast(taskId, formatCodexAppServerAssistantText(activeAppServer, delta, taskId));
+  appendAndBroadcast(taskId, formatCodexAppServerAssistantText(activeAppServer, delta, taskId), {
+    role: "assistant",
+    kind: "assistant_delta",
+  });
 }
 
 function formatCodexAppServerAssistantText(activeAppServer, delta, taskId = activeAppServer.taskId) {
@@ -2519,7 +2543,7 @@ function appendCodexAppServerUserInput(activeAppServer, text, taskId = activeApp
   setCodexAppServerAssistantMessageOpen(activeAppServer, taskId, false);
   const currentLog = logs.get(taskId) || "";
   const prefix = currentLog && !currentLog.endsWith("\n") ? "\n" : "";
-  appendAndBroadcast(taskId, `${prefix}[You]\n${normalizedText}\n`);
+  appendAndBroadcast(taskId, `${prefix}[You]\n${normalizedText}\n`, { role: "user", kind: "user_input" });
 }
 
 function appendCodexAppServerStatus(activeAppServer, data) {
@@ -2531,7 +2555,7 @@ function appendCodexAppServerStatusForTask(activeAppServer, taskId, data) {
   const currentLog = logs.get(taskId) || "";
   const prefix = currentLog && !currentLog.endsWith("\n") ? "\n" : "";
   const suffix = data.endsWith("\n") ? "" : "\n";
-  appendAndBroadcast(taskId, `${prefix}${data}${suffix}`);
+  appendAndBroadcast(taskId, `${prefix}${data}${suffix}`, { role: "taskdeck", kind: "status" });
 }
 
 function appendCodexAppServerDebugDiagnostic(activeAppServer, data, taskId = activeAppServer.taskId) {
@@ -2541,7 +2565,7 @@ function appendCodexAppServerDebugDiagnostic(activeAppServer, data, taskId = act
   const currentLog = logs.get(taskId) || "";
   const prefix = currentLog && !currentLog.endsWith("\n") ? "\n" : "";
   const suffix = data.endsWith("\n") ? "" : "\n";
-  appendAndBroadcast(taskId, `${prefix}${data}${suffix}`);
+  appendAndBroadcast(taskId, `${prefix}${data}${suffix}`, { role: "taskdeck", kind: "debug" });
 }
 
 function appendCodexAppServerCommandOutput(activeAppServer, output, taskId = activeAppServer.taskId) {
@@ -2685,6 +2709,7 @@ function materializeCodexAppServerNativeSubagent(activeAppServer, threadId, item
 
   tasks.set(subagentTask.id, subagentTask);
   logs.set(subagentTask.id, "");
+  taskOutputSequences.set(subagentTask.id, 0);
   activeAppServer.nativeSubagentTaskIdsByThreadId.set(threadId, subagentTask.id);
   taskIdByCodexThreadId.set(threadId, subagentTask.id);
   persistTasks();
@@ -2923,9 +2948,41 @@ function isCodexAppServerUserInputRequest(method) {
   return method.includes("requestUserInput") || method.includes("elicitation/request");
 }
 
-function appendAndBroadcast(taskId, data) {
+function appendAndBroadcast(taskId, data, metadata = {}) {
   appendLog(taskId, data);
-  broadcast({ type: "output", taskId, data });
+  broadcast(buildOutputEvent(taskId, data, metadata));
+}
+
+function buildOutputEvent(taskId, data, metadata = {}) {
+  outputSequence += 1;
+  const taskSeq = outputSequenceForTask(taskId) + 1;
+  taskOutputSequences.set(taskId, taskSeq);
+  return {
+    type: "output",
+    taskId,
+    data,
+    seq: outputSequence,
+    taskSeq,
+    role: outputEventRole(metadata.role),
+    kind: outputEventKind(metadata.kind),
+  };
+}
+
+function outputSequenceForTask(taskId) {
+  return taskOutputSequences.get(taskId) || 0;
+}
+
+function outputEventRole(role) {
+  const normalizedRole = String(role || "").trim();
+  if (normalizedRole === "user" || normalizedRole === "assistant" || normalizedRole === "taskdeck") {
+    return normalizedRole;
+  }
+  return "taskdeck";
+}
+
+function outputEventKind(kind) {
+  const normalizedKind = String(kind || "").trim();
+  return normalizedKind || "log";
 }
 
 async function validateCwd(cwd) {
@@ -4755,6 +4812,7 @@ function broadcastPresets() {
 async function clearTask(taskId) {
   tasks.delete(taskId);
   logs.delete(taskId);
+  taskOutputSequences.delete(taskId);
   await deleteTaskLog(taskId);
   await deleteTaskAttachments(taskId);
 }
@@ -4837,7 +4895,10 @@ function cancelCodexAppServerLoginIfNeeded(activeRuntime, logThreadSession = nul
     if (codexAppServerDebugEnabled) {
       const threadSession = logThreadSession || defaultCodexThreadSessionForRuntime(activeRuntime);
       if (threadSession) {
-        appendAndBroadcast(threadSession.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`);
+        appendAndBroadcast(threadSession.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`, {
+          role: "taskdeck",
+          kind: "debug",
+        });
       }
     }
     activeRuntime.process.stdin.write(`${JSON.stringify(message)}\n`);

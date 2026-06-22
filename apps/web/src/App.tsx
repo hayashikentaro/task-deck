@@ -4,6 +4,7 @@ import { TaskList } from "./components/TaskList";
 import { OutputPane } from "./components/OutputPane";
 import type { CodexModel, CreateTaskInput, OutputEvent, Task, TaskDeckContext } from "./types";
 import type { SelectedImageAttachment } from "./components/InputComposer";
+import { appendOutputEventToQueue } from "./outputReplay";
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
 
@@ -14,10 +15,19 @@ type ServerMessage =
       runningTaskId?: string | null;
       runningTaskIds?: string[];
       codexModels?: CodexModel[];
+      outputSeq?: number;
     }
   | { type: "tasks"; tasks: Task[]; runningTaskId?: string | null; runningTaskIds?: string[] }
   | { type: "started"; taskId: string }
-  | { type: "output"; taskId: string; data: string }
+  | {
+      type: "output";
+      taskId: string;
+      data: string;
+      seq?: number;
+      taskSeq?: number;
+      role?: "user" | "assistant" | "taskdeck";
+      kind?: string;
+    }
   | { type: "codex-models"; models: CodexModel[] }
   | { type: "error"; message: string };
 
@@ -26,14 +36,16 @@ export function App() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [runningTaskIds, setRunningTaskIds] = useState<string[]>([]);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
-  const [lastOutput, setLastOutput] = useState<OutputEvent | null>(null);
+  const [outputEvents, setOutputEvents] = useState<OutputEvent[]>([]);
+  const [outputReloadToken, setOutputReloadToken] = useState(0);
   const [taskDeckContext, setTaskDeckContext] = useState<TaskDeckContext | null>(null);
   const [composerDraftsByTaskId, setComposerDraftsByTaskId] = useState<Record<string, string>>({});
   const [composerImagesByTaskId, setComposerImagesByTaskId] = useState<Record<string, SelectedImageAttachment[]>>({});
   const [outputMessage, setOutputMessage] = useState("");
   const [codexModels, setCodexModels] = useState<CodexModel[]>([]);
   const socketRef = useRef<WebSocket | null>(null);
-  const outputSeqRef = useRef(0);
+  const outputQueueSeqRef = useRef(0);
+  const latestServerOutputSeqRef = useRef(0);
   const selectedTaskIdRef = useRef<string | null>(null);
   const runningTaskIdsRef = useRef<string[]>([]);
   const tasksRef = useRef<Task[]>([]);
@@ -87,6 +99,9 @@ export function App() {
 
         if (message.type === "snapshot" || message.type === "tasks") {
           const nextRunningTaskIds = getRunningTaskIdsFromMessage(message);
+          if (message.type === "snapshot") {
+            handleSnapshotOutputSeq(message.outputSeq, latestServerOutputSeqRef, setOutputReloadToken);
+          }
           setTasks(message.tasks);
           setRunningTaskIds(nextRunningTaskIds);
           if (message.type === "snapshot" && message.codexModels) {
@@ -110,8 +125,27 @@ export function App() {
         }
 
         if (message.type === "output") {
-          outputSeqRef.current += 1;
-          setLastOutput({ seq: outputSeqRef.current, taskId: message.taskId, data: message.data });
+          const serverSeq = positiveInteger(message.seq);
+          if (serverSeq > 0) {
+            if (
+              latestServerOutputSeqRef.current > 0 &&
+              serverSeq > latestServerOutputSeqRef.current + 1
+            ) {
+              setOutputReloadToken((current) => current + 1);
+            }
+            latestServerOutputSeqRef.current = Math.max(latestServerOutputSeqRef.current, serverSeq);
+          }
+          outputQueueSeqRef.current += 1;
+          const outputEvent: OutputEvent = {
+            seq: outputQueueSeqRef.current,
+            taskId: message.taskId,
+            data: message.data,
+            serverSeq: serverSeq || undefined,
+            taskSeq: positiveInteger(message.taskSeq) || undefined,
+            role: message.role,
+            kind: message.kind,
+          };
+          setOutputEvents((current) => appendOutputEventToQueue(current, outputEvent));
           return;
         }
 
@@ -121,12 +155,16 @@ export function App() {
         }
 
         if (message.type === "error") {
-          outputSeqRef.current += 1;
-          setLastOutput({
-            seq: outputSeqRef.current,
+          outputQueueSeqRef.current += 1;
+          const outputEvent: OutputEvent = {
+            seq: outputQueueSeqRef.current,
             taskId: selectedTaskIdRef.current ?? runningTaskIdsRef.current[0] ?? "system",
             data: `\r\n[TaskDeck] ${message.message}\r\n`,
-          });
+            role: "taskdeck",
+            kind: "client_error",
+          };
+          setOutputEvents((current) => appendOutputEventToQueue(current, outputEvent));
+          return;
         }
       });
 
@@ -311,7 +349,8 @@ export function App() {
           isConnected={connectionState === "connected"}
           selectedImages={selectedImages}
           task={selectedTask}
-          lastOutput={lastOutput}
+          outputEvents={outputEvents}
+          outputReloadToken={outputReloadToken}
           outputMessage={outputMessage}
           onComposerValueChange={updateComposerValue}
           onOutputMessageChange={setOutputMessage}
@@ -335,6 +374,30 @@ function getRunningTaskIdsFromMessage(message: { runningTaskId?: string | null; 
     return message.runningTaskIds;
   }
   return message.runningTaskId ? [message.runningTaskId] : [];
+}
+
+function handleSnapshotOutputSeq(
+  outputSeq: unknown,
+  latestServerOutputSeqRef: { current: number },
+  requestOutputReload: (updater: (current: number) => number) => void,
+) {
+  const serverSeq = positiveInteger(outputSeq);
+  if (serverSeq === 0) {
+    if (latestServerOutputSeqRef.current > 0) {
+      requestOutputReload((current) => current + 1);
+      latestServerOutputSeqRef.current = 0;
+    }
+    return;
+  }
+  if (latestServerOutputSeqRef.current > 0 && serverSeq !== latestServerOutputSeqRef.current) {
+    requestOutputReload((current) => current + 1);
+  }
+  latestServerOutputSeqRef.current = Math.max(latestServerOutputSeqRef.current, serverSeq);
+}
+
+function positiveInteger(value: unknown) {
+  const numericValue = Number(value);
+  return Number.isInteger(numericValue) && numericValue > 0 ? numericValue : 0;
 }
 
 function updateSelectedTaskRecord<T>(record: Record<string, T>, taskId: string | null, value: T) {

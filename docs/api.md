@@ -67,7 +67,11 @@ The WebSocket composer sends `{ "type": "codex-app-server-interrupt-turn", "task
 
 `DELETE /api/tasks` bulk-clears tasks and their logs. `DELETE /api/tasks/:taskId` clears a single task; clearing an individual running task stops its active App Server runtime and removes that task.
 
-`GET /api/tasks/:taskId/logs?tail=200000` returns a bounded persisted log tail for output replay. `GET /api/tasks/:taskId/diff` returns compact diff context for task review.
+`GET /api/tasks/:taskId/logs?tail=200000` returns a bounded persisted log tail for output replay. The response also includes the current global `outputSeq` and task-local `taskSeq` so the web UI can reconcile live WebSocket output with the persisted log tail after reconnects or sequence gaps.
+
+WebSocket `output` messages include the appended `data`, global `seq`, task-local `taskSeq`, and lightweight `role`/`kind` metadata. The UI treats the persisted task log as the canonical replay source and uses the sequenced WebSocket stream only for live append updates.
+
+`GET /api/tasks/:taskId/diff` returns compact diff context for task review.
 
 ## Presets
 

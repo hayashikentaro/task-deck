@@ -4,6 +4,7 @@ import { taskIdentityCssProperties } from "../taskIdentity";
 import type { CodexModel, OutputEvent, Task } from "../types";
 import { IconButton } from "./ui/IconButton";
 import type { SelectedImageAttachment } from "./InputComposer";
+import { drainOutputEventsForTask, maxOutputQueueSeq } from "../outputReplay";
 
 type OutputPaneProps = {
   codexModels: CodexModel[];
@@ -11,7 +12,8 @@ type OutputPaneProps = {
   isConnected: boolean;
   selectedImages: SelectedImageAttachment[];
   task: Task | null;
-  lastOutput: OutputEvent | null;
+  outputEvents: OutputEvent[];
+  outputReloadToken: number;
   outputMessage: string;
   onSelectedImagesChange: (images: SelectedImageAttachment[]) => void;
   onComposerValueChange: (value: string) => void;
@@ -31,7 +33,8 @@ export function OutputPane({
   isConnected,
   selectedImages,
   task,
-  lastOutput,
+  outputEvents,
+  outputReloadToken,
   outputMessage,
   onSelectedImagesChange,
   onComposerValueChange,
@@ -41,6 +44,10 @@ export function OutputPane({
   const outputViewportRef = useRef<HTMLDivElement | null>(null);
   const scrollAnimationFrameRef = useRef<number | null>(null);
   const shouldStickToOutputBottomRef = useRef(true);
+  const outputEventsRef = useRef<OutputEvent[]>([]);
+  const loadingTaskIdRef = useRef<string | null>(null);
+  const appliedTaskSeqByTaskIdRef = useRef<Record<string, number>>({});
+  const lastAppliedQueueSeqRef = useRef(0);
   const [rawLog, setRawLog] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [outputFontSize, setOutputFontSize] = useState(readStoredOutputFontSize);
@@ -59,6 +66,10 @@ export function OutputPane({
     },
     [onOutputMessageChange],
   );
+
+  useEffect(() => {
+    outputEventsRef.current = outputEvents;
+  }, [outputEvents]);
 
   useEffect(() => {
     shouldStickToOutputBottomRef.current = true;
@@ -113,12 +124,16 @@ export function OutputPane({
     setRawLog("");
 
     if (!nextTask) {
+      loadingTaskIdRef.current = null;
       setRawLog("No task selected.\n");
       return undefined;
     }
 
+    const loadingTaskId = nextTask.id;
+    const reloadStartQueueSeq = maxOutputQueueSeq(outputEventsRef.current);
+    loadingTaskIdRef.current = loadingTaskId;
     const abortController = new AbortController();
-    const logUrl = `/api/tasks/${nextTask.id}/logs?tail=${logTailLength}`;
+    const logUrl = `/api/tasks/${loadingTaskId}/logs?tail=${logTailLength}`;
 
     fetch(logUrl, { signal: abortController.signal })
       .then((response) => {
@@ -127,22 +142,37 @@ export function OutputPane({
         }
         return response.json();
       })
-      .then((payload: { logs?: string; truncated?: boolean }) => {
+      .then((payload: { logs?: string; truncated?: boolean; taskSeq?: number }) => {
         if (abortController.signal.aborted) {
           return;
         }
         const logs = payload.logs || "";
+        const loadedTaskSeq = positiveInteger(payload.taskSeq);
         const replayHeader = payload.truncated
           ? `[TaskDeck] Showing last ${logTailLength.toLocaleString()} characters of persisted log.\n`
           : "";
-        setRawLog(`${replayHeader}${logs}`);
+        appliedTaskSeqByTaskIdRef.current[loadingTaskId] = loadedTaskSeq;
+        lastAppliedQueueSeqRef.current = Math.max(lastAppliedQueueSeqRef.current, reloadStartQueueSeq);
+
+        const queuedDrain = drainOutputEventsForTask({
+          events: outputEventsRef.current,
+          taskId: loadingTaskId,
+          lastQueueSeq: lastAppliedQueueSeqRef.current,
+          lastTaskSeq: loadedTaskSeq,
+        });
+        appliedTaskSeqByTaskIdRef.current[loadingTaskId] = queuedDrain.nextTaskSeq;
+        lastAppliedQueueSeqRef.current = queuedDrain.nextQueueSeq;
+
+        setRawLog(`${replayHeader}${logs}${queuedDrain.gap ? "" : queuedDrain.text}`);
         updateOutputMessage(payload.truncated ? `Showing last ${logTailLength.toLocaleString()} characters.` : "");
+        loadingTaskIdRef.current = null;
         scrollOutputToBottomAfterLayout();
       })
       .catch((error) => {
         if (abortController.signal.aborted) {
           return;
         }
+        loadingTaskIdRef.current = null;
         setRawLog("[TaskDeck] Unable to load task logs.\n");
         updateOutputMessage(error instanceof Error ? error.message : "Unable to load task logs.");
       });
@@ -153,19 +183,39 @@ export function OutputPane({
   useEffect(() => {
     setSearchTerm("");
     return loadPersistedLog(task);
-  }, [loadPersistedLog, taskId]);
+  }, [loadPersistedLog, outputReloadToken, taskId]);
 
   useEffect(() => {
-    if (!lastOutput || lastOutput.taskId !== task?.id) {
+    if (!taskId || loadingTaskIdRef.current === taskId) {
       return;
     }
+    const lastTaskSeq = appliedTaskSeqByTaskIdRef.current[taskId] || 0;
+    const drainedOutput = drainOutputEventsForTask({
+      events: outputEvents,
+      taskId,
+      lastQueueSeq: lastAppliedQueueSeqRef.current,
+      lastTaskSeq,
+    });
+
+    if (drainedOutput.gap) {
+      updateOutputMessage("Output stream gap detected; reloading persisted log.");
+      loadPersistedLog(task);
+      return;
+    }
+
+    appliedTaskSeqByTaskIdRef.current[taskId] = drainedOutput.nextTaskSeq;
+    lastAppliedQueueSeqRef.current = drainedOutput.nextQueueSeq;
+    if (!drainedOutput.text) {
+      return;
+    }
+
     const shouldStickToBottom = shouldStickToOutputBottomRef.current || isOutputViewportNearBottom();
     shouldStickToOutputBottomRef.current = shouldStickToBottom;
-    setRawLog((current) => `${current}${lastOutput.data}`.slice(-logTailLength));
+    setRawLog((current) => `${current}${drainedOutput.text}`.slice(-logTailLength));
     if (shouldStickToBottom) {
       scrollOutputToBottomAfterLayout();
     }
-  }, [isOutputViewportNearBottom, lastOutput, scrollOutputToBottomAfterLayout, task?.id]);
+  }, [isOutputViewportNearBottom, loadPersistedLog, outputEvents, scrollOutputToBottomAfterLayout, task, taskId, updateOutputMessage]);
 
   const reloadLog = () => {
     loadPersistedLog(task);
@@ -263,6 +313,11 @@ function stripAnsiControlSequences(value: string) {
     .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
     .replace(/\x1b[PX^_].*?\x1b\\/g, "")
     .replace(/\r/g, "\n");
+}
+
+function positiveInteger(value: unknown) {
+  const numericValue = Number(value);
+  return Number.isInteger(numericValue) && numericValue > 0 ? numericValue : 0;
 }
 
 function readStoredOutputFontSize() {

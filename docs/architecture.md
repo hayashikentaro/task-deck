@@ -23,7 +23,7 @@ In the current session-identity-first card design, the primary card-level visual
 1. The web app loads `/api/context`, opens the WebSocket, and receives task snapshots and output updates over WebSocket.
 2. The New Agent Session form creates a TaskDeck task that represents a Codex App Server thread session for the selected project.
 3. The server starts or reuses the shared App Server runtime and sends `thread/start` with the selected project cwd. One stdio App Server subprocess can host multiple parent thread sessions, and TaskDeck task semantics depend on App Server thread/session metadata rather than process ownership.
-4. App Server thread messages are reduced to human-readable task output, pending request state, and task state updates. Output is appended to bounded in-memory and persisted logs, broadcast over WebSocket, and rendered in the output pane.
+4. App Server thread messages are reduced to human-readable task output, pending request state, and task state updates. Output is appended to bounded in-memory and persisted logs, then broadcast over WebSocket with global and task-local sequence numbers plus lightweight role/kind metadata. The output pane keeps live updates in an append-only queue, detects sequence gaps, and reloads the persisted task log as the canonical replay source when needed.
 5. Server-side lifecycle observations and App Server status/request events update `agentState` and `attentionState` without treating silence as thinking.
 6. Task, log, preset, session-label, and attachment state is persisted under `.taskdeck/`.
 7. Focused REST calls handle actions such as task renaming, input locking, log reload, attachments, task diffs, and task clearing when a UI path calls them.
@@ -136,7 +136,7 @@ Codex App Server launches through `codex --sandbox danger-full-access --ask-for-
 - Project dropdown / project roots: `apps/server/src/server.js` functions around `resolveProjectRoots`, `buildProjectSuggestions`, `selectDefaultProjectCwd`, and web form handling in `apps/web/src/components/TaskCreateForm.tsx`.
 - Config loading: `apps/server/src/server.js` config candidate loading and profile/project-root normalization.
 - Agent profiles: Built-in profile definitions and profile merge/sanitize logic in `apps/server/src/server.js`; frontend profile types in `apps/web/src/types.ts`; launch-command selection in `TaskCreateForm.tsx`.
-- App Server lifecycle and input/output: Task/thread-session creation, shared App Server runtime spawn/stdin/stdout handling, log append, and WebSocket output handling in `apps/server/src/server.js`; output rendering in `OutputPane.tsx`; composer behavior in `InputComposer.tsx`.
+- App Server lifecycle and input/output: Task/thread-session creation, shared App Server runtime spawn/stdin/stdout handling, log append, sequenced WebSocket output handling in `apps/server/src/server.js`; output replay helpers in `apps/web/src/outputReplay.ts`; output rendering in `OutputPane.tsx`; composer behavior in `InputComposer.tsx`.
 - Attention/supervision logic: App Server status/request handling, child-status handling, manager actions, and task state marking in `apps/server/src/server.js`; task-card display in `apps/web/src/components/TaskList.tsx`.
 - Output and input UI: `apps/web/src/components/OutputPane.tsx`, `InputComposer.tsx`, related output/composer CSS in `apps/web/src/styles.css`.
 - Diagnostics: `/api/diagnostics` plus container inspection/start helpers in `apps/server/src/server.js`; a dedicated diagnostics UI would be future work.

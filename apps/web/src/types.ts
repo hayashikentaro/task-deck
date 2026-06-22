@@ -113,6 +113,10 @@ export type OutputEvent = {
   seq: number;
   taskId: string;
   data: string;
+  serverSeq?: number;
+  taskSeq?: number;
+  role?: "user" | "assistant" | "taskdeck";
+  kind?: string;
 };
 
 export type CreateTaskInput = {
