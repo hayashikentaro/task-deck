@@ -5,23 +5,33 @@ import type { CodexModel, PendingTaskAttachment, Task } from "../types";
 type InputComposerProps = {
   codexModels: CodexModel[];
   isConnected: boolean;
+  selectedImages: SelectedImageAttachment[];
   task: Task | null;
   value: string;
+  onSelectedImagesChange: (images: SelectedImageAttachment[]) => void;
   onValueChange: (value: string) => void;
   send: (payload: unknown) => boolean;
 };
 
 const maxComposerHeight = 140;
 const fallbackReasoningEfforts = ["minimal", "low", "medium", "high", "xhigh"];
-type SelectedImageAttachment = {
+export type SelectedImageAttachment = {
   id: string;
   file: File;
 };
 type ComposerInputState = "ready" | "locked" | "busy" | "readonly" | "disconnected" | "empty";
 
-export function InputComposer({ codexModels, isConnected, task, value, onValueChange, send }: InputComposerProps) {
+export function InputComposer({
+  codexModels,
+  isConnected,
+  selectedImages,
+  task,
+  value,
+  onSelectedImagesChange,
+  onValueChange,
+  send,
+}: InputComposerProps) {
   const [isComposing, setIsComposing] = useState(false);
-  const [selectedImages, setSelectedImages] = useState<SelectedImageAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState("");
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const [selectedModel, setSelectedModel] = useState("");
@@ -140,8 +150,8 @@ export function InputComposer({ codexModels, isConnected, task, value, onValueCh
       setAttachmentError("");
     }
 
-    setSelectedImages((current) => [
-      ...current,
+    onSelectedImagesChange([
+      ...selectedImages,
       ...supportedImages.map((file) => ({
         id: crypto.randomUUID(),
         file,
@@ -150,7 +160,7 @@ export function InputComposer({ codexModels, isConnected, task, value, onValueCh
   };
 
   const removeSelectedImage = (imageId: string) => {
-    setSelectedImages((current) => current.filter((image) => image.id !== imageId));
+    onSelectedImagesChange(selectedImages.filter((image) => image.id !== imageId));
   };
 
   const resolveCodexAppServerRequest = (action: "approve" | "decline" | "cancel") => {
@@ -191,7 +201,7 @@ export function InputComposer({ codexModels, isConnected, task, value, onValueCh
       const didSend = sendAgentInput(input);
       if (didSend) {
         onValueChange("");
-        setSelectedImages([]);
+        onSelectedImagesChange([]);
       }
     } catch (error) {
       setAttachmentError(error instanceof Error ? error.message : "Unable to attach images.");

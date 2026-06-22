@@ -3,14 +3,17 @@ import { InputComposer } from "./InputComposer";
 import { taskIdentityCssProperties } from "../taskIdentity";
 import type { CodexModel, OutputEvent, Task } from "../types";
 import { IconButton } from "./ui/IconButton";
+import type { SelectedImageAttachment } from "./InputComposer";
 
 type OutputPaneProps = {
   codexModels: CodexModel[];
   composerValue: string;
   isConnected: boolean;
+  selectedImages: SelectedImageAttachment[];
   task: Task | null;
   lastOutput: OutputEvent | null;
   outputMessage: string;
+  onSelectedImagesChange: (images: SelectedImageAttachment[]) => void;
   onComposerValueChange: (value: string) => void;
   onOutputMessageChange: (value: string) => void;
   send: (payload: unknown) => boolean;
@@ -26,9 +29,11 @@ export function OutputPane({
   codexModels,
   composerValue,
   isConnected,
+  selectedImages,
   task,
   lastOutput,
   outputMessage,
+  onSelectedImagesChange,
   onComposerValueChange,
   onOutputMessageChange,
   send,
@@ -216,10 +221,13 @@ export function OutputPane({
         </div>
       </div>
       <InputComposer
+        key={task?.id ?? "no-task"}
         codexModels={codexModels}
         isConnected={isConnected}
+        selectedImages={selectedImages}
         task={task}
         value={composerValue}
+        onSelectedImagesChange={onSelectedImagesChange}
         onValueChange={onComposerValueChange}
         send={send}
       />

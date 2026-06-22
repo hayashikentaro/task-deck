@@ -3,6 +3,7 @@ import { TaskCreateForm } from "./components/TaskCreateForm";
 import { TaskList } from "./components/TaskList";
 import { OutputPane } from "./components/OutputPane";
 import type { CodexModel, CreateTaskInput, OutputEvent, Task, TaskDeckContext } from "./types";
+import type { SelectedImageAttachment } from "./components/InputComposer";
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
 
@@ -27,7 +28,8 @@ export function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [lastOutput, setLastOutput] = useState<OutputEvent | null>(null);
   const [taskDeckContext, setTaskDeckContext] = useState<TaskDeckContext | null>(null);
-  const [composerValue, setComposerValue] = useState("");
+  const [composerDraftsByTaskId, setComposerDraftsByTaskId] = useState<Record<string, string>>({});
+  const [composerImagesByTaskId, setComposerImagesByTaskId] = useState<Record<string, SelectedImageAttachment[]>>({});
   const [outputMessage, setOutputMessage] = useState("");
   const [codexModels, setCodexModels] = useState<CodexModel[]>([]);
   const socketRef = useRef<WebSocket | null>(null);
@@ -60,6 +62,12 @@ export function App() {
 
   useEffect(() => {
     tasksRef.current = tasks;
+  }, [tasks]);
+
+  useEffect(() => {
+    const taskIds = new Set(tasks.map((task) => task.id));
+    setComposerDraftsByTaskId((current) => pruneRecordByKeys(current, taskIds));
+    setComposerImagesByTaskId((current) => pruneRecordByKeys(current, taskIds));
   }, [tasks]);
 
   useEffect(() => {
@@ -156,6 +164,16 @@ export function App() {
     () => tasks.find((task) => task.id === selectedTaskId) ?? null,
     [selectedTaskId, tasks],
   );
+  const composerValue = selectedTaskId ? composerDraftsByTaskId[selectedTaskId] ?? "" : "";
+  const selectedImages = selectedTaskId ? composerImagesByTaskId[selectedTaskId] ?? [] : [];
+
+  const updateComposerValue = useCallback((value: string) => {
+    setComposerDraftsByTaskId((current) => updateSelectedTaskRecord(current, selectedTaskId, value));
+  }, [selectedTaskId]);
+
+  const updateSelectedImages = useCallback((images: SelectedImageAttachment[]) => {
+    setComposerImagesByTaskId((current) => updateSelectedTaskRecord(current, selectedTaskId, images));
+  }, [selectedTaskId]);
 
   const renameTask = async (taskId: string, title: string) => {
     try {
@@ -291,11 +309,13 @@ export function App() {
           codexModels={codexModels}
           composerValue={composerValue}
           isConnected={connectionState === "connected"}
+          selectedImages={selectedImages}
           task={selectedTask}
           lastOutput={lastOutput}
           outputMessage={outputMessage}
-          onComposerValueChange={setComposerValue}
+          onComposerValueChange={updateComposerValue}
           onOutputMessageChange={setOutputMessage}
+          onSelectedImagesChange={updateSelectedImages}
           send={send}
         />
         <aside className="right-rail">
@@ -315,4 +335,40 @@ function getRunningTaskIdsFromMessage(message: { runningTaskId?: string | null; 
     return message.runningTaskIds;
   }
   return message.runningTaskId ? [message.runningTaskId] : [];
+}
+
+function updateSelectedTaskRecord<T>(record: Record<string, T>, taskId: string | null, value: T) {
+  if (!taskId) {
+    return record;
+  }
+
+  if (isEmptyDraftValue(value)) {
+    if (!(taskId in record)) {
+      return record;
+    }
+    const { [taskId]: _removed, ...nextRecord } = record;
+    return nextRecord;
+  }
+
+  if (record[taskId] === value) {
+    return record;
+  }
+  return { ...record, [taskId]: value };
+}
+
+function pruneRecordByKeys<T>(record: Record<string, T>, keys: Set<string>) {
+  let didPrune = false;
+  const nextRecord: Record<string, T> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (keys.has(key)) {
+      nextRecord[key] = value;
+    } else {
+      didPrune = true;
+    }
+  }
+  return didPrune ? nextRecord : record;
+}
+
+function isEmptyDraftValue(value: unknown) {
+  return value === "" || (Array.isArray(value) && value.length === 0);
 }
