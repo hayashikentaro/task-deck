@@ -227,6 +227,7 @@ export function TaskList({
               data-selected={isSelected}
               data-tone={taskTone(task, runningTaskIdSet)}
               key={task.id}
+              onClick={() => selectTask(task.id)}
               ref={(element) => {
                 if (element) {
                   itemRefs.current.set(task.id, element);
@@ -237,7 +238,11 @@ export function TaskList({
               style={taskIdentityCssProperties({ taskId: task.id, identityColorSlot: task.identityColorSlot })}
             >
               {isEditingTitle ? (
-                <form className="task-title-edit-form" onSubmit={(event) => submitTitleEdit(event, task)}>
+                <form
+                  className="task-title-edit-form"
+                  onClick={(event) => event.stopPropagation()}
+                  onSubmit={(event) => submitTitleEdit(event, task)}
+                >
                   <input
                     aria-label="TaskDeck display name"
                     autoFocus
@@ -256,7 +261,6 @@ export function TaskList({
               ) : (
                 <div
                   className="task-select-button"
-                  onClick={() => selectTask(task.id)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
@@ -317,7 +321,7 @@ export function TaskList({
                   </span>
                 </div>
               )}
-              <div className="task-card-actions">
+              <div className="task-card-actions" onClick={(event) => event.stopPropagation()}>
                 <button
                   aria-label="Edit TaskDeck display name"
                   className="task-edit-title-button"
@@ -368,7 +372,10 @@ export function TaskList({
                 className="task-input-lock-button"
                 data-active={isInputLocked ? "true" : "false"}
                 disabled={task.status !== "running" || isNativeSubagent}
-                onClick={() => onToggleInputLock(task.id, !isInputLocked)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleInputLock(task.id, !isInputLocked);
+                }}
                 title={inputLockLabel}
                 type="button"
               >
@@ -387,7 +394,11 @@ export function TaskList({
                 )}
               </button>
               {decisionRequestState?.status === "sent" && decisionRequestState.decisionUrl ? (
-                <div className="task-action-status task-decision-gateway-result" data-kind="success">
+                <div
+                  className="task-action-status task-decision-gateway-result"
+                  data-kind="success"
+                  onClick={(event) => event.stopPropagation()}
+                >
                   <span>Decision request sent</span>
                   <a
                     className="task-decision-gateway-url"
