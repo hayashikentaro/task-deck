@@ -1,6 +1,7 @@
 import { FormEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { taskIdentityCssProperties } from "../taskIdentity";
 import type { AttentionState, Task } from "../types";
+import { Button } from "./ui/Button";
 
 type TaskFilter = "all" | "needs_you" | "not_now";
 
@@ -39,6 +40,7 @@ export function TaskList({
   const [decisionRequestByTaskId, setDecisionRequestByTaskId] = useState<
     Record<string, { status: "sending" | "sent" | "failed"; decisionUrl?: string; error?: string }>
   >({});
+  const [copiedDecisionUrlTaskId, setCopiedDecisionUrlTaskId] = useState<string | null>(null);
   const itemRefs = useRef(new Map<string, HTMLElement>());
   const previousRectsRef = useRef(new Map<string, DOMRect>());
   const reorderAnimationFrameRef = useRef<number | null>(null);
@@ -138,6 +140,7 @@ export function TaskList({
       ...current,
       [task.id]: { status: "sending" },
     }));
+    setCopiedDecisionUrlTaskId((current) => (current === task.id ? null : current));
     const result = await onSendDecisionRequest(task.id);
     setDecisionRequestByTaskId((current) => ({
       ...current,
@@ -145,6 +148,18 @@ export function TaskList({
         ? { status: "sent", decisionUrl: result.decisionUrl }
         : { status: "failed", error: result.error },
     }));
+  };
+
+  const copyDecisionGatewayUrl = async (taskId: string, decisionUrl: string) => {
+    try {
+      await navigator.clipboard.writeText(decisionUrl);
+      setCopiedDecisionUrlTaskId(taskId);
+      window.setTimeout(() => {
+        setCopiedDecisionUrlTaskId((current) => (current === taskId ? null : current));
+      }, 1600);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : "Unable to copy Decision Gateway URL.");
+    }
   };
 
   return (
@@ -314,19 +329,20 @@ export function TaskList({
                     <path d="M9.5 4.5l1-1 2 2-1 1" />
                   </svg>
                 </button>
-                <button
+                <Button
                   className="task-decision-gateway-button"
                   disabled={!decisionGatewayConfigured || decisionRequestState?.status === "sending"}
                   onClick={() => sendTaskToDecisionGateway(task)}
+                  size="sm"
                   title={
                     decisionGatewayConfigured
                       ? "Send a manual decision request to Decision Gateway"
                       : "Set DECISION_GATEWAY_URL to enable Decision Gateway"
                   }
-                  type="button"
+                  variant="secondary"
                 >
                   {decisionRequestState?.status === "sending" ? "Sending..." : "Ask for decision"}
-                </button>
+                </Button>
                 <button aria-label="Clear task" className="task-clear-button" onClick={() => onClearTask(task.id)} title="Clear task" type="button">
                   <svg aria-hidden="true" className="task-clear-icon" focusable="false" viewBox="0 0 16 16">
                     <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
@@ -358,12 +374,27 @@ export function TaskList({
                 )}
               </button>
               {decisionRequestState?.status === "sent" && decisionRequestState.decisionUrl ? (
-                <p className="task-action-status" data-kind="success">
-                  Decision request sent:{" "}
-                  <a href={decisionRequestState.decisionUrl} rel="noreferrer" target="_blank">
-                    Open workspace
+                <div className="task-action-status task-decision-gateway-result" data-kind="success">
+                  <span>Decision request sent</span>
+                  <a
+                    className="task-decision-gateway-url"
+                    href={decisionRequestState.decisionUrl}
+                    rel="noreferrer"
+                    target="_blank"
+                    title={decisionRequestState.decisionUrl}
+                  >
+                    {decisionRequestState.decisionUrl}
                   </a>
-                </p>
+                  <Button
+                    className="task-decision-gateway-copy-button"
+                    onClick={() => copyDecisionGatewayUrl(task.id, decisionRequestState.decisionUrl || "")}
+                    size="sm"
+                    title="Copy Decision Gateway URL"
+                    variant="secondary"
+                  >
+                    {copiedDecisionUrlTaskId === task.id ? "Copied" : "Copy URL"}
+                  </Button>
+                </div>
               ) : null}
               {decisionRequestState?.status === "failed" ? (
                 <p className="task-action-error">{decisionRequestState.error || "Unable to send decision request."}</p>

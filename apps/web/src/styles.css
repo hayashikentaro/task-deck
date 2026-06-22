@@ -2023,6 +2023,25 @@ dd {
   color: var(--status-focus);
 }
 
+.task-decision-gateway-result {
+  display: grid;
+  gap: 6px;
+  align-items: start;
+}
+
+.task-decision-gateway-url {
+  min-width: 0;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-decision-gateway-copy-button {
+  justify-self: start;
+}
+
 .modal-backdrop {
   position: fixed;
   z-index: 20;
