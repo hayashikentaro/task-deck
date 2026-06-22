@@ -2,6 +2,7 @@ import { FormEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { taskIdentityCssProperties } from "../taskIdentity";
 import type { AttentionState, Task } from "../types";
 import { Button } from "./ui/Button";
+import { IconButton } from "./ui/IconButton";
 
 type TaskFilter = "all" | "needs_you" | "not_now";
 
@@ -329,20 +330,32 @@ export function TaskList({
                     <path d="M9.5 4.5l1-1 2 2-1 1" />
                   </svg>
                 </button>
-                <Button
+                <IconButton
                   className="task-decision-gateway-button"
                   disabled={!decisionGatewayConfigured || decisionRequestState?.status === "sending"}
+                  label={
+                    decisionRequestState?.status === "sending"
+                      ? "Sending decision request"
+                      : "Ask for decision"
+                  }
                   onClick={() => sendTaskToDecisionGateway(task)}
                   size="sm"
                   title={
-                    decisionGatewayConfigured
-                      ? "Send a manual decision request to Decision Gateway"
-                      : "Set DECISION_GATEWAY_URL to enable Decision Gateway"
+                    decisionRequestState?.status === "sending"
+                      ? "Sending decision request"
+                      : decisionGatewayConfigured
+                        ? "Send a manual decision request to Decision Gateway"
+                        : "Set DECISION_GATEWAY_URL to enable Decision Gateway"
                   }
                   variant="secondary"
                 >
-                  {decisionRequestState?.status === "sending" ? "Sending..." : "Ask for decision"}
-                </Button>
+                  <svg aria-hidden="true" className="task-decision-gateway-icon" focusable="false" viewBox="0 0 16 16">
+                    <path d="M8 2.5v7" />
+                    <path d="M5.5 5 8 2.5 10.5 5" />
+                    <path d="M4.5 7.5h-1a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1h-1" />
+                    <path d="M5.25 10.5h5.5" />
+                  </svg>
+                </IconButton>
                 <button aria-label="Clear task" className="task-clear-button" onClick={() => onClearTask(task.id)} title="Clear task" type="button">
                   <svg aria-hidden="true" className="task-clear-icon" focusable="false" viewBox="0 0 16 16">
                     <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />

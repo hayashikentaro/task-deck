@@ -1937,7 +1937,7 @@ dd {
   align-items: center;
   justify-content: flex-end;
   min-width: max-content;
-  max-width: 202px;
+  max-width: 104px;
   padding: 10px 8px 0 0;
 }
 
@@ -1947,21 +1947,25 @@ dd {
 }
 
 .task-card-actions .task-clear-button,
-.task-card-actions .task-edit-title-button {
+.task-card-actions .task-edit-title-button,
+.task-card-actions .task-decision-gateway-button {
   padding: 0;
 }
 
 .task-decision-gateway-button {
-  flex: 0 1 138px;
-  min-width: 118px;
-  max-width: 138px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  flex: 0 0 24px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
 }
 
 .task-clear-button:hover:not(:disabled),
 .task-edit-title-button:hover:not(:disabled),
+.task-decision-gateway-button:hover:not(:disabled),
 .task-input-lock-button:hover:not(:disabled) {
   border-color: transparent;
   background: transparent;
