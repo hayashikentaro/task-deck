@@ -76,13 +76,17 @@ At a high level:
 
 Do not add raw Web API manager-write paths, raw terminal-write paths, raw SQL mutation paths, or direct worker-to-worker command paths unless the user explicitly approves a protocol change and `docs/taskdeck-actor-protocol.md` is updated in the same change.
 
-When asked to create TaskDeck child sessions or send parent-to-child instructions, use the writer scripts defined in `docs/taskdeck-child-session-protocol.md`. Do not use platform-native multi-agent/sub-agent tools and do not treat those agents as TaskDeck child sessions.
+For Codex App Server work, treat Codex App Server subagent threads as TaskDeck child sessions and follow `docs/taskdeck-child-session-protocol.md` for how those threads map into TaskDeck. Use the documented writer scripts only for compatibility/fallback file-based requests. Do not use raw terminal transcript parsing or direct worker-to-worker command paths for child-session control.
 
 ## Branch And Worktree Policy
 
 TaskDeck branch work uses `git worktree`.
 
-Use the main repository as the base development checkout. Create one worktree per branch and purpose for parallel development.
+Use `develop` as the default active development branch. Treat `main` as a protected upstream/release branch: do not check out, edit on, commit to, or push `main` unless the user explicitly asks for `main` work.
+
+Use the current repository checkout as the default working checkout when starting branch work. If the current checkout is already on a branch selected by the user, continue using that checkout for that branch's development unless the user explicitly asks to move the work elsewhere.
+
+Create one worktree per branch and purpose for parallel development when parallel work is actually needed. Do not redirect a requested branch checkout to another existing worktree unless the user asked to use that worktree.
 
 Do not create disposable full clones for TaskDeck branch work. Do not choose between clone and worktree.
 
@@ -97,7 +101,7 @@ git status --short --branch
 git branch --show-current
 ```
 
-Continue on the current branch or worktree unless explicitly instructed otherwise. `main` is an allowed working branch for single-threaded, low-risk, or explicitly main-targeted tasks.
+Continue on the current branch or worktree unless explicitly instructed otherwise. When the user asks to check out, switch to, or continue on a branch, perform that branch operation in the current checkout first, preserving user changes and reporting any blockers. If no branch is specified for ordinary development work, use `develop` rather than `main`.
 
 When committing and pushing, push back to the same branch that was current at the start of the task.
 
@@ -198,14 +202,15 @@ If a task-specific user instruction conflicts with this file, stop and report th
 
 - Task persistence must keep old stored tasks loadable.
 - Logs can grow; avoid moving terminal output into unbounded React state.
-- PTY process lifecycle, interrupts, server restarts, and task clearing should remain predictable.
-- WebSocket task updates should keep task lists, selected task behavior, terminal output, and session metadata in sync.
+- App Server and PTY process lifecycle, interrupts, server restarts, and task clearing should remain predictable.
+- WebSocket task updates should keep task lists, selected task behavior, task output, and session metadata in sync.
 - Treat `attentionState` as the supervision UI's primary signal for whether the user should look at a task.
-- Agent state should be driven primarily by TaskDeck events such as start, input, PTY output activity, and exit.
+- Agent state should be driven primarily by TaskDeck events such as start, input, Codex App Server status/request events, PTY output activity, and exit.
 - Do not infer thinking from silence; quiet running PTYs should keep their last known supervisor state until a stronger signal arrives.
+- For Codex work sessions, use Codex App Server status/request events as the control signal.
 - Treat TUI text matching as a fallback for explicit user-action prompts only.
-- Do not add one-off Goose/Codex spinner phrases to infer thinking.
-- Keep agent state inference split by adapter (`goose`, `codex`, and `generic`).
+- Do not add one-off terminal spinner phrases to infer thinking.
+- Keep agent state inference split by adapter (`codex-app-server`, `goose`, and `generic`).
 - Approval prompts may override immediately, but input-prompt fallback should be gated by PTY activity.
 - PTY activity signals should remain in-memory process observations, not persisted task metadata.
 - Agent session metadata is best-effort and should not assume every agent exposes stable ids.

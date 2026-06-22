@@ -32,8 +32,7 @@ function validRequest(overrides: Record<string, unknown> = {}) {
     sessions: [
       {
         title: "Parser test child",
-        agentProfileId: "codex",
-        agentPermissionLevel: "read_only",
+        agentProfileId: "codex-app-server",
         cwd: "/workspace/task-deck",
         workPackageId: "parser-test",
         filesLikelyToChange: ["apps/web/src/childSessionRequests.ts"],
@@ -77,8 +76,7 @@ describe("parseChildSessionRequestsFromText", () => {
         sessions: [
           {
             title: "Parser test child",
-            agentProfileId: "codex",
-            agentPermissionLevel: "read_only",
+            agentProfileId: "codex-app-server",
             cwd: "/workspace/task-deck",
             workPackageId: "parser-test",
             filesLikelyToChange: ["apps/web/src/childSessionRequests.ts"],
@@ -138,26 +136,6 @@ describe("parseChildSessionRequestsFromText", () => {
     delete session[fieldName];
 
     expect(errorCodesFor(requestBlock({ ...validRequest(), sessions: [session] }))).toContain(expectedCode);
-  });
-
-  it("reports invalid agent permission levels", () => {
-    expect(errorCodesFor(requestBlock(validRequest({ agentPermissionLevel: "full-access" })))).toContain(
-      "invalid_agent_permission_level",
-    );
-  });
-
-  it("keeps valid agent reasoning effort values", () => {
-    const result = parseChildSessionRequestsFromText(requestBlock(validRequest({ agentReasoningEffort: "high" })));
-
-    expect(result.errors).toEqual([]);
-    expect(result.requests[0].sessions[0].agentReasoningEffort).toBe("high");
-  });
-
-  it("normalizes invalid agent reasoning effort values to unset", () => {
-    const result = parseChildSessionRequestsFromText(requestBlock(validRequest({ agentReasoningEffort: "largest" })));
-
-    expect(result.errors).toEqual([]);
-    expect(result.requests[0].sessions[0].agentReasoningEffort).toBeUndefined();
   });
 
   it.each([

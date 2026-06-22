@@ -4,17 +4,10 @@ export const CHILD_SESSION_MESSAGE_REQUEST_START_MARKER = "TASKDECK_CHILD_SESSIO
 export const CHILD_SESSION_MESSAGE_REQUEST_END_MARKER = "END_TASKDECK_CHILD_SESSION_MESSAGE_REQUEST";
 
 const FORBIDDEN_FIELDS = new Set(["command", "rawCommand", "shell", "env", "secrets", "autoApprove"]);
-const AGENT_PERMISSION_LEVELS = ["full_access", "workspace_write", "read_only"] as const;
-const AGENT_REASONING_EFFORTS = ["low", "medium", "high", "xhigh"] as const;
-
-export type ChildSessionAgentPermissionLevel = (typeof AGENT_PERMISSION_LEVELS)[number];
-export type ChildSessionAgentReasoningEffort = (typeof AGENT_REASONING_EFFORTS)[number];
 
 export type ChildSessionRequest = {
   title: string;
   agentProfileId: string;
-  agentPermissionLevel?: ChildSessionAgentPermissionLevel;
-  agentReasoningEffort?: ChildSessionAgentReasoningEffort;
   cwd: string;
   workPackageId?: string;
   filesLikelyToChange?: string[];
@@ -55,7 +48,6 @@ export type ChildSessionRequestParseErrorCode =
   | "missing_agent_profile_id"
   | "missing_cwd"
   | "missing_initial_instruction"
-  | "invalid_agent_permission_level"
   | "invalid_work_package_id"
   | "invalid_files_likely_to_change"
   | "missing_target"
@@ -548,22 +540,6 @@ function validateChildSessionRequest(
 
   errors.push(...title.errors, ...agentProfileId.errors, ...cwd.errors, ...initialInstruction.errors);
 
-  const agentPermissionLevel = value.agentPermissionLevel;
-  if (
-    agentPermissionLevel !== undefined &&
-    !AGENT_PERMISSION_LEVELS.includes(agentPermissionLevel as ChildSessionAgentPermissionLevel)
-  ) {
-    errors.push({
-      code: "invalid_agent_permission_level",
-      message: `${sessionPath}.agentPermissionLevel must be one of: ${AGENT_PERMISSION_LEVELS.join(", ")}.`,
-      blockIndex,
-      sessionIndex,
-      path: `${sessionPath}.agentPermissionLevel`,
-    });
-  }
-
-  const agentReasoningEffort = normalizeAgentReasoningEffort(value.agentReasoningEffort);
-
   const workPackageId = value.workPackageId;
   if (workPackageId !== undefined && typeof workPackageId !== "string") {
     errors.push({
@@ -597,8 +573,6 @@ function validateChildSessionRequest(
     request: {
       title: title.value,
       agentProfileId: agentProfileId.value,
-      agentPermissionLevel: agentPermissionLevel as ChildSessionAgentPermissionLevel | undefined,
-      agentReasoningEffort,
       cwd: cwd.value,
       workPackageId: typeof workPackageId === "string" ? workPackageId : undefined,
       filesLikelyToChange: Array.isArray(filesLikelyToChange) ? filesLikelyToChange : undefined,
@@ -606,12 +580,6 @@ function validateChildSessionRequest(
     },
     errors: [],
   };
-}
-
-function normalizeAgentReasoningEffort(value: unknown): ChildSessionAgentReasoningEffort | undefined {
-  return AGENT_REASONING_EFFORTS.includes(value as ChildSessionAgentReasoningEffort)
-    ? (value as ChildSessionAgentReasoningEffort)
-    : undefined;
 }
 
 function validateChildSessionMessageTarget(

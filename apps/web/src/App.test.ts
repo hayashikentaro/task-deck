@@ -3,6 +3,9 @@ import { buildChildTaskInputs } from "./childSessionTaskInputs";
 import type { ChildSessionBatchRequest } from "./childSessionRequests";
 import type { TaskDeckContext } from "./types";
 
+const appServerCommand =
+  "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -i -w /workspace ai-agent-sandbox-agent-1 sh -lc 'exec codex app-server --listen stdio://'";
+
 const context: TaskDeckContext = {
   repoRoot: "/workspace/task-deck",
   controlRoot: "/workspace",
@@ -15,11 +18,10 @@ const context: TaskDeckContext = {
   cwdSuggestions: [],
   agentProfiles: [
     {
-      id: "codex",
-      label: "Codex",
-      command:
-        "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex --dangerously-bypass-approvals-and-sandbox'",
-      description: "Run Codex CLI inside the AI agent sandbox container",
+      id: "codex-app-server",
+      label: "Codex App Server",
+      command: appServerCommand,
+      description: "Run Codex App Server inside the AI agent sandbox container",
     },
     {
       id: "zsh",
@@ -38,8 +40,7 @@ function request(overrides: Partial<ChildSessionBatchRequest["sessions"][number]
     sessions: [
       {
         title: "Child task",
-        agentProfileId: "codex",
-        agentPermissionLevel: "full_access",
+        agentProfileId: "codex-app-server",
         cwd: "/workspace/task-deck",
         workPackageId: "child-work",
         filesLikelyToChange: ["README.md"],
@@ -51,8 +52,8 @@ function request(overrides: Partial<ChildSessionBatchRequest["sessions"][number]
 }
 
 describe("buildChildTaskInputs", () => {
-  it("passes Codex reasoning effort into child create task input and command generation", () => {
-    const result = buildChildTaskInputs("parent-task", request({ agentReasoningEffort: "high" }), context, "request-key");
+  it("builds an App Server child create task input without rewriting the profile command", () => {
+    const result = buildChildTaskInputs("parent-task", request(), context, "request-key");
 
     expect(result.status).toBe("ready");
     if (result.status !== "ready") return;
@@ -64,51 +65,19 @@ describe("buildChildTaskInputs", () => {
       workPackageId: "child-work",
       filesLikelyToChange: ["README.md"],
       initialInstruction: "Read AGENTS.md, then report status.",
-      agentReasoningEffort: "high",
+      agentProfileId: "codex-app-server",
+      agentLabel: "Codex App Server",
+      command: appServerCommand,
     });
-    expect(result.inputs[0].command).toContain('model_reasoning_effort="high"');
+    expect(result.inputs[0].command).toContain("codex app-server --listen stdio://");
+    expect(result.inputs[0].command).not.toContain("docker exec -it");
   });
 
-  it("builds exactly one low-effort Codex child create task input", () => {
-    const result = buildChildTaskInputs("parent-task", request({ agentReasoningEffort: "low" }), context, "request-key");
-
-    expect(result.status).toBe("ready");
-    if (result.status !== "ready") return;
-    expect(result.inputs).toHaveLength(1);
-    expect(result.inputs[0].agentReasoningEffort).toBe("low");
-    expect(result.inputs[0].command).toContain('model_reasoning_effort="low"');
-  });
-
-  it("leaves missing Codex reasoning effort unset", () => {
-    const result = buildChildTaskInputs("parent-task", request(), context, "request-key");
-
-    expect(result.status).toBe("ready");
-    if (result.status !== "ready") return;
-    expect(result.inputs[0].agentReasoningEffort).toBeUndefined();
-    expect(result.inputs[0].command).not.toContain("model_reasoning_effort");
-  });
-
-  it("normalizes invalid Codex reasoning effort to unset", () => {
-    const result = buildChildTaskInputs(
-      "parent-task",
-      request({ agentReasoningEffort: "largest" as ChildSessionBatchRequest["sessions"][number]["agentReasoningEffort"] }),
-      context,
-      "request-key",
-    );
-
-    expect(result.status).toBe("ready");
-    if (result.status !== "ready") return;
-    expect(result.inputs[0].agentReasoningEffort).toBeUndefined();
-    expect(result.inputs[0].command).not.toContain("model_reasoning_effort");
-  });
-
-  it("ignores Codex reasoning effort for non-Codex children", () => {
+  it("keeps non-App-Server child profiles unchanged", () => {
     const result = buildChildTaskInputs(
       "parent-task",
       request({
         agentProfileId: "zsh",
-        agentPermissionLevel: undefined,
-        agentReasoningEffort: "high",
       }),
       context,
       "request-key",
@@ -116,7 +85,6 @@ describe("buildChildTaskInputs", () => {
 
     expect(result.status).toBe("ready");
     if (result.status !== "ready") return;
-    expect(result.inputs[0].agentReasoningEffort).toBeUndefined();
     expect(result.inputs[0].command).toBe(context.agentProfiles[1].command);
   });
 });

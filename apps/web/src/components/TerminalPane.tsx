@@ -23,6 +23,8 @@ const terminalFontSizeStorageKey = "taskdeck.terminalFontSize";
 const terminalDefaultFontSize = 16;
 const terminalFontSizes = [11, 12, 13, 14, 15, 16, 18];
 const terminalBottomScrollTolerancePx = 16;
+const terminalFontFamily =
+  'ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Noto Sans Mono CJK JP", "Noto Sans Mono CJK SC", "Noto Sans Mono CJK TC", "Noto Sans Mono CJK KR", "BIZ UDGothic", "Yu Gothic UI", Meiryo, monospace';
 const transparentTerminalBackground = "rgba(0, 0, 0, 0)";
 const terminalTheme = {
   background: "#080907",
@@ -188,8 +190,10 @@ export function TerminalPane({
       allowTransparency: true,
       cursorBlink: true,
       convertEol: true,
-      fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
+      fontFamily: terminalFontFamily,
       fontSize: terminalFontSize,
+      lineHeight: 1.12,
+      rescaleOverlappingGlyphs: true,
       theme: terminalTheme,
     });
     const fitAddon = new FitAddon();

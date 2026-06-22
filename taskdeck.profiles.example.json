@@ -1,16 +1,10 @@
 {
   "agentProfiles": [
     {
-      "id": "codex",
-      "label": "Codex",
-      "command": "replace with your Codex launch command",
-      "description": "Example placeholder. Put machine-local profile commands in taskdeck.local.json or a TASKDECK_CONFIG file."
-    },
-    {
-      "id": "taskdeck-manager",
-      "label": "TaskDeck Manager",
-      "command": "replace with your manager launch command",
-      "description": "Example placeholder for a dedicated manager session. Keep manager sessions rooted at the TaskDeck control/document root."
+      "id": "codex-app-server",
+      "label": "Codex App Server",
+      "command": "replace with your Codex App Server launch command, usually codex app-server --listen stdio:// in the intended container or host environment",
+      "description": "Primary Codex route. Put machine-local profile commands in taskdeck.local.json or a TASKDECK_CONFIG file."
     },
     {
       "id": "zsh-host",

@@ -1,12 +1,12 @@
-# Codex App Server Smoke
+# Codex App Server Route Smoke
 
-This note records the final manual smoke path for TaskDeck's structured Codex App Server adapter.
+This note records the manual smoke path for TaskDeck's primary Codex App Server route.
 
 Do this smoke once after batching App Server auth, logging, and UI-state changes. Avoid repeated ChatGPT device-code login attempts during development because repeated login flows can cause device-code exchange failures.
 
 ## Scope
 
-The smoke checks the user-facing TaskDeck flow:
+The smoke checks the user-facing TaskDeck flow for the default Codex work-session path:
 
 ```text
 User -> TaskDeck UI -> TaskDeck server -> Codex App Server process
@@ -20,12 +20,12 @@ When TaskDeck runs in a container and the browser runs on the host, `localhost` 
 
 ## Launch Environment
 
-TaskDeck launches the App Server through the configured `codex-app-server` agent profile command and communicates over stdio. If host and container Codex installs use different `CODEX_HOME` auth state, override that profile in `taskdeck.local.json` so the App Server runs in the same environment that owns the intended ChatGPT login.
+TaskDeck launches the App Server through the configured `codex-app-server` agent profile command and communicates over stdio. The built-in `Codex App Server` profile runs `codex app-server --listen stdio://` directly in the TaskDeck server environment. If a local machine needs a wrapper or different `CODEX_HOME` auth state, override that profile in `taskdeck.local.json` so the App Server runs in the environment that owns the intended ChatGPT login.
 
 ## Manual Smoke
 
 1. Start TaskDeck normally.
-2. Create one task with the `Codex App Server (experimental)` profile.
+2. Create one task with the default `Codex App Server` profile.
 3. If ChatGPT device login is required, complete it once using the verification URL and user code shown in the task log.
 4. Wait for the task log to show that the App Server adapter is ready.
 5. Send one short prompt from the composer.

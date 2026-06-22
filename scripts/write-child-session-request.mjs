@@ -12,14 +12,12 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(__filename), "..");
 const requestDirectory = path.join(repoRoot, ".taskdeck", "requests", "child-session");
-const permissionLevels = new Set(["full_access", "workspace_write", "read_only"]);
-const reasoningEfforts = new Set(["low", "medium", "high", "xhigh"]);
 
 function usage() {
   return `Usage:
   node scripts/write-child-session-request.mjs \\
-    --title "Codex low child session" \\
-    --work-package codex-low-standby \\
+    --title "App Server child session" \\
+    --work-package app-server-standby \\
     --instruction "You are working on hayashikentaro/task-deck. First read AGENTS.md. Do not edit files yet. Report that you are ready and wait for a scoped parent instruction."
 
 Options:
@@ -27,9 +25,7 @@ Options:
   --work-package <id>          Required workPackageId.
   --instruction <text>         Required initialInstruction.
   --cwd <path>                 TaskDeck-server-visible cwd. Default: .
-  --profile <id>               Agent profile id. Default: codex.
-  --permission <level>         full_access, workspace_write, or read_only. Default: full_access.
-  --reasoning <effort>         low, medium, high, or xhigh. Default: low.
+  --profile <id>               Agent profile id. Default: codex-app-server.
   --reason <text>              Batch reason.
   --file <path>                Repeatable filesLikelyToChange entry.
   --request-id <id>            Optional request id.
@@ -50,9 +46,7 @@ export function parseWriteChildSessionRequestArgs(args, env = process.env) {
     parentTaskId: String(env.TASKDECK_TASK_ID || "").trim(),
     reason: "Create a child session using the file-based TaskDeck request writer.",
     title: "",
-    agentProfileId: "codex",
-    agentPermissionLevel: "full_access",
-    agentReasoningEffort: "low",
+    agentProfileId: "codex-app-server",
     cwd: ".",
     workPackageId: "",
     filesLikelyToChange: [],
@@ -84,14 +78,6 @@ export function parseWriteChildSessionRequestArgs(args, env = process.env) {
         break;
       case "--profile":
         draft.agentProfileId = readOption(args, index, arg);
-        index += 1;
-        break;
-      case "--permission":
-        draft.agentPermissionLevel = readOption(args, index, arg);
-        index += 1;
-        break;
-      case "--reasoning":
-        draft.agentReasoningEffort = readOption(args, index, arg);
         index += 1;
         break;
       case "--reason":
@@ -145,12 +131,6 @@ function validateCliDraft(draft) {
   }
   if (!String(draft.agentProfileId || "").trim()) {
     throw new Error("--profile must not be empty.");
-  }
-  if (!permissionLevels.has(String(draft.agentPermissionLevel || ""))) {
-    throw new Error(`--permission must be one of: ${Array.from(permissionLevels).join(", ")}`);
-  }
-  if (!reasoningEfforts.has(String(draft.agentReasoningEffort || ""))) {
-    throw new Error(`--reasoning must be one of: ${Array.from(reasoningEfforts).join(", ")}`);
   }
 }
 

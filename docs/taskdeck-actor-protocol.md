@@ -40,7 +40,7 @@ flowchart TD
   ControlRoot --> ReadModel[Global Manager Readable Context]
   ControlRoot --> Manager[Global Manager Agent]
 
-  Server -->|validated session/process operation| Runtime[Runtime / PTY Sessions]
+  Server -->|validated session/process operation| Runtime[Runtime / App Server and PTY Sessions]
   Runtime --> ProjectA[Project A Worker Sessions]
   Runtime --> ProjectB[Project B Worker Sessions]
   Runtime --> ProjectC[Project C Worker Sessions]
@@ -81,6 +81,8 @@ flowchart TD
 Worker agents include ordinary Codex, Goose, shell, or future provider sessions that are not the dedicated manager.
 
 Worker agents are project-bound. They are launched in a selected project workspace and perform actual work inside that project scope.
+
+For Codex App Server work, TaskDeck child sessions are Codex App Server subagent threads surfaced through structured App Server events. Their parent/child identity comes from App Server thread metadata, not from terminal transcript parsing or hand-written TaskDeck state.
 
 They may read:
 
@@ -340,11 +342,11 @@ Add and maintain this actor protocol document. Reference it from `AGENTS.md` so 
 
 Use a branch worktree to verify that child status changes emit valid manager inbox events.
 
-### Phase 3: Add a dedicated manager agent profile/session
+### Phase 3: Add an App Server-backed manager session
 
 Introduce a way to run a global manager session whose job is to read manager inbox events and generated readable context across all projects.
 
-The first implementation uses a built-in `TaskDeck Manager` profile. It must launch from the TaskDeck control/document root, not from a selected project workspace.
+This branch intentionally does not ship a built-in Codex TUI `TaskDeck Manager` profile. A future manager route should use the App Server path and must launch from the TaskDeck control/document root, not from a selected project workspace.
 
 ### Phase 4: Add manager-readable context
 

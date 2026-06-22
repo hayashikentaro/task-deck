@@ -22,11 +22,11 @@ describe("file-based child session message request writer", () => {
       const parsed = parseWriteChildSessionMessageRequestArgs(
         [
           "--work-package",
-          "codex-low-standby",
+          "app-server-standby",
           "--message",
           message,
           "--request-id",
-          "message-codex-low-standby-test",
+          "message-app-server-standby-test",
         ],
         { TASKDECK_TASK_ID: "task_parent" },
       );
@@ -36,12 +36,12 @@ describe("file-based child session message request writer", () => {
       const fileRequest = JSON.parse(fileContents);
       const validation = validateChildSessionMessageFileRequest(fileRequest);
 
-      expect(request.requestId).toBe("message-codex-low-standby-test");
-      expect(filePath).toBe(path.join(directory, "message-codex-low-standby-test.request.json"));
+      expect(request.requestId).toBe("message-app-server-standby-test");
+      expect(filePath).toBe(path.join(directory, "message-app-server-standby-test.request.json"));
       expect(fileRequest.kind).toBe(CHILD_SESSION_MESSAGE_FILE_REQUEST_KIND);
       expect(fileRequest.version).toBe(1);
       expect(fileRequest.parentTaskId).toBe("task_parent");
-      expect(fileRequest.target).toEqual({ workPackageId: "codex-low-standby" });
+      expect(fileRequest.target).toEqual({ workPackageId: "app-server-standby" });
       expect(fileRequest.message).toBe(message);
       expect(fileRequest.reason).toBe("Parent follow-up instruction.");
       expect(validation.ok).toBe(true);
@@ -65,7 +65,7 @@ describe("file-based child session message request writer", () => {
       parseWriteChildSessionMessageRequestArgs(["--message", "Report status."], { TASKDECK_TASK_ID: "task_parent" }),
     ).toThrow(/--work-package or --child-session/);
     expect(() =>
-      parseWriteChildSessionMessageRequestArgs(["--work-package", "codex-low-standby"], {
+      parseWriteChildSessionMessageRequestArgs(["--work-package", "app-server-standby"], {
         TASKDECK_TASK_ID: "task_parent",
       }),
     ).toThrow(/--message/);
@@ -79,7 +79,7 @@ describe("file-based child session message request validation", () => {
       version: 1,
       requestId: "message-forbidden-test",
       parentTaskId: "task_parent",
-      target: { workPackageId: "codex-low-standby" },
+      target: { workPackageId: "app-server-standby" },
       message: "Report status.",
       command: "echo should-not-run",
     });
@@ -102,7 +102,7 @@ describe("file-based child session message request validation", () => {
       version: 1,
       requestId: "../message-test",
       parentTaskId: "task_parent",
-      target: { workPackageId: "codex-low-standby" },
+      target: { workPackageId: "app-server-standby" },
       message: "Report status.",
     })).toMatchObject({ ok: false, error: "requestId contains unsupported characters." });
   });
@@ -148,7 +148,7 @@ describe("file-based child session message delivery resolution", () => {
     status: "running",
     spawnedFromParentRequest: true,
     parentSessionId: "task_parent",
-    workPackageId: "codex-low-standby",
+    workPackageId: "app-server-standby",
   };
 
   function delivery(overrides = {}, tasks = [parentTask, childTask]) {
@@ -157,7 +157,7 @@ describe("file-based child session message delivery resolution", () => {
       request: {
         requestId: "message-test",
         parentTaskId: "task_parent",
-        target: { workPackageId: "codex-low-standby" },
+        target: { workPackageId: "app-server-standby" },
         message: "Report status.",
         ...overrides,
       },
@@ -186,7 +186,7 @@ describe("file-based child session message delivery resolution", () => {
 
     expect(delivery({}, [parentTask, childTask, secondChild])).toMatchObject({
       ok: false,
-      error: "Multiple children matched workPackageId codex-low-standby for this parent.",
+      error: "Multiple children matched workPackageId app-server-standby for this parent.",
     });
   });
 
@@ -205,7 +205,7 @@ describe("file-based child session message delivery resolution", () => {
   it("rejects targets not owned by the parent task", () => {
     expect(delivery({}, [parentTask, { ...childTask, parentSessionId: "other_parent" }])).toMatchObject({
       ok: false,
-      error: "No child matched workPackageId codex-low-standby for this parent.",
+      error: "No child matched workPackageId app-server-standby for this parent.",
     });
   });
 });

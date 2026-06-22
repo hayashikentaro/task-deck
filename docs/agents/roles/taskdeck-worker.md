@@ -42,9 +42,9 @@ Do not:
 - call manager-action commands;
 - edit generated `.taskdeck` runtime files by hand;
 - smuggle raw commands, environment variables, secrets, or auto-approval fields through request files;
-- use platform-native sub-agent tools as TaskDeck child sessions.
+- parse raw terminal transcripts or assistant prose as a child-session control protocol.
 
-If child-session coordination is required, follow `../../taskdeck-child-session-protocol.md` and use the documented writer scripts.
+For Codex App Server work, TaskDeck child sessions are App Server subagent threads surfaced through structured App Server events. If compatibility file-based child-session coordination is required, follow `../../taskdeck-child-session-protocol.md` and use the documented writer scripts.
 
 ## Completion report
 

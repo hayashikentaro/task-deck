@@ -1,70 +1,10 @@
 {
   "agentProfiles": [
     {
-      "id": "codex",
-      "label": "Codex",
-      "command": "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex'",
-      "description": "Run Codex inside the AI agent sandbox container",
-      "diagnosticContainer": "ai-agent-sandbox-agent-1",
-      "diagnosticWorkspace": "/workspace",
-      "modelOptions": [
-        { "id": "default", "label": "Default" },
-        { "id": "gpt-5.5", "label": "gpt-5.5" },
-        { "id": "gpt-5.5-thinking", "label": "gpt-5.5 Thinking" },
-        { "id": "gpt-5.4-codex", "label": "gpt-5.4 Codex" }
-      ]
-    },
-    {
-      "id": "claude",
-      "label": "Claude",
-      "command": "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 claude",
-      "description": "Run Claude inside the AI agent sandbox container",
-      "diagnosticContainer": "ai-agent-sandbox-agent-1",
-      "diagnosticWorkspace": "/workspace"
-    },
-    {
-      "id": "aider",
-      "label": "Aider",
-      "command": "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 aider",
-      "description": "Run Aider inside the AI agent sandbox container",
-      "diagnosticContainer": "ai-agent-sandbox-agent-1",
-      "diagnosticWorkspace": "/workspace"
-    },
-    {
-      "id": "goose",
-      "label": "Goose",
-      "command": "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 goose",
-      "description": "Run Goose inside the AI agent sandbox container",
-      "diagnosticContainer": "ai-agent-sandbox-agent-1",
-      "diagnosticWorkspace": "/workspace"
-    },
-    {
-      "id": "zsh",
-      "label": "zsh",
-      "command": "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'if command -v zsh >/dev/null 2>&1; then exec zsh; elif command -v bash >/dev/null 2>&1; then exec bash; else exec sh; fi'",
-      "description": "Plain interactive zsh shell",
-      "diagnosticContainer": "ai-agent-sandbox-agent-1",
-      "diagnosticWorkspace": "/workspace"
-    },
-    {
-      "id": "zsh-host",
-      "label": "zsh - host",
-      "command": "zsh",
-      "description": "Run zsh on the host in the selected project cwd"
-    },
-    {
-      "id": "taskdeck-manager",
-      "label": "TaskDeck Manager",
-      "command": "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex'",
-      "description": "Run a dedicated Codex manager session for reading TaskDeck manager inbox and readable context files",
-      "diagnosticContainer": "ai-agent-sandbox-agent-1",
-      "diagnosticWorkspace": "/workspace",
-      "modelOptions": [
-        { "id": "default", "label": "Default" },
-        { "id": "gpt-5.5", "label": "gpt-5.5" },
-        { "id": "gpt-5.5-thinking", "label": "gpt-5.5 Thinking" },
-        { "id": "gpt-5.4-codex", "label": "gpt-5.4 Codex" }
-      ]
+      "id": "codex-app-server",
+      "label": "Codex App Server",
+      "command": "codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://",
+      "description": "Run the primary Codex App Server adapter in the TaskDeck server environment"
     }
   ]
 }

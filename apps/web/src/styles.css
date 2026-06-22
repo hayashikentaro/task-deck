@@ -53,6 +53,8 @@
   --task-terminal-border: transparent;
   --left-rail-width: 238px;
   --right-rail-width: 238px;
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", Meiryo, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Noto Sans Mono CJK JP", "Noto Sans Mono CJK SC", "Noto Sans Mono CJK TC", "Noto Sans Mono CJK KR", "BIZ UDGothic", "Yu Gothic UI", Meiryo, monospace;
 }
 
 * {
@@ -72,7 +74,9 @@ body {
     radial-gradient(circle at 50% -18%, rgb(128 112 76 / 10%), transparent 34rem),
     linear-gradient(180deg, #141411 0%, var(--bg) 100%);
   color: var(--text);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
+  line-break: strict;
+  word-break: normal;
 }
 
 button,
@@ -318,7 +322,7 @@ select {
   background-repeat: no-repeat;
   background-size: 12px 12px;
   color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", sans-serif;
+  font-family: var(--font-sans);
   font-size: 15px;
   font-weight: 500;
   line-height: 1;
@@ -384,7 +388,8 @@ dt {
 
 dd {
   margin: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .app-shell {
@@ -462,10 +467,6 @@ dd {
   align-items: end;
 }
 
-.task-create-form.has-session-mode {
-  grid-template-columns: minmax(260px, 0.65fr) minmax(140px, 0.25fr) minmax(0, 1.25fr) auto;
-}
-
 .task-create-form label {
   display: grid;
   gap: 7px;
@@ -483,10 +484,7 @@ dd {
   padding: 0 16px;
 }
 
-.session-mode-field,
 .project-field,
-.codex-permission-field,
-.codex-reasoning-field,
 .agent-picker,
 .custom-resume-field,
 .custom-command-field {
@@ -1355,6 +1353,7 @@ dd {
   border-bottom: 1px solid var(--line);
   color: var(--status-muted);
   font-size: 12px;
+  overflow-wrap: break-word;
 }
 
 .terminal-host {
@@ -1465,7 +1464,7 @@ dd {
   padding: 14px;
   overflow: auto;
   color: var(--text-secondary);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.45;
   white-space: pre-wrap;
@@ -1539,18 +1538,16 @@ dd {
   font-size: 12px;
   font-weight: 700;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: break-word;
 }
 
 .codex-app-server-request-copy span {
   min-width: 0;
   color: var(--text-secondary);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: break-word;
 }
 
 .codex-app-server-request-actions {
@@ -1565,7 +1562,7 @@ dd {
   max-height: 140px;
   border-color: var(--line-strong);
   background: var(--surface-input);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   line-height: 1.4;
   resize: none;
   overflow-y: auto;
@@ -1814,101 +1811,6 @@ dd {
   overflow: auto;
 }
 
-.codex-status-panel {
-  min-width: 0;
-  margin-top: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-}
-
-.codex-status-heading {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  align-items: center;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--line);
-}
-
-.codex-status-heading h2 {
-  color: var(--text-secondary);
-}
-
-.codex-status-heading .td-icon-button[data-loading="true"] svg {
-  animation: codex-status-spin 0.9s linear infinite;
-}
-
-@keyframes codex-status-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.codex-status-body {
-  display: grid;
-  gap: 8px;
-  padding: 12px;
-}
-
-.codex-status-row {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 48px minmax(24px, 1fr) 34px minmax(58px, auto);
-  gap: 7px;
-  align-items: center;
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
-.codex-status-label {
-  color: var(--status-muted);
-}
-
-.codex-status-meter {
-  height: 8px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface-input);
-}
-
-.codex-status-meter span {
-  height: 100%;
-  display: block;
-  border-radius: inherit;
-}
-
-.codex-status-meter[data-tone="green"] span {
-  background: var(--status-done);
-}
-
-.codex-status-meter[data-tone="yellow"] span {
-  background: var(--status-focus);
-}
-
-.codex-status-meter[data-tone="red"] span {
-  background: var(--status-failed);
-}
-
-.codex-status-meter[data-tone="empty"] span {
-  background: transparent;
-}
-
-.codex-status-percent {
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.codex-status-reset {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--status-muted);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .tools-panel {
   min-width: 0;
   margin-top: 12px;
@@ -2014,8 +1916,7 @@ dd {
   overflow: hidden;
 }
 
-.task-create-form,
-.task-create-form.has-session-mode {
+.task-create-form {
   display: grid;
   grid-template-columns: 1fr;
   gap: 12px;

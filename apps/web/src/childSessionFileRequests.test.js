@@ -21,15 +21,15 @@ describe("file-based child session request writer", () => {
       const parsed = parseWriteChildSessionRequestArgs(
         [
           "--title",
-          "Codex low child session",
+          "App Server child session",
           "--work-package",
-          "codex-low-standby",
+          "app-server-standby",
           "--instruction",
           instruction,
           "--file",
           "README.md",
           "--request-id",
-          "codex-low-standby-test",
+          "app-server-standby-test",
         ],
         { TASKDECK_TASK_ID: "task_parent" },
       );
@@ -39,18 +39,16 @@ describe("file-based child session request writer", () => {
       const fileRequest = JSON.parse(fileContents);
       const validation = validateChildSessionFileRequest(fileRequest);
 
-      expect(request.requestId).toBe("codex-low-standby-test");
-      expect(filePath).toBe(path.join(directory, "codex-low-standby-test.request.json"));
+      expect(request.requestId).toBe("app-server-standby-test");
+      expect(filePath).toBe(path.join(directory, "app-server-standby-test.request.json"));
       expect(fileRequest.kind).toBe(CHILD_SESSION_FILE_REQUEST_KIND);
       expect(fileRequest.version).toBe(1);
       expect(fileRequest.parentTaskId).toBe("task_parent");
       expect(fileRequest.sessions[0]).toMatchObject({
-        title: "Codex low child session",
-        agentProfileId: "codex",
-        agentPermissionLevel: "full_access",
-        agentReasoningEffort: "low",
+        title: "App Server child session",
+        agentProfileId: "codex-app-server",
         cwd: ".",
-        workPackageId: "codex-low-standby",
+        workPackageId: "app-server-standby",
         filesLikelyToChange: ["README.md"],
         initialInstruction: instruction,
       });
@@ -78,31 +76,7 @@ describe("file-based child session request writer", () => {
     ).toThrow(/do not use a container-only \/workspace path/);
   });
 
-  it.each(["read_only", "workspace_write"])("keeps explicit --permission %s", (permission) => {
-    const parsed = parseWriteChildSessionRequestArgs(
-      [
-        "--title",
-        "Explicit permission child session",
-        "--work-package",
-        `explicit-${permission}`,
-        "--permission",
-        permission,
-        "--instruction",
-        "Report ready.",
-        "--request-id",
-        `explicit-${permission}`,
-      ],
-      { TASKDECK_TASK_ID: "task_parent" },
-    );
-    const request = createChildSessionFileRequestDraft(parsed.draft);
-
-    expect(request.sessions[0].agentPermissionLevel).toBe(permission);
-    expect(validateChildSessionFileRequest(request).ok).toBe(true);
-  });
-});
-
-describe("file-based child session request validation", () => {
-  it("defaults draft helper permission to full_access", () => {
+  it("defaults draft helper to the App Server profile", () => {
     const request = createChildSessionFileRequestDraft({
       requestId: "default-permission-test",
       parentTaskId: "task_parent",
@@ -111,7 +85,7 @@ describe("file-based child session request validation", () => {
       initialInstruction: "Report ready.",
     });
 
-    expect(request.sessions[0].agentPermissionLevel).toBe("full_access");
+    expect(request.sessions[0].agentProfileId).toBe("codex-app-server");
     expect(validateChildSessionFileRequest(request).ok).toBe(true);
   });
 
@@ -124,7 +98,7 @@ describe("file-based child session request validation", () => {
       sessions: [
         {
           title: "Forbidden command child",
-          agentProfileId: "codex",
+          agentProfileId: "codex-app-server",
           cwd: ".",
           workPackageId: "forbidden-test",
           initialInstruction: "Report ready.",

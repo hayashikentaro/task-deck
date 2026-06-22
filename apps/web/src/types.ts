@@ -61,8 +61,6 @@ export type Task = {
   cwd: string;
   agentProfileId?: string;
   agentLabel?: string;
-  agentPermissionLevel?: string;
-  agentReasoningEffort?: string;
   agentModel?: string;
   sessionMode?: string;
   resumeCommand?: string;
@@ -73,6 +71,14 @@ export type Task = {
   agentSessionResumeCommand?: string;
   parentSessionId?: string;
   spawnedFromParentRequest?: boolean;
+  codexAppServerSessionId?: string;
+  codexAppServerThreadId?: string;
+  codexAppServerParentThreadId?: string;
+  codexAppServerRootTaskId?: string;
+  codexAppServerAgentNickname?: string;
+  codexAppServerAgentRole?: string;
+  codexAppServerThreadPath?: string;
+  codexAppServerThreadStatus?: string;
   workPackageId?: string;
   filesLikelyToChange?: string[];
   childStatusFile?: string;
@@ -111,37 +117,10 @@ export type Task = {
   codexAppServerRequest?: CodexAppServerRequest | null;
 };
 
-export type SavedCodexSession = {
-  key: string;
-  provider: string;
-  sessionId: string;
-  source?: string;
-  resumeCommand: string;
-  title: string;
-  cwd: string;
-  agentProfileId?: string;
-  agentLabel?: string;
-  commandEnvironment?: string;
-  detectedAt?: string;
-  updatedAt: string;
-};
-
 export type OutputEvent = {
   seq: number;
   taskId: string;
   data: string;
-};
-
-export type CodexStatusSnapshot = {
-  updatedAt: string;
-  fiveHour?: {
-    remainingPercent: number;
-    resetLabel?: string;
-  };
-  weekly?: {
-    remainingPercent: number;
-    resetLabel?: string;
-  };
 };
 
 export type CreateTaskInput = {
@@ -150,8 +129,6 @@ export type CreateTaskInput = {
   cwd: string;
   agentProfileId?: string;
   agentLabel?: string;
-  agentPermissionLevel?: string;
-  agentReasoningEffort?: string;
   agentModel?: string;
   sessionMode?: string;
   resumeCommand?: string;

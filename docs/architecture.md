@@ -6,30 +6,44 @@ This document is a navigation map for contributors and AI-agent sessions. It des
 
 TaskDeck is a task-centric supervision UI for AI-agent work. It is not a chatbot UI, and it is not merely a prettier terminal.
 
+For Codex work sessions, TaskDeck's product route is App Server-only on this branch. The Codex App Server adapter gives TaskDeck structured turns, approval requests, command output, user-input requests, and subagent threads. In the App Server route, a Codex App Server subagent thread is the TaskDeck child-session model. PTY/TUI handling remains part of the runtime for shell sessions and non-Codex providers, but committed Codex CLI/TUI access is intentionally absent.
+
 In the current session-identity-first card design, the primary card-level visual question is which task maps to the terminal/session the operator is viewing or about to resume. `Needs you` / `Not now` remains the primary supervision signal for sorting, badges, and action prompts, but it should not dominate the whole card surface or compete with stable task/session identity as a full-card color system.
 
 ## Repository Map
 
-- `apps/server`: Node/Express backend, PTY orchestration, REST API, WebSocket updates, config loading, task persistence, diagnostics, Codex status refresh, saved-session discovery, and supervision heuristics.
-- `apps/web`: React/Vite frontend for task cards, terminal rendering, task creation, Codex usage, tools, diagnostics, composer input, and API/WebSocket state handling.
+- `apps/server`: Node/Express backend, Codex App Server adapter, PTY orchestration, REST API, WebSocket updates, config loading, task persistence, diagnostics, and supervision heuristics.
+- `apps/web`: React/Vite frontend for task cards, task output rendering, terminal fallback rendering, task creation, tools, diagnostics, composer input, App Server request controls, and API/WebSocket state handling.
 - `packages/core`: Shared task-state primitives and task serialization helpers used by server and web code.
 - `.taskdeck/`: Ignored local runtime state. It stores persisted tasks, logs, presets, session labels, attachments, and other local data that may be sensitive.
 - Config files: `taskdeck.config.json` is committed config and currently still contains default agent profile assumptions; ignored `taskdeck.local.json`, `TASKDECK_CONFIG`, `TASKDECK_PROJECT_ROOT`, and `TASKDECK_PROJECT_ROOTS` carry machine-local overrides. `taskdeck.local.example.json` is the public example for local setup.
 
 ## Runtime Data Flow
 
-1. The web app loads `/api/context` and saved sessions, opens the WebSocket, and receives task snapshots and output updates over WebSocket.
-2. The New Agent Session form creates a task from an agent profile, session mode, selected project, permission level, and optional saved-session resume command.
-3. The server launches the selected command in a PTY, stores task metadata, and begins streaming PTY output.
-4. PTY output is appended to bounded in-memory and persisted logs, broadcast over WebSocket, and rendered by xterm.js in the terminal pane.
-5. Server-side activity observations and adapter-specific TUI fallbacks update `agentState` and `attentionState` without treating silence as thinking.
+1. The web app loads `/api/context`, opens the WebSocket, and receives task snapshots and output updates over WebSocket.
+2. The New Agent Session form creates a task from an agent profile and selected project.
+3. The server launches the selected command. `codex-app-server` tasks run as a stdio App Server subprocess; terminal-backed profiles run in a PTY.
+4. App Server messages are reduced to human-readable task output, pending request state, task state updates, and App Server subagent thread records. PTY output is appended to bounded in-memory and persisted logs, broadcast over WebSocket, and rendered by xterm.js in the terminal pane.
+5. Server-side lifecycle observations, App Server status events, and adapter-specific fallback signals update `agentState` and `attentionState` without treating silence as thinking.
 6. Task, log, preset, session-label, and attachment state is persisted under `.taskdeck/`.
-7. Focused REST calls handle actions such as Codex usage refresh, task/session renaming, log reload, attachments, and diagnostics queries when a UI path calls them.
-8. UI state updates from REST responses and WebSocket messages keep the task list, selected task, terminal output, composer availability, Codex usage panel, and tools in sync.
+7. Focused REST calls handle actions such as task renaming, log reload, attachments, and diagnostics queries when a UI path calls them.
+8. UI state updates from REST responses and WebSocket messages keep the task list, selected task, terminal output, composer availability, and tools in sync.
 
-## #29 Child Session Auto-Launch Ownership
+## Child Session Ownership
 
-Issue #29 adds a narrow parent-output-to-child-task flow:
+The App Server-first child model maps Codex App Server subagent threads directly into TaskDeck child sessions. TaskDeck should detect child creation from structured App Server data, not from Codex TUI text, assistant prose, or stdout marker blocks.
+
+The primary detection path is:
+
+```text
+Codex App Server thread/started
+  -> thread.parentThreadId links the child thread to the parent thread
+  -> thread.sessionId, thread.id, thread.agentNickname, thread.agentRole, cwd, and status become TaskDeck child metadata
+  -> TaskDeck renders the child as a task/card tied to the same App Server session tree
+  -> thread/status/changed, thread/closed, thread/deleted, and related App Server events keep the child state in sync
+```
+
+The historical #29 flow added a narrow parent-output-to-child-task path:
 
 ```text
 parent output
@@ -45,16 +59,16 @@ parent output
   -> later parent/integration workflow handles merging
 ```
 
-This flow follows the AI-first layer model in `docs/ai-first-layering.md` and the request contract in `docs/taskdeck-child-session-protocol.md`.
+That file/marker-based flow is now a compatibility or manual fallback path, not the primary App Server child-session model. It remains useful for non-App-Server experiments and local smoke tests while App Server-native child rendering is implemented.
 
-- Protocol owns the request block shape, required and optional fields, forbidden fields, validation semantics, parser/validator behavior, and protocol docs. Typical files are `docs/taskdeck-child-session-protocol.md` and `apps/web/src/childSessionRequests.ts`. Protocol work must not introduce raw launch commands or UI workflow decisions.
-- App Flow owns scanning parent task output/logs, calling the parser, deduping processed request blocks, resolving trusted local agent profiles, mapping valid requests to `CreateTaskInput`, invoking the existing task creation flow, and surfacing concise created/rejected status. Typical files are `apps/web/src/App.tsx` and `apps/web/src/agentLaunch.ts`.
-- Runtime owns PTY-backed task launch, task metadata preservation, queued input behavior, `initialInstruction` auto-send through the existing input path, and process/output lifecycle. Typical files are `apps/server/src/server.js` and, for stable metadata semantics, `packages/core/src/index.js`.
-- UI owns child metadata display, Child and work-package badges, TaskInfoPane child details, concise status presentation, and the #29 decision to avoid a confirmation modal for valid parent-generated requests. Typical files are `apps/web/src/components/TaskList.tsx`, `apps/web/src/components/TaskInfoPane.tsx`, and related local styles when needed.
-- Core owns parent/child task metadata semantics and persisted compatibility for fields such as `parentSessionId`, `spawnedFromParentRequest`, `workPackageId`, and `filesLikelyToChange` when those semantics change.
+- App Server adapter owns structured child detection from thread events and the mapping from App Server thread ids to TaskDeck task ids. Typical files are `apps/server/src/server.js` and future `codex-app-server` extraction points.
+- Core owns parent/child metadata semantics and persisted compatibility. App Server-native fields such as App Server thread id, parent thread id, session id, subagent nickname, and subagent role should be distinct from compatibility fields such as `spawnedFromParentRequest`.
+- UI owns child metadata display, Child and work-package/subagent badges, TaskInfoPane child details, concise status presentation, and keeping parent/child cards visually connected.
+- Compatibility protocol owns the file-based request shape, forbidden fields, validation semantics, parser/validator behavior, and protocol docs. Typical files are `docs/taskdeck-child-session-protocol.md`, `apps/web/src/childSessionRequests.ts`, and the writer scripts. Compatibility protocol work must not reintroduce raw launch commands or make stdout marker blocks the App Server control path.
+- App Flow owns any remaining compatibility scanning/deduping for request blocks or files until the App Server-native path replaces it.
 - Integration owns collecting pushed child branches after child sessions finish, choosing merge order, merging into the parent or integration branch, and running checks. Integration is not part of the auto-launch runtime itself; use `docs/agents/roles/integration.md` for that workflow.
 
-#29 must not execute raw commands from parent output. Parent requests may name an agent profile, cwd, permission, title, work package, file hints, and an initial instruction, but TaskDeck builds the actual launch command from trusted local profile configuration.
+#29 compatibility handling must not execute raw commands from parent output. Parent requests may name an agent profile, cwd, permission, title, work package, file hints, and an initial instruction, but TaskDeck builds the actual launch command from trusted local profile configuration.
 
 #29 is also not worktree management, branch management, dependency graph execution, automatic merge, parent-to-child follow-up instruction routing, or child completion result tracking. Follow-up instruction routing belongs to #30. Child completion/result tracking and integration handoff should be handled by later workflows/issues such as #40 and the integration role guide.
 
@@ -79,49 +93,46 @@ The server persists local runtime state under `.taskdeck/`, which is intentional
 ## Domain Concepts
 
 - Task: The central supervision unit. It owns process status, command/cwd, agent profile metadata, session metadata, attachments, logs, risk, `agentState`, `attentionState`, and timing.
-- Agent profile: A configured launch profile such as Codex, Goose, zsh, or another Docker-backed command. Profiles merge from built-in defaults, committed config, ignored local config, and `TASKDECK_CONFIG`.
-- Session mode: How an agent starts, such as new session, resume last, or resume saved.
+- Agent profile: A configured launch profile such as Codex App Server, Goose, zsh, or another Docker-backed command. Profiles merge from built-in defaults, committed config, ignored local config, and `TASKDECK_CONFIG`.
+- Session mode: How an agent starts. The committed App Server route starts new sessions; legacy stored tasks may still carry older session mode values.
 - Attention state: The primary operator signal for `Needs you` / `Not now`. It should remain conservative and false-positive tolerant.
 - Agent state: A process/supervision state such as starting, working, waiting input, review ready, done, or failed. It is related to but not identical to attention.
-- Saved session: Best-effort Codex session metadata derived from TaskDeck task records and available container-side Codex session storage. It is not a guaranteed Codex internal registry.
 - Project root / project suggestion: `projectRoot` means a parent directory whose immediate child directories become Project choices. With no configured project root, TaskDeck falls back to the TaskDeck repo itself as the selectable project.
 - Diagnostics: Server-side checks for Docker reachability, configured containers, configured container workspaces, and related local setup. There is not currently a dedicated web diagnostics pane.
 
 ## Task And Session Behavior
 
-Multiple tasks can exist in the task list, and multiple PTY-backed agent sessions can run at the same time. Bulk clearing removes non-running tasks and their logs while preserving active tasks. Clearing an individual running task stops its PTY and removes that task.
+Multiple tasks can exist in the task list, and multiple agent processes can run at the same time. Codex App Server tasks are stdio-backed subprocesses; terminal fallback and shell/provider tasks are PTY-backed. Bulk clearing removes non-running tasks and their logs while preserving active tasks. Clearing an individual running task stops its active process and removes that task.
 
 Tasks carry a low-level process `status`, a supervisor-facing `agentState`, and a primary `attentionState` that answers whether the operator should look at the task now. `attentionState` can be `none`, `may_need_user`, `needs_input`, `needs_approval`, `review_ready`, or `failed`, with source/confidence/reason metadata. TaskDeck intentionally prefers false positives over false negatives for attention: input-like prompts that are not yet stable, quiet running PTYs, and working tasks whose PTY activity has stopped become `may_need_user` rather than staying invisible.
 
-Agent state also carries lightweight `agentStateReason`, `agentStateSource`, and `agentStateConfidence` metadata so operators can distinguish TaskDeck-owned events from heuristic TUI fallback. TaskDeck treats its own lifecycle events as the primary state source: session start, user input, PTY output activity, and process exit. Plain PTY output is a reliable process observation but only a medium-confidence inference of `working`. Silence does not imply thinking, but it may need user attention.
+Agent state also carries lightweight `agentStateReason`, `agentStateSource`, and `agentStateConfidence` metadata so operators can distinguish TaskDeck-owned events from App Server process events and heuristic TUI fallback. TaskDeck treats its own lifecycle events as the primary state source: session start, user input, App Server status/request events, PTY output activity, and process exit. Plain PTY output is a reliable process observation but only a medium-confidence inference of `working`. Silence does not imply thinking, but it may need user attention.
 
-Task creation is centered on starting an AI agent session in a selected workspace. The New Agent Session form selects Agent, Codex permissions, Project, and Session; instructions are sent after launch from the terminal composer. Task records preserve the selected agent profile, session mode, detected session id/provider/source/timestamp when available, generated session resume command, and resume command when provided.
-
-For Codex profiles, the Session selector offers a new session, recent saved Codex sessions detected from prior tasks, then the fallback `codex resume --last`. Full automatic saved-session discovery is not implemented yet, but TaskDeck does a first-pass Codex session id detection from explicit `codex resume <id>` commands and from recognizable session/conversation id text in task output. Detected Codex sessions become available through the existing Resume saved action by filling `resumeCommand` when it is empty or still points at imprecise resume-last behavior, and through the New Agent Session saved-session picker.
+Task creation is centered on starting an AI agent session in a selected workspace. The New Agent Session form defaults to `Codex App Server`. Instructions are sent after launch from the composer. Task records preserve the selected agent profile and session mode, while legacy session metadata fields remain loadable for old stored tasks.
 
 Completed and other non-running tasks can be rerun from the expanded selected task card. Rerun starts a new task with the same title, command, and cwd, leaving the original task record and log intact.
 
-Expanded task cards can also resume agent sessions. Tasks with a saved `resumeCommand` show a Resume saved action that starts a new task in the same cwd without replaying the original initial instruction. Older Codex tasks without saved resume metadata show a lower-priority Resume last action with an inline confirmation because it targets the latest Codex session, not necessarily the selected task. Resume-last tasks are titled `Resume last: ...`. When a resume action is available, the expanded card previews the exact command that will be launched.
+Expanded task cards can also rerun tasks from their stored command and cwd. Legacy `resumeCommand` metadata remains serialized for old task records, but the committed App Server route does not generate Codex CLI resume commands or expose a saved Codex session picker.
 
 ## UI Organization
 
-The UI is organized around task cards that help operators keep the left-rail task list matched to the center terminal and persisted log view. Stable task/session identity is the primary card-level visual layer, while `Needs you` / `Not now` remains visible through sorting, badges, filters, and acknowledgement controls. The right rail launches new agent sessions, and the composer stays attached to the terminal.
+The UI is organized around task cards that help operators keep the left-rail task list matched to the center task output and persisted log view. Stable task/session identity is the primary card-level visual layer, while `Needs you` / `Not now` remains visible through sorting, badges, filters, and acknowledgement controls. The right rail launches new agent sessions, and the composer stays attached to the selected task.
 
 Expanded task cards show command, cwd, process status, exit code, timing, initial instruction when available, and compact diff status. The former top summary strip and right-side task-state panel are intentionally folded into the card model.
 
-The terminal pane keeps xterm.js as the renderer while adding operator controls for follow mode, clearing the current view, reloading persisted logs, copying the bounded visible log buffer, and counting simple search matches. The xterm surface fits the visible terminal viewport; composer height changes should resize the terminal viewport and preserve bottom-follow state instead of relying on an oversized hidden terminal surface.
+The output pane keeps xterm.js for terminal-backed profiles while also displaying human-readable Codex App Server status, assistant text, command output, and request state. It includes operator controls for follow mode, clearing the current view, reloading persisted logs, copying the bounded visible log buffer, and counting simple search matches. The xterm surface fits the visible terminal viewport when a PTY profile is selected; composer height changes should resize the terminal viewport and preserve bottom-follow state instead of relying on an oversized hidden terminal surface.
 
-Terminal input is sent through the fixed bottom composer. It targets the selected running PTY and stays disabled for read-only logs, disconnected sessions, or no selected task. The composer supports multi-line instructions. Enter sends, Shift+Enter inserts a newline, Cmd/Ctrl+Enter sends, and IME composition is preserved for Japanese input. Single-line slash commands are sent as raw terminal input plus Enter so the underlying TUI can parse commands it actually supports, such as `/help` when available. TaskDeck only passes these commands through; it does not add support for slash commands the CLI does not expose. Normal composer instructions submit with bracketed paste followed by terminal Enter (`\r`) so Codex-style TUIs receive even one-line text as a committed instruction. Codex task input is briefly queued during startup so early instructions are not swallowed while the CLI is booting.
+Task input is sent through the fixed bottom composer. For Codex App Server tasks it becomes structured turn input. For PTY-backed tasks it targets the selected running PTY and uses terminal input semantics. The composer stays disabled for read-only logs, disconnected sessions, or no selected task. It supports multi-line instructions. Enter sends, Shift+Enter inserts a newline, Cmd/Ctrl+Enter sends, and IME composition is preserved for Japanese input. Single-line slash commands are passed through only for terminal-backed profiles so the underlying TUI can parse commands it actually supports. TaskDeck does not add support for slash commands the CLI does not expose. Normal PTY composer instructions submit with bracketed paste followed by terminal Enter (`\r`).
 
 Terminal input locking blocks new input without foregrounding the task in the task list. Unlocking a running task is an operator attention action: the UI selects that task and refreshes its activity timestamp so it moves up within its current supervision bucket.
 
 ## Agent State Inference
 
-Process and task lifecycle states are the reliable base layer: process start, user input sent through TaskDeck, PTY output observed from the child process, and process exit. User input is a TaskDeck-owned event, and process exit is a process-owned event.
+Process and task lifecycle states are the reliable base layer: process start, user input sent through TaskDeck, App Server status/request events, PTY output observed from the child process, and process exit. User input is a TaskDeck-owned event, and process exit is a process-owned event.
 
-TUI text is not a stable protocol. TUI fallback should only detect explicit user-action prompts such as approval requested, input requested, or review-ready hints. Approval prompts win immediately, but input prompts are only stabilized when the PTY is not actively repainting. Decorative spinner or status text from Goose, Codex, or other agents should not be added as permanent detection rules.
+TUI text is not a stable protocol. For Codex work sessions, App Server request/status events drive request handling and supervision state. PTY fallback should only detect explicit user-action prompts such as approval requested, input requested, or review-ready hints for non-Codex terminal-backed profiles. Approval prompts win immediately, but input prompts are only stabilized when the PTY is not actively repainting. Decorative spinner or status text from terminal-backed agents should not be added as permanent detection rules.
 
-Agent state inference is split behind Goose, Codex, and generic adapters. The adapters currently share conservative process/activity signals and explicit prompt fallback, but this keeps Goose tuning separate from Codex behavior so lower-cost Goose testing can stabilize supervision logic first. Generic PTY output is classified as process-sourced, medium-confidence `working`: the output is real, but the interpretation is still an inference. While a PTY is active, TaskDeck also tracks in-memory activity signals such as recent output frames, visible text, ANSI/cursor-control frames, and carriage returns so animated terminal repainting can be distinguished from plain text output. True `thinking` is not directly observable from TUI text.
+Agent state inference is split behind App Server, Goose, and generic adapters. App Server status events should be preferred when present. The PTY adapters share conservative process/activity signals and explicit prompt fallback, but this keeps provider tuning separate. Generic PTY output is classified as process-sourced, medium-confidence `working`: the output is real, but the interpretation is still an inference. While a PTY is active, TaskDeck also tracks in-memory activity signals such as recent output frames, visible text, ANSI/cursor-control frames, and carriage returns so animated terminal repainting can be distinguished from plain text output. True `thinking` is not directly observable from TUI text.
 
 ## Local Configuration
 
@@ -133,17 +144,16 @@ Agent profiles can be changed without editing application code. TaskDeck merges 
 
 Each profile supports `id`, `label`, `command`, `description`, optional `diagnosticContainer`, optional `diagnosticWorkspace`, and optional `modelOptions`. The diagnostics panel uses the diagnostic fields to inspect/start configured Docker containers and check whether expected container workspace directories exist. Profiles without diagnostic container fields, such as host shell profiles, are launchable but omitted from container diagnostics. The committed container profiles run inside `ai-agent-sandbox-agent-1`.
 
-Codex launches through `sh -lc 'TERM=xterm-256color codex'` so the CLI sees a conventional terminal environment. TaskDeck adds `-c check_for_update_on_startup=false` to generated Codex launch commands so Codex startup update checks do not interrupt supervised sessions. Prefer machine-readable or non-TUI agent modes when an agent exposes one, but keep the PTY path as the current compatibility layer.
+Codex App Server launches through `docker exec -i ... codex app-server --listen stdio://` so TaskDeck can communicate over ordinary stdin/stdout pipes. TaskDeck does not add Codex CLI/TUI sandbox, reasoning, startup, or resume flags to this profile. Prefer machine-readable or non-TUI agent modes when an agent exposes one; keep the PTY path for shell and non-Codex provider compatibility.
 
 ## Where To Change What
 
 - Project dropdown / project roots: `apps/server/src/server.js` functions around `resolveProjectRoots`, `buildProjectSuggestions`, `selectDefaultProjectCwd`, and web form handling in `apps/web/src/components/TaskCreateForm.tsx`.
 - Config loading: `apps/server/src/server.js` config candidate loading and profile/project-root normalization.
-- Agent profiles: Built-in profile definitions and profile merge/sanitize logic in `apps/server/src/server.js`; frontend profile types in `apps/web/src/types.ts`; launch-command shaping in `TaskCreateForm.tsx` and `apps/web/src/codexPermissions.ts`.
-- PTY lifecycle and input/output: Task creation, PTY spawn, resize, queued input, log append, and WebSocket output handling in `apps/server/src/server.js`; terminal rendering in `TerminalPane.tsx`; composer behavior in `InputComposer.tsx`.
+- Agent profiles: Built-in profile definitions and profile merge/sanitize logic in `apps/server/src/server.js`; frontend profile types in `apps/web/src/types.ts`; launch-command shaping in `TaskCreateForm.tsx` and `apps/web/src/agentLaunch.ts`.
+- App Server and PTY lifecycle and input/output: Task creation, App Server spawn/stdin/stdout handling, PTY spawn, resize, queued input, log append, and WebSocket output handling in `apps/server/src/server.js`; terminal rendering in `TerminalPane.tsx`; composer behavior in `InputComposer.tsx`.
 - Attention/supervision logic: Adapter selection, process/activity observation, explicit TUI prompt fallback, quiet timers, and task state marking in `apps/server/src/server.js`; task-card display in `apps/web/src/components/TaskList.tsx`.
-- Terminal UI: `apps/web/src/components/TerminalPane.tsx`, `InputComposer.tsx`, related terminal/composer CSS in `apps/web/src/styles.css`.
-- Saved sessions: Codex session detection, resume command construction, session label storage, `/api/agent-sessions`, and saved-session picker behavior in `apps/server/src/server.js` and `TaskCreateForm.tsx`.
+- Output and terminal UI: `apps/web/src/components/TerminalPane.tsx`, `InputComposer.tsx`, related output/composer CSS in `apps/web/src/styles.css`.
 - Diagnostics: `/api/diagnostics` plus container inspection/start helpers in `apps/server/src/server.js`; existing tool panes use related profile/container metadata, and a dedicated diagnostics UI would be future work.
 
 ## Refactoring Seams
@@ -151,13 +161,12 @@ Codex launches through `sh -lc 'TERM=xterm-256color codex'` so the CLI sees a co
 `apps/server/src/server.js` currently mixes many responsibilities. Good future extraction candidates include:
 
 - `config`: Config file discovery, project-root normalization, profile merging, and profile sanitization.
-- `profiles`: Built-in agent profile definitions, Codex permission command shaping, Docker workdir correction, and profile diagnostics metadata.
+- `profiles`: Built-in agent profile definitions, launch helper behavior, Docker workdir correction, and profile diagnostics metadata.
 - `tasks`: Task persistence, task mutation helpers, task cleanup, presets, and attachment persistence.
 - `pty`: PTY spawn/resize/input queue/output stream/log append lifecycle.
+- `codex-app-server`: App Server spawn, JSON-RPC request/notification handling, pending request state, auth/device-login flow, and structured output rendering.
 - `supervision`: Activity tracking, adapter selection, attention/agent-state inference, quiet timers, and explicit TUI prompt fallback.
-- `codex-sessions`: Codex session id detection, container session storage reading, saved-session API, resume-command construction, and session labels.
 - `diagnostics`: Docker reachability, container inspection/start, and workspace checks.
-- `codex-usage`: Hidden Codex usage refresh, status parsing, bounded debug output, and refresh errors.
 - `api`: Express route registration separated from business logic.
 
 Frontend seams are smaller but still visible:
@@ -170,8 +179,9 @@ Frontend seams are smaller but still visible:
 
 - `projectRoot` is a parent directory whose children are project choices. Do not set it to the TaskDeck repo just to make the current repo appear.
 - Do not make `defaultAgentProfiles` empty as a shortcut to public-safety; that silently removes the built-in Agent options.
-- Preserve persisted task compatibility when changing task metadata, saved-session fields, resume commands, or state names.
+- Preserve persisted task compatibility when changing task metadata, legacy session fields, resume commands, or state names.
 - Do not infer thinking from silence. Quiet running PTYs should keep their last supervisor state until a stronger signal appears.
-- Keep adapter-specific behavior isolated for Codex, Goose, and generic agents; do not tune one agent by adding one-off phrases to a shared path.
+- Keep adapter-specific behavior isolated for Codex App Server, Goose, and generic agents; do not tune one agent by adding one-off phrases to a shared path.
 - Treat PTY output parsing as a fallback for explicit user-action prompts, not a stable protocol.
+- For Codex work sessions, use App Server request/status events as the control data.
 - Keep hidden/background status or diagnostics output out of visible task logs unless the user explicitly starts that task.

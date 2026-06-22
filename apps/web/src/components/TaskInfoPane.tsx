@@ -52,6 +52,14 @@ export function TaskInfoPane({ actionError, task, onInterrupt, onRerun }: TaskIn
             <>
               <InfoSection label="Child session" />
               {task.parentSessionId ? <Info label="Parent session id" value={task.parentSessionId} /> : null}
+              {task.codexAppServerThreadId ? <Info label="App Server thread id" value={task.codexAppServerThreadId} /> : null}
+              {task.codexAppServerParentThreadId ? (
+                <Info label="App Server parent thread id" value={task.codexAppServerParentThreadId} />
+              ) : null}
+              {task.codexAppServerSessionId ? <Info label="App Server session id" value={task.codexAppServerSessionId} /> : null}
+              {task.codexAppServerAgentNickname ? <Info label="Subagent nickname" value={task.codexAppServerAgentNickname} /> : null}
+              {task.codexAppServerAgentRole ? <Info label="Subagent role" value={task.codexAppServerAgentRole} /> : null}
+              {task.codexAppServerThreadStatus ? <Info label="App Server thread status" value={task.codexAppServerThreadStatus} /> : null}
               {task.workPackageId ? <Info label="Work package id" value={task.workPackageId} /> : null}
               <Info label="Spawned from parent request" value={task.spawnedFromParentRequest ? "Yes" : "No"} />
               {task.filesLikelyToChange?.length ? (
@@ -93,6 +101,9 @@ function hasChildSessionMetadata(task: Task) {
   return Boolean(
     task.parentSessionId ||
       task.spawnedFromParentRequest ||
+      task.codexAppServerThreadId ||
+      task.codexAppServerParentThreadId ||
+      task.codexAppServerSessionId ||
       task.workPackageId ||
       task.filesLikelyToChange?.length
   );

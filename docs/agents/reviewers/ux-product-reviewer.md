@@ -14,7 +14,7 @@ Check whether the change:
 - avoids making the user classify agent internals;
 - avoids surfacing low-confidence reason/source/confidence metadata as the primary UI;
 - keeps stable task/session identity readable where it is part of the current UI direction;
-- keeps terminal/PTY interaction as a means to supervise work, not the product identity;
+- keeps App Server and terminal/PTY interaction as means to supervise work, not the product identity;
 - reduces or preserves human supervision load rather than adding decision friction.
 
 ## TaskDeck-Specific Product Doctrine

@@ -12,7 +12,7 @@ Check whether the change:
 - keeps source-of-truth logic in the correct layer;
 - avoids duplicating existing concepts under new names;
 - avoids adding new task, session, attention, permission, or lifecycle concepts without clear justification;
-- keeps server-owned process and PTY observations out of UI-only inference;
+- keeps server-owned App Server, process, and PTY observations out of UI-only inference;
 - keeps frontend presentation logic from becoming a second runtime authority;
 - maintains backward compatibility for persisted task metadata when relevant;
 - follows existing architecture docs and the AI-first layering model when changing cross-layer behavior.
@@ -23,8 +23,8 @@ Pay special attention to these drift risks:
 
 - `attentionState` is not a full task lifecycle model.
 - `Needs you` / `Not now` is a supervision surface, not an invitation to add many user-facing buckets.
-- PTY output and repaint activity are process observations, not product identity.
-- Adapter-specific behavior should stay isolated enough that Goose, Codex, and generic tuning do not accidentally rewrite each other.
+- App Server status/request events and PTY output/repaint activity are process observations, not product identity.
+- Adapter-specific behavior should stay isolated enough that Codex App Server, Goose, and generic tuning do not accidentally rewrite each other.
 - Task/session identity and supervision urgency should not become competing full-card state systems.
 - Child-session launch should build commands from trusted local profiles, not raw parent output.
 

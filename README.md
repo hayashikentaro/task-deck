@@ -1,13 +1,13 @@
 # TaskDeck
 
-TaskDeck is a local supervision UI for running and monitoring multiple AI agent tasks. It wraps PTY-backed agent sessions in a task-centric interface so you can keep track of which task maps to which terminal, which tasks need attention, and where each session is running.
+TaskDeck is a local supervision UI for running and monitoring multiple AI agent tasks. On this branch its Codex route uses the structured Codex App Server adapter so TaskDeck can supervise turns, approvals, command output, and user-input requests without treating a TUI transcript as the control protocol. Terminal-backed PTY profiles remain available for shell and non-Codex provider compatibility.
 
 ![TaskDeck screenshot](docs/assets/readme-attached-image.png)
 
 ## Prerequisites
 
 - Node.js 20 and npm 10, pinned for this repository by Volta (`node` 20.20.2 and `npm` 10.9.8)
-- Docker, if you want to use the committed Codex or Goose container profiles
+- Docker, for the committed Codex App Server and other container-backed profiles
 - A local workspace where agent commands may safely read, edit, and run files
 
 TaskDeck is intended for local use. Do not expose the server to a LAN or the internet without separate authentication, network controls, and operational protection.
@@ -43,13 +43,13 @@ The dev command runs the local Node server and mounts Vite middleware for the Re
 
 ## First Task
 
-1. Choose an agent profile in the right rail.
+1. Use the default `Codex App Server` agent profile in the right rail, or choose another profile explicitly.
 2. Choose a project/workspace.
 3. Choose a session mode.
 4. Start the task.
-5. Send instructions from the composer attached to the terminal.
+5. Send instructions from the composer attached to the task log.
 
-Task cards in the left rail show the active tasks and their supervision state. The center terminal shows the selected task's PTY output and persisted log view.
+Task cards in the left rail show the active tasks and their supervision state. The center pane shows the selected task's live output and persisted log view. For Codex App Server tasks, TaskDeck renders structured App Server messages as human-readable task output and handles approval/user-input requests through the UI.
 
 ## Configure Projects
 
@@ -71,7 +71,7 @@ Then edit `taskdeck.local.json`:
 
 ## Configure Agent Profiles
 
-TaskDeck ships with committed Codex and Goose profiles that expect a Docker container named `ai-agent-sandbox-agent-1` with a `/workspace` directory.
+TaskDeck ships with a committed Codex App Server profile that runs directly in the TaskDeck server environment. `Codex App Server` is the only committed Codex work-session route on this branch and uses non-TTY stdio so TaskDeck can exchange App Server JSON over pipes.
 
 Keep normal fresh-clone project setup minimal by putting only `projectRoot` in `taskdeck.local.json`. If you need to override agent profiles, either add an `agentProfiles` array to `taskdeck.local.json`, copy `taskdeck.profiles.example.json` into another ignored local config file, or point `TASKDECK_CONFIG` at another config file.
 
@@ -81,7 +81,7 @@ For example:
 TASKDECK_CONFIG=/path/to/taskdeck.profiles.json npm run dev
 ```
 
-For TaskDeck-launched Codex sessions, TaskDeck adds `-c check_for_update_on_startup=false` to suppress Codex CLI startup update prompts in supervised PTY sessions.
+TaskDeck does not rewrite the App Server profile with Codex CLI/TUI sandbox, reasoning, startup, or resume flags. The committed route intentionally avoids interactive Codex CLI access; custom local profiles are outside the product route for this branch.
 
 Agent profiles merge by `id`: built-in defaults load first, then committed config, ignored local config, and finally `TASKDECK_CONFIG`.
 
@@ -101,7 +101,7 @@ TaskDeck also starts local manager action transports and records them in `.taskd
 
 ## Safety Notes
 
-TaskDeck can launch local or container agent CLIs that may edit files and run commands. Docker/container execution is containment, not a complete security boundary. Use full-access agent operation only in a safe or disposable workspace.
+TaskDeck can launch local or container agent processes that may edit files and run commands. Docker/container execution is containment, not a complete security boundary. Use full-access agent operation only in a safe or disposable workspace.
 
 ## More Documentation
 

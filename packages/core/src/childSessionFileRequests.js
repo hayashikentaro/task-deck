@@ -3,17 +3,13 @@ export const CHILD_SESSION_FILE_RESULT_KIND = "childSessionRequestResult";
 export const CHILD_SESSION_FILE_VERSION = 1;
 
 const forbiddenFields = new Set(["command", "rawCommand", "shell", "env", "secrets", "autoApprove"]);
-const permissionLevels = new Set(["full_access", "workspace_write", "read_only"]);
-const reasoningEfforts = new Set(["low", "medium", "high", "xhigh"]);
 
 export function createChildSessionFileRequestDraft({
   requestId,
   parentTaskId = "",
   reason = "Create a child session using the file-based TaskDeck request writer.",
   title,
-  agentProfileId = "codex",
-  agentPermissionLevel = "full_access",
-  agentReasoningEffort = "low",
+  agentProfileId = "codex-app-server",
   cwd = ".",
   workPackageId,
   filesLikelyToChange = [],
@@ -31,8 +27,6 @@ export function createChildSessionFileRequestDraft({
       {
         title,
         agentProfileId,
-        agentPermissionLevel,
-        agentReasoningEffort,
         cwd,
         workPackageId,
         filesLikelyToChange,
@@ -141,20 +135,12 @@ function validateChildSessionFileRequestSession(session, index) {
 
   const title = String(session.title || "").trim();
   const agentProfileId = String(session.agentProfileId || "").trim();
-  const agentPermissionLevel = String(session.agentPermissionLevel || "").trim();
-  const agentReasoningEffort = String(session.agentReasoningEffort || "").trim();
   const cwd = String(session.cwd || "").trim();
   const workPackageId = String(session.workPackageId || "").trim();
   const initialInstruction = String(session.initialInstruction || "");
 
   if (!title) return { ok: false, error: `sessions[${index}].title is required.` };
   if (!agentProfileId) return { ok: false, error: `sessions[${index}].agentProfileId is required.` };
-  if (agentPermissionLevel && !permissionLevels.has(agentPermissionLevel)) {
-    return { ok: false, error: `sessions[${index}].agentPermissionLevel is invalid.` };
-  }
-  if (agentReasoningEffort && !reasoningEfforts.has(agentReasoningEffort)) {
-    return { ok: false, error: `sessions[${index}].agentReasoningEffort is invalid.` };
-  }
   if (!cwd) return { ok: false, error: `sessions[${index}].cwd is required.` };
   if (!workPackageId) return { ok: false, error: `sessions[${index}].workPackageId is required.` };
   if (!initialInstruction.trim()) return { ok: false, error: `sessions[${index}].initialInstruction is required.` };
@@ -169,8 +155,6 @@ function validateChildSessionFileRequestSession(session, index) {
     session: {
       title,
       agentProfileId,
-      ...(agentPermissionLevel ? { agentPermissionLevel } : {}),
-      ...(agentReasoningEffort ? { agentReasoningEffort } : {}),
       cwd,
       workPackageId,
       filesLikelyToChange,

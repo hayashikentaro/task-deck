@@ -1,52 +1,26 @@
-import { useMemo, useState } from "react";
-import type { AgentProfile, CreateTaskInput, TaskDeckContext } from "../types";
+import { useState } from "react";
 import { Button } from "./ui/Button";
 
 type ToolsPaneProps = {
-  context: TaskDeckContext | null;
   isConnected: boolean;
   canCopyLog: boolean;
-  onCreateTask: (input: CreateTaskInput) => boolean;
   onCopyLog: () => void;
 };
 
 export function ToolsPane({
-  context,
   isConnected,
   canCopyLog,
-  onCreateTask,
   onCopyLog,
 }: ToolsPaneProps) {
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isRestartConfirmOpen, setIsRestartConfirmOpen] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
-  const codexContainers = useMemo(() => getCodexToolContainers(context), [context]);
 
   const openDirectInput = () => {
     const directInputUrl = new URL(window.location.href);
     directInputUrl.searchParams.set("directInput", "1");
     window.open(directInputUrl.toString(), "_blank", "noopener,noreferrer");
-  };
-
-  const startCodexAuthTask = (containerName: string, action: "logout" | "device-login") => {
-    const isDeviceLogin = action === "device-login";
-    const command = buildCodexAuthCommand(containerName, isDeviceLogin ? "codex login --device-auth" : "codex logout");
-    const didStart = onCreateTask({
-      title: isDeviceLogin ? "Codex device login" : "Codex logout",
-      command,
-      cwd: "",
-      agentProfileId: "codex-auth",
-      agentLabel: "Codex auth",
-      sessionMode: "diagnostic",
-      initialInstruction: "",
-    });
-    setStatusMessage(
-      didStart
-        ? `Started ${isDeviceLogin ? "Codex device login" : "Codex logout"} in ${containerName}.`
-        : "TaskDeck is not connected.",
-    );
-    setErrorMessage("");
   };
 
   const requestRestart = async () => {
@@ -84,23 +58,6 @@ export function ToolsPane({
             </Button>
           </div>
         </div>
-        <div className="tool-section" aria-labelledby="tools-account-title">
-          <h3 id="tools-account-title">Account</h3>
-          <div className="tool-actions" aria-label="Codex auth actions">
-            {codexContainers.map((containerName) => (
-              <div className="tool-action-group" data-layout="single" key={containerName}>
-                <Button
-                  disabled={!isConnected}
-                  fullWidth
-                  variant="panel"
-                  onClick={() => startCodexAuthTask(containerName, "device-login")}
-                >
-                  Codex login
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
         <div className="tool-section" aria-labelledby="tools-log-title">
           <h3 id="tools-log-title">Log</h3>
           <div className="tool-action-group" data-layout="single">
@@ -130,8 +87,8 @@ export function ToolsPane({
           <div className="confirmation-modal">
             <h3 id="restart-taskdeck-title">Restart TaskDeck?</h3>
             <p>
-              Restarting TaskDeck will restart the backend server. Active PTY sessions such as Codex, Goose, or zsh may
-              be interrupted.
+              Restarting TaskDeck will restart the backend server. Active App Server or terminal-backed sessions may be
+              interrupted.
             </p>
             <div className="confirmation-actions">
               <Button disabled={isRestarting} variant="secondary" onClick={() => setIsRestartConfirmOpen(false)}>
@@ -146,33 +103,4 @@ export function ToolsPane({
       ) : null}
     </section>
   );
-}
-
-function getCodexToolContainers(context: TaskDeckContext | null) {
-  const agentProfiles = context?.agentProfiles ?? [];
-  return Array.from(
-    new Set(
-      agentProfiles
-        .filter((profile) => isCodexProfile(profile))
-        .map((profile) => profile.diagnosticContainer?.trim())
-        .filter((containerName): containerName is string => Boolean(containerName)),
-    ),
-  );
-}
-
-function isCodexProfile(profile: AgentProfile) {
-  return (
-    profile.id.includes("codex") ||
-    profile.label.toLowerCase().includes("codex") ||
-    /\bcodex\b/.test(profile.command)
-  );
-}
-
-function buildCodexAuthCommand(containerName: string, codexCommand: string) {
-  const quotedContainerName = shellQuote(containerName);
-  return `docker start ${quotedContainerName} >/dev/null && docker exec -it -w /workspace ${quotedContainerName} sh -lc ${shellQuote(codexCommand)}`;
-}
-
-function shellQuote(value: string) {
-  return `'${value.replace(/'/g, "'\\''")}'`;
 }

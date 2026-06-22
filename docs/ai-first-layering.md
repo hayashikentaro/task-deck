@@ -48,7 +48,7 @@ Typical files:
 
 - `packages/core/src/*`
 
-Core sessions may decide what a concept means. They should not decide UI layout, PTY timing, or protocol transport details unless explicitly asked.
+Core sessions may decide what a concept means. They should not decide UI layout, App Server/PTY timing, or protocol transport details unless explicitly asked.
 
 ### Protocol
 
@@ -76,6 +76,8 @@ Owns side-effectful runtime behavior.
 
 Examples:
 
+- Codex App Server subprocess lifecycle;
+- App Server JSON-RPC request/notification handling;
 - PTY lifecycle;
 - input queueing;
 - websocket server behavior;

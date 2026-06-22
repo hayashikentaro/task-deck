@@ -12,8 +12,6 @@ POST /api/validate-cwd
 POST /api/attachments
 GET /api/tasks
 DELETE /api/tasks
-GET /api/agent-sessions
-PATCH /api/agent-sessions/:sessionKey/label
 GET /api/tasks/:taskId
 PATCH /api/tasks/:taskId/title
 PATCH /api/tasks/:taskId/attention/acknowledge
@@ -33,7 +31,7 @@ DELETE /api/presets
 
 `GET /api/diagnostics` returns Docker reachability, merged agent-profile config sources, configured agent-container status, and configured container workspace checks. The right-rail Agent Diagnostics panel surfaces this server diagnostics API in the UI.
 
-`POST /api/diagnostics/containers/:containerName/start` starts a configured diagnostic container when it exists but is stopped. Agent Diagnostics can also start dedicated Codex auth tasks for container-side `codex logout` and `codex login --device-auth`, so auth commands do not get typed into an already-running agent TUI.
+`POST /api/diagnostics/containers/:containerName/start` starts a configured diagnostic container when it exists but is stopped.
 
 ## Cwd Validation
 
@@ -47,29 +45,21 @@ It returns whether the cwd resolves to an existing directory, its absolute path,
 
 ## Attachments
 
-`POST /api/attachments` accepts raw `image/png`, `image/jpeg`, or `image/webp` bodies with `X-TaskDeck-Filename` and returns a pending image attachment. The terminal composer uses this for its `+` image button. Uploaded image paths are appended to the PTY input as attachment context.
-
-## Saved Agent Sessions
-
-`GET /api/agent-sessions` returns saved Codex sessions derived from stored task metadata and Codex's container-side session JSONL storage under `/home/dev/.codex/sessions`.
-
-Sessions require a Codex provider, session id, and precise resume command. The server excludes obvious synthetic ids such as e2e/smoke/fake/test ids and deduplicates by provider, agent profile, command environment, and session id. Container-side `/workspace` cwd values are mapped back to the host bind source when Docker mount information is available.
-
-`PATCH /api/agent-sessions/:sessionKey/label` updates the TaskDeck display name used for a saved session.
+`POST /api/attachments` accepts raw `image/png`, `image/jpeg`, or `image/webp` bodies with `X-TaskDeck-Filename` and returns a pending image attachment. The task composer uses this for its `+` image button. Uploaded image paths are appended to task input as attachment context.
 
 ## Tasks
 
-`GET /api/tasks` and `GET /api/tasks/:taskId` return persisted task metadata including the launch command, cwd, agent profile fields, session fields, parent/child metadata, child reported status, and Codex-specific launch metadata when present. `agentReasoningEffort` is present for Codex tasks started with a non-default reasoning effort and is omitted or empty for default reasoning and non-Codex tasks.
+`GET /api/tasks` and `GET /api/tasks/:taskId` return persisted task metadata including the launch command, cwd, agent profile fields, legacy session fields when present, parent/child metadata, and child reported status.
 
-Tasks started with the built-in `taskdeck-manager` agent profile are global manager sessions. The server ignores any client-selected project cwd for that profile, launches it from the document/control root, marks the task with `isManager`, injects a manager-only bootstrap instruction that points at `docs/agents/roles/taskdeck-manager.md`, and injects manager inbox/readable environment variables that point to the actual runtime `dataRoot` files documented in `docs/taskdeck-actor-protocol.md`. Normal worker sessions do not receive these manager-only instructions or manager action environment variables.
+The server still recognizes the legacy `taskdeck-manager` agent profile id as a global manager session marker for manager protocol safety. The committed App Server route does not ship a Codex TUI manager profile. If a task has that profile id, the server ignores any client-selected project cwd, launches it from the document/control root, marks the task with `isManager`, injects a manager-only bootstrap instruction that points at `docs/agents/roles/taskdeck-manager.md`, and injects manager inbox/readable environment variables that point to the actual runtime `dataRoot` files documented in `docs/taskdeck-actor-protocol.md`. Normal worker sessions do not receive these manager-only instructions or manager action environment variables.
 
-`PATCH /api/tasks/:taskId/title` updates the TaskDeck display name used to identify a task/session. When a task has an external session id, the display name is stored against that session key so matching task cards and the saved-session dropdown show the same human-readable label. Tasks without a detected session id still update their own task title.
+`PATCH /api/tasks/:taskId/title` updates the TaskDeck display name used to identify a task/session. When a task has legacy external session metadata, the display name may also be stored against that session key for persisted compatibility. Tasks without session metadata update their own task title.
 
-`PATCH /api/tasks/:taskId/attention/acknowledge` clears the current attention event for a running task without stopping or modifying its PTY. The task stores `attentionAcknowledgedAt`, returns to Not now by setting `attentionState` to `none`, and can surface again when future prompt or quiet detection sets a new attention state.
+`PATCH /api/tasks/:taskId/attention/acknowledge` clears the current attention event for a running task without stopping or modifying its active process. The task stores `attentionAcknowledgedAt`, returns to Not now by setting `attentionState` to `none`, and can surface again when future prompt, App Server request, or quiet detection sets a new attention state.
 
-`DELETE /api/tasks` bulk-clears non-running tasks and their logs while preserving active tasks. `DELETE /api/tasks/:taskId` clears a single task; clearing an individual running task stops its PTY and removes that task.
+`DELETE /api/tasks` bulk-clears non-running tasks and their logs while preserving active tasks. `DELETE /api/tasks/:taskId` clears a single task; clearing an individual running task stops its active App Server process or PTY and removes that task.
 
-`GET /api/tasks/:taskId/logs?tail=200000` returns a bounded persisted log tail for terminal replay. `GET /api/tasks/:taskId/diff` returns compact diff context for task review.
+`GET /api/tasks/:taskId/logs?tail=200000` returns a bounded persisted log tail for output replay. `GET /api/tasks/:taskId/diff` returns compact diff context for task review.
 
 ## Presets
 

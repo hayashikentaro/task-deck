@@ -8,7 +8,7 @@ GitHub Issues remain the source of truth for actionable work and completion stat
 
 TaskDeck is a supervision UI for multiple AI/CLI sessions.
 
-It is not a chatbot UI, a provider-specific Codex UI, or merely a prettier terminal. The medium-term direction is to make TaskDeck easier for other people to use while preserving the core supervision model.
+It is not a chatbot UI, a provider-specific Codex UI, or merely a prettier terminal. The medium-term direction is to make TaskDeck easier for other people to use while preserving the core supervision model. For Codex work sessions, the product route on this branch is App Server-only: use structured App Server events for turns, approvals, command output, and user-input requests, and keep PTY/TUI handling for shell and non-Codex provider compatibility.
 
 ## Medium-term themes
 
@@ -23,16 +23,33 @@ The current design direction is:
 - the manager session is a global TaskDeck supervisor launched from the TaskDeck control/document root, not from an individual project workspace;
 - manager-readable context is global across projects and includes file-based manager inbox events and generated readable views;
 - Read-only global manager MVP: complete. The completed scope includes global manager launch from the control/document root, manager cwd `/workspace` in QA, project-bound worker sessions, manager inbox unread events, generated manager-readable context/unread files, manager nudge, terminal-only manager judgment, no manager writes to `TASKDECK_STATUS_FILE`, no `STATUS ERROR` from manager status parsing, and no direct manager mutation path;
-- Next phase: manager action/write path, starting with ack, review, and close actions only;
+- Minimum manager action/write path: implemented for ack, review, and close actions;
+- Next phase: bounded manager-to-session messaging for the main/sub-session implementation loop;
 - manager writes should go through `taskdeckctl`;
 - `taskdeckctl` should talk to a local IPC endpoint, preferably a Unix domain socket, rather than an exposed Web API;
 - TaskDeck server validates, dedupes, logs, executes, and broadcasts every mutation.
 
-The manager action/write path phase includes `taskdeckctl`, local IPC / Unix socket, manager action schema, the server-side manager action executor, ack/review/close actions, and later spawn-child actions and any future worker command delivery.
+The manager action/write path includes `taskdeckctl`, local IPC / Unix socket, manager action schema, the server-side manager action executor, ack/review/close actions, and later bounded message or spawn-child actions.
 
 Related design doc:
 
 - `docs/taskdeck-actor-protocol.md`
+
+### Codex App Server-first route
+
+Codex supervision should move away from transcript-driven TUI control and toward the structured `codex app-server --listen stdio://` adapter.
+
+The current route is:
+
+- use `Codex App Server` as the default Codex work-session profile;
+- run the App Server inside `ai-agent-sandbox-agent-1` with `docker exec -i`;
+- keep raw App Server JSON out of normal logs;
+- render assistant text, command output, and App Server status as TaskDeck task output;
+- surface approval and user-input requests through TaskDeck controls;
+- keep committed Codex work sessions on the App Server route only;
+- avoid adding Codex TUI parsing or committed Codex CLI/TUI launch profiles.
+
+This is still compatible with provider-neutral TaskDeck. The principle is not "Codex-only"; it is "prefer structured provider adapters over TUI transcript control whenever a provider exposes one."
 
 ### Branch worktree lifecycle
 
@@ -56,7 +73,7 @@ Related issue:
 
 Add Claude support so TaskDeck is not Codex-only.
 
-The design should avoid provider TUI parsing. Provider adapters should reuse generic supervision where possible and add only bounded, robust provider-specific behavior.
+The design should avoid provider TUI parsing. Provider adapters should reuse generic supervision where possible and add only bounded, robust provider-specific behavior. When a provider exposes a stable structured app-server or machine protocol, prefer that path over PTY transcript control.
 
 Related issue:
 
@@ -78,6 +95,7 @@ Related issues:
 
 - Keep machine control data out of human display planes.
 - Prefer bounded file, environment, local IPC, and command protocols for machine-readable coordination.
+- Prefer structured App Server or provider adapter protocols over TUI transcript parsing for agent control.
 - Keep worker-to-TaskDeck reporting constrained and append-only where possible.
 - Keep worker sessions project-bound and keep the manager session TaskDeck-control-root-bound.
 - Treat manager-readable context as global cross-project supervision context.

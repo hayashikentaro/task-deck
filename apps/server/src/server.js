@@ -1,6 +1,6 @@
 import express from "express";
 import { execFile, spawn } from "node:child_process";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import http from "node:http";
 import net from "node:net";
@@ -101,76 +101,10 @@ const managerAgentProfileId = "taskdeck-manager";
 const codexAppServerAgentProfileId = "codex-app-server";
 const defaultAgentProfiles = [
   {
-    id: "codex",
-    label: "Codex",
-    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex'",
-    description: "Run Codex CLI inside the AI agent sandbox container",
-    diagnosticContainer: "ai-agent-sandbox-agent-1",
-    diagnosticWorkspace: "/workspace",
-    modelOptions: [
-      { id: "default", label: "Default" },
-      { id: "gpt-5.5", label: "gpt-5.5" },
-      { id: "gpt-5.5-thinking", label: "gpt-5.5 Thinking" },
-      { id: "gpt-5.4-codex", label: "gpt-5.4 Codex" },
-    ],
-  },
-  {
     id: codexAppServerAgentProfileId,
-    label: "Codex App Server (experimental)",
-    command: "codex app-server --listen stdio://",
-    description: "Experimental server-side Codex App Server adapter",
-  },
-  {
-    id: "claude",
-    label: "Claude",
-    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 claude",
-    description: "Run Claude inside the AI agent sandbox container",
-    diagnosticContainer: "ai-agent-sandbox-agent-1",
-    diagnosticWorkspace: "/workspace",
-  },
-  {
-    id: "aider",
-    label: "Aider",
-    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 aider",
-    description: "Run Aider inside the AI agent sandbox container",
-    diagnosticContainer: "ai-agent-sandbox-agent-1",
-    diagnosticWorkspace: "/workspace",
-  },
-  {
-    id: "goose",
-    label: "Goose",
-    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 goose",
-    description: "Run Goose inside the AI agent sandbox container",
-    diagnosticContainer: "ai-agent-sandbox-agent-1",
-    diagnosticWorkspace: "/workspace",
-  },
-  {
-    id: "zsh",
-    label: "zsh",
-    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'if command -v zsh >/dev/null 2>&1; then exec zsh; elif command -v bash >/dev/null 2>&1; then exec bash; else exec sh; fi'",
-    description: "Plain interactive zsh shell",
-    diagnosticContainer: "ai-agent-sandbox-agent-1",
-    diagnosticWorkspace: "/workspace",
-  },
-  {
-    id: "zsh-host",
-    label: "zsh - host",
-    command: "zsh",
-    description: "Run zsh on the host in the selected project cwd",
-  },
-  {
-    id: managerAgentProfileId,
-    label: "TaskDeck Manager",
-    command: "docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w /workspace ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color codex'",
-    description: "Run a dedicated Codex manager session for reading TaskDeck manager inbox and readable context files",
-    diagnosticContainer: "ai-agent-sandbox-agent-1",
-    diagnosticWorkspace: "/workspace",
-    modelOptions: [
-      { id: "default", label: "Default" },
-      { id: "gpt-5.5", label: "gpt-5.5" },
-      { id: "gpt-5.5-thinking", label: "gpt-5.5 Thinking" },
-      { id: "gpt-5.4-codex", label: "gpt-5.4 Codex" },
-    ],
+    label: "Codex App Server",
+    command: "codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://",
+    description: "Run the primary Codex App Server adapter in the TaskDeck server environment",
   },
 ];
 
@@ -195,8 +129,6 @@ const maxLogLength = 250_000;
 const terminalEnter = "\r";
 const bracketedPasteStart = "\x1b[200~";
 const bracketedPasteEnd = "\x1b[201~";
-const codexInputHoldMs = 5000;
-const codexStatusRefreshTimeoutMs = 16_000;
 const inputPromptStabilizationMs = 750;
 const ptyActivityWindowMs = 3000;
 const maxPtyActivityFrames = 40;
@@ -258,25 +190,6 @@ app.get("/api/context", async (_request, response) => {
 
 app.get("/api/diagnostics", async (_request, response) => {
   response.json(await buildDiagnostics());
-});
-
-app.post("/api/codex-status/refresh", async (_request, response) => {
-  try {
-    response.json({
-      status: await refreshCodexStatusInHiddenSession(),
-    });
-  } catch (error) {
-    if (error instanceof CodexStatusRefreshError) {
-      console.warn("TaskDeck hidden Codex status refresh failed:", {
-        message: error.message,
-        ...error.debug,
-      });
-      response.status(500).json({ error: error.message, debug: error.debug });
-      return;
-    }
-    console.warn(`TaskDeck hidden Codex status refresh failed: ${error.message || error}`);
-    response.status(500).json({ error: error.message || "Unable to refresh Codex status." });
-  }
 });
 
 app.post("/api/diagnostics/containers/:containerName/start", async (request, response) => {
@@ -344,37 +257,6 @@ app.get("/api/tasks", (_request, response) => {
   });
 });
 
-app.get("/api/agent-sessions", async (_request, response) => {
-  response.json({
-    sessions: await listSavedCodexSessions(),
-  });
-});
-
-app.patch("/api/agent-sessions/:sessionKey/label", async (request, response) => {
-  const sessionKey = String(request.params.sessionKey || "").trim();
-  const label = String(request.body?.label || "").trim();
-
-  if (!label) {
-    response.status(400).json({ error: "TaskDeck display name is required." });
-    return;
-  }
-
-  const sessions = await listSavedCodexSessions();
-  if (!sessions.some((session) => session.key === sessionKey)) {
-    response.status(404).json({ error: "Saved session not found." });
-    return;
-  }
-
-  await renameSessionLabel(sessionKey, label);
-  broadcastTasks();
-
-  response.json({
-    ok: true,
-    sessions: await listSavedCodexSessions(),
-    tasks: listTasks(),
-  });
-});
-
 app.patch("/api/tasks/:taskId/title", async (request, response) => {
   const { taskId } = request.params;
   const task = tasks.get(taskId);
@@ -397,7 +279,6 @@ app.patch("/api/tasks/:taskId/title", async (request, response) => {
     ok: true,
     task: serializeTaskForClient(tasks.get(taskId)),
     tasks: listTasks(),
-    sessions: await listSavedCodexSessions(),
   });
 });
 
@@ -668,8 +549,6 @@ wss.on("connection", (socket) => {
           cwd: String(message.cwd || "").trim(),
           agentProfileId: String(message.agentProfileId || "").trim(),
           agentLabel: String(message.agentLabel || "").trim(),
-          agentPermissionLevel: String(message.agentPermissionLevel || "").trim(),
-          agentReasoningEffort: String(message.agentReasoningEffort || "").trim(),
           agentModel: String(message.agentModel || "").trim(),
           sessionMode: String(message.sessionMode || "").trim(),
           resumeCommand: String(message.resumeCommand || "").trim(),
@@ -728,8 +607,16 @@ wss.on("connection", (socket) => {
       const taskId = String(message.taskId || "").trim();
       const task = tasks.get(taskId);
       const activePty = activePtys.get(taskId);
+      const activeAppServer = findActiveCodexAppServerForTask(taskId);
       if (!task || task.status !== TaskStatus.RUNNING) {
         send(socket, { type: "error", message: "Select a running task before canceling the current instruction." });
+        return;
+      }
+      if (activeAppServer) {
+        const interruptResult = interruptCodexAppServerTask(activeAppServer, taskId);
+        if (!interruptResult.ok) {
+          send(socket, { type: "error", message: interruptResult.error || "No active Codex App Server turn is available for the selected task." });
+        }
         return;
       }
       if (!activePty) {
@@ -832,17 +719,6 @@ function childSessionStartGroupKey({ childSessionRequestKey, parentSessionId, wo
   return requestKey ? `request:${requestKey}` : "";
 }
 
-function childSessionStartPreferenceScore({ agentReasoningEffort, command }) {
-  let score = 0;
-  if (String(agentReasoningEffort || "").trim()) {
-    score += 2;
-  }
-  if (String(command || "").includes("model_reasoning_effort")) {
-    score += 1;
-  }
-  return score;
-}
-
 function hasExistingChildForParentWorkPackage(parentSessionId, workPackageId) {
   const parentId = String(parentSessionId || "").trim();
   const packageId = String(workPackageId || "").trim();
@@ -896,27 +772,19 @@ function scheduleChildSessionStart(startInput, socket) {
   }
 
   const existing = pendingChildSessionStarts.get(groupKey);
-  const preferenceScore = childSessionStartPreferenceScore(startInput);
 
   if (existing) {
     for (const dedupeKey of dedupeKeys) {
       existing.dedupeKeys.add(dedupeKey);
     }
 
-    if (preferenceScore > existing.preferenceScore) {
-      existing.startInput = startInput;
-      existing.socket = socket;
-      existing.preferenceScore = preferenceScore;
-    } else {
-      rejectDuplicateChildSessionStart(socket);
-    }
+    rejectDuplicateChildSessionStart(socket);
     return;
   }
 
   const pending = {
     startInput,
     socket,
-    preferenceScore,
     dedupeKeys: new Set(dedupeKeys),
     timeout: null,
   };
@@ -968,8 +836,6 @@ async function startTaskNow({
   cwd,
   agentProfileId,
   agentLabel,
-  agentPermissionLevel,
-  agentReasoningEffort,
   agentModel,
   sessionMode,
   resumeCommand,
@@ -1002,7 +868,6 @@ async function startTaskNow({
     command: effectiveCommand,
     initialInstruction,
   });
-  const detectedAgentSession = detectInitialAgentSession(effectiveCommand, agentProfileId, agentLabel);
   const explicitAgentSession = normalizeExplicitAgentSession({
     agentSessionProvider,
     agentSessionId,
@@ -1018,8 +883,6 @@ async function startTaskNow({
     cwd: resolvedCwd,
     agentProfileId,
     agentLabel,
-    agentPermissionLevel,
-    agentReasoningEffort,
     agentModel: agentModel || modelFromCommand(effectiveCommand),
     sessionMode,
     resumeCommand,
@@ -1030,7 +893,6 @@ async function startTaskNow({
     workPackageId,
     filesLikelyToChange,
     isManager: isManagerLaunch,
-    ...detectedAgentSession,
     ...explicitAgentSession,
   });
   const childStatusFile = await ensureChildStatusFilePath(baseTask);
@@ -1088,7 +950,6 @@ async function startTaskNow({
         return;
       }
       appendLog(task.id, data);
-      updateAgentSessionFromOutput(task.id, data);
       updateAgentStateFromPtyOutput(activePty, data);
       broadcast({ type: "output", taskId: task.id, data });
     });
@@ -1246,10 +1107,7 @@ async function buildChildSessionFileStartInputs(request, parentTask) {
       return { ok: false, error: `unknown agentProfileId "${session.agentProfileId}"` };
     }
 
-    const isCodex = isCodexProfile(profile);
-    const agentPermissionLevel = isCodex ? (session.agentPermissionLevel || "full_access") : (session.agentPermissionLevel || "");
-    const agentReasoningEffort = isCodex ? normalizeCodexReasoningEffort(session.agentReasoningEffort) : "";
-    const command = buildServerLaunchCommand(profile, agentPermissionLevel, agentReasoningEffort);
+    const command = String(profile.command || "").trim();
 
     if (!command) {
       return { ok: false, error: `empty launch command for agentProfileId "${session.agentProfileId}"` };
@@ -1261,8 +1119,6 @@ async function buildChildSessionFileStartInputs(request, parentTask) {
       cwd: session.cwd,
       agentProfileId: profile.id,
       agentLabel: profile.label,
-      agentPermissionLevel,
-      agentReasoningEffort,
       sessionMode: "new",
       initialInstruction: session.initialInstruction,
       parentSessionId: parentTask.id,
@@ -1432,91 +1288,6 @@ async function fileExists(filePath) {
   }
 }
 
-function isCodexProfile(profile) {
-  return (
-    String(profile.id || "").includes("codex") ||
-    String(profile.label || "").toLowerCase().includes("codex") ||
-    /\bcodex\b/.test(String(profile.command || ""))
-  );
-}
-
-function buildServerLaunchCommand(profile, codexPermissionLevel, codexReasoningEffort) {
-  const command = String(profile.command || "").trim();
-  if (!isCodexProfile(profile)) {
-    return command;
-  }
-
-  return applyCodexTaskDeckStartupArgsToCommand(
-    applyCodexReasoningEffortToCommand(
-      applyCodexPermissionToCommand(command, codexPermissionLevel),
-      codexReasoningEffort,
-    ),
-  );
-}
-
-const codexCommandTokenPattern = /(^|[^-\w])codex(?![-\w])/i;
-const codexCommandWithPermissionPattern =
-  /(^|[^-\w])codex(?![-\w])(?:(?:\s+--dangerously-bypass-approvals-and-sandbox)|(?:\s+--sandbox\s+(?:read-only|workspace-write|danger-full-access)))*/i;
-const codexReasoningEffortArgPattern = /\s+-c\s+model_reasoning_effort=(?:"[^"]*"|'[^']*'|[^\s]+)/gi;
-const codexStartupUpdateCheckArgPattern = /\s+-c\s+check_for_update_on_startup=(?:"[^"]*"|'[^']*'|[^\s]+)/gi;
-const codexReasoningEfforts = new Set(["low", "medium", "high", "xhigh"]);
-const codexStartupUpdateCheckArgs = "-c check_for_update_on_startup=false";
-
-function normalizeCodexReasoningEffort(value) {
-  return codexReasoningEfforts.has(value) ? value : "";
-}
-
-function codexPermissionArgs(permissionLevel) {
-  if (permissionLevel === "workspace_write") return "--sandbox workspace-write";
-  if (permissionLevel === "read_only") return "--sandbox read-only";
-  return "--dangerously-bypass-approvals-and-sandbox";
-}
-
-function codexReasoningEffortArgs(reasoningEffort) {
-  const normalizedReasoningEffort = normalizeCodexReasoningEffort(reasoningEffort);
-  return normalizedReasoningEffort ? `-c model_reasoning_effort="${normalizedReasoningEffort}"` : "";
-}
-
-function codexTaskDeckStartupArgs() {
-  return codexStartupUpdateCheckArgs;
-}
-
-function applyCodexPermissionToCommand(command, permissionLevel) {
-  if (!command) {
-    return command;
-  }
-
-  const args = codexPermissionArgs(permissionLevel);
-  return command.replace(codexCommandWithPermissionPattern, (match, prefix) => {
-    return `${prefix}codex ${args}`;
-  });
-}
-
-function applyCodexReasoningEffortToCommand(command, reasoningEffort) {
-  if (!command) {
-    return command;
-  }
-
-  const args = codexReasoningEffortArgs(reasoningEffort);
-  if (!args) {
-    return command;
-  }
-
-  return command
-    .replace(codexReasoningEffortArgPattern, "")
-    .replace(codexCommandTokenPattern, (_match, prefix) => `${prefix}codex ${args}`);
-}
-
-function applyCodexTaskDeckStartupArgsToCommand(command) {
-  if (!command) {
-    return command;
-  }
-
-  return command
-    .replace(codexStartupUpdateCheckArgPattern, "")
-    .replace(codexCommandTokenPattern, (_match, prefix) => `${prefix}codex ${codexTaskDeckStartupArgs()}`);
-}
-
 function assignTaskIdentityColorSlot() {
   const slotUseCounts = Array.from({ length: TASK_IDENTITY_COLOR_SLOT_COUNT }, () => 0);
 
@@ -1539,12 +1310,11 @@ function assignTaskIdentityColorSlot() {
 }
 
 function createActivePty(task, process) {
-  const inputHoldUntil = isCodexLikeTask(task) ? Date.now() + codexInputHoldMs : 0;
   const activePty = {
     taskId: task.id,
     process,
     createdAt: Date.now(),
-    inputHoldUntil,
+    inputHoldUntil: 0,
     inputQueue: [],
     flushTimer: null,
     activity: createPtyActivity(),
@@ -1598,7 +1368,7 @@ function sendTaskInputToPty(taskId, data, source = "client") {
 
 function sendTaskInput(taskId, data, source = "client") {
   const normalizedTaskId = String(taskId || "").trim();
-  if (activeCodexAppServers.has(normalizedTaskId)) {
+  if (findActiveCodexAppServerForTask(normalizedTaskId)) {
     return sendTaskInputToCodexAppServer(normalizedTaskId, data, source);
   }
   return sendTaskInputToPty(normalizedTaskId, data, source);
@@ -1659,6 +1429,7 @@ async function startCodexAppServerTask({ task, commandForProcess, processCwd, so
     const currentTask = tasks.get(task.id);
     activeAppServer.loginInProgress = false;
     activeAppServer.loginId = "";
+    markCodexAppServerChildTasksExited(activeAppServer, { exitCode, signal });
     activeCodexAppServers.delete(task.id);
     if (!currentTask) {
       return;
@@ -1685,9 +1456,13 @@ function createActiveCodexAppServer(task, process, launchCommand) {
     pendingRequests: new Map(),
     pendingServerRequests: new Map(),
     currentServerRequestId: null,
+    currentServerRequestIdByTaskId: new Map(),
     stdoutBuffer: "",
     stderrBuffer: "",
     threadId: "",
+    threadIdToTaskId: new Map(),
+    taskIdToThreadId: new Map(),
+    threadRuntimeByTaskId: new Map([[task.id, createCodexAppServerThreadRuntime()]]),
     activeTurnId: "",
     turnActive: false,
     assistantMessageOpen: false,
@@ -1704,9 +1479,193 @@ function createActiveCodexAppServer(task, process, launchCommand) {
   };
 }
 
+function createCodexAppServerThreadRuntime() {
+  return {
+    activeTurnId: "",
+    turnActive: false,
+    assistantMessageOpen: false,
+    tokenUsage: null,
+  };
+}
+
+function findActiveCodexAppServerForTask(taskId) {
+  const normalizedTaskId = String(taskId || "").trim();
+  if (!normalizedTaskId) {
+    return null;
+  }
+  const directActiveAppServer = activeCodexAppServers.get(normalizedTaskId);
+  if (directActiveAppServer) {
+    return directActiveAppServer;
+  }
+  for (const activeAppServer of activeCodexAppServers.values()) {
+    if (activeAppServer.taskIdToThreadId.has(normalizedTaskId)) {
+      return activeAppServer;
+    }
+  }
+  return null;
+}
+
+function codexAppServerThreadIdForTask(activeAppServer, taskId) {
+  const normalizedTaskId = String(taskId || "").trim();
+  if (!activeAppServer || !normalizedTaskId) {
+    return "";
+  }
+  return activeAppServer.taskIdToThreadId.get(normalizedTaskId) || (normalizedTaskId === activeAppServer.taskId ? activeAppServer.threadId : "");
+}
+
+function codexAppServerTaskIdForThreadId(activeAppServer, threadId) {
+  const normalizedThreadId = String(threadId || "").trim();
+  if (!activeAppServer || !normalizedThreadId) {
+    return "";
+  }
+  return activeAppServer.threadIdToTaskId.get(normalizedThreadId) || (normalizedThreadId === activeAppServer.threadId ? activeAppServer.taskId : "");
+}
+
+function codexAppServerTargetTaskId(activeAppServer, params) {
+  const threadId = String(params?.threadId || params?.thread?.id || "").trim();
+  return codexAppServerTaskIdForThreadId(activeAppServer, threadId) || activeAppServer.taskId;
+}
+
+function codexAppServerRuntimeForTask(activeAppServer, taskId) {
+  const normalizedTaskId = String(taskId || "").trim() || activeAppServer.taskId;
+  let runtime = activeAppServer.threadRuntimeByTaskId.get(normalizedTaskId);
+  if (!runtime) {
+    runtime = createCodexAppServerThreadRuntime();
+    activeAppServer.threadRuntimeByTaskId.set(normalizedTaskId, runtime);
+  }
+  return runtime;
+}
+
+function registerCodexAppServerTaskThread(activeAppServer, taskId, thread) {
+  const normalizedTaskId = String(taskId || "").trim();
+  const threadId = String(thread?.id || "").trim();
+  if (!normalizedTaskId || !threadId) {
+    return false;
+  }
+
+  activeAppServer.threadIdToTaskId.set(threadId, normalizedTaskId);
+  activeAppServer.taskIdToThreadId.set(normalizedTaskId, threadId);
+  codexAppServerRuntimeForTask(activeAppServer, normalizedTaskId);
+
+  if (normalizedTaskId === activeAppServer.taskId) {
+    activeAppServer.threadId = threadId;
+  }
+
+  updateCodexAppServerTaskThreadMetadata(activeAppServer, normalizedTaskId, thread);
+  return true;
+}
+
+function updateCodexAppServerTaskThreadMetadata(activeAppServer, taskId, thread) {
+  const task = tasks.get(taskId);
+  const threadId = String(thread?.id || "").trim();
+  if (!task || !threadId) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  tasks.set(task.id, {
+    ...task,
+    codexAppServerSessionId: String(thread?.sessionId || "").trim(),
+    codexAppServerThreadId: threadId,
+    codexAppServerParentThreadId: String(thread?.parentThreadId || "").trim(),
+    codexAppServerRootTaskId: activeAppServer.taskId,
+    codexAppServerAgentNickname: String(thread?.agentNickname || "").trim(),
+    codexAppServerAgentRole: String(thread?.agentRole || "").trim(),
+    codexAppServerThreadPath: String(thread?.path || "").trim(),
+    codexAppServerThreadStatus: codexAppServerThreadStatusType(thread?.status),
+    updatedAt: now,
+  });
+  persistTasks();
+}
+
+function codexAppServerThreadStatusType(status) {
+  return String(status?.type || "").trim();
+}
+
+function codexAppServerChildTaskId(threadId) {
+  const digest = createHash("sha256").update(String(threadId || "")).digest("hex").slice(0, 16);
+  return `task_app_thread_${digest}`;
+}
+
+function materializeCodexAppServerSubagentTask(activeAppServer, thread) {
+  const threadId = String(thread?.id || "").trim();
+  const parentThreadId = String(thread?.parentThreadId || "").trim();
+  if (!threadId || !parentThreadId) {
+    return "";
+  }
+
+  const parentTaskId = codexAppServerTaskIdForThreadId(activeAppServer, parentThreadId);
+  if (!parentTaskId) {
+    appendCodexAppServerStatus(
+      activeAppServer,
+      `[TaskDeck] Codex App Server subagent thread ${threadId} has unknown parent thread ${parentThreadId}; leaving it unmaterialized.\n`
+    );
+    return "";
+  }
+
+  const taskId = activeAppServer.threadIdToTaskId.get(threadId) || codexAppServerChildTaskId(threadId);
+  const parentTask = tasks.get(parentTaskId) || tasks.get(activeAppServer.taskId);
+  if (!parentTask) {
+    return "";
+  }
+
+  if (!tasks.has(taskId)) {
+    const title = codexAppServerSubagentTitle(thread);
+    const baseTask = createTask({
+      id: taskId,
+      title,
+      command: "codex app-server subagent thread",
+      cwd: parentTask.cwd,
+      agentProfileId: codexAppServerAgentProfileId,
+      agentLabel: "Codex App Server subagent",
+      parentSessionId: parentTaskId,
+      spawnedFromParentRequest: false,
+      codexAppServerSessionId: String(thread?.sessionId || "").trim(),
+      codexAppServerThreadId: threadId,
+      codexAppServerParentThreadId: parentThreadId,
+      codexAppServerRootTaskId: activeAppServer.taskId,
+      codexAppServerAgentNickname: String(thread?.agentNickname || "").trim(),
+      codexAppServerAgentRole: String(thread?.agentRole || "").trim(),
+      codexAppServerThreadPath: String(thread?.path || "").trim(),
+      codexAppServerThreadStatus: codexAppServerThreadStatusType(thread?.status),
+      identityColorSlot: assignTaskIdentityColorSlot(),
+    });
+    const runningTask = markTaskAgentState(
+      markTaskRunning(baseTask),
+      AgentState.THINKING,
+      {
+        reason: "Codex App Server subagent thread started.",
+        source: AgentStateSource.PROCESS,
+        confidence: AgentStateConfidence.HIGH,
+        attentionState: AttentionState.NONE,
+        attentionReason: "Codex App Server subagent thread started.",
+        attentionSource: AgentStateSource.PROCESS,
+        attentionConfidence: AgentStateConfidence.HIGH,
+      },
+    );
+    tasks.set(runningTask.id, runningTask);
+    logs.set(runningTask.id, "");
+    writeTaskLog(runningTask.id, "");
+    appendAndBroadcast(runningTask.id, `[TaskDeck] Codex App Server subagent thread started: ${threadId}\n`);
+  }
+
+  registerCodexAppServerTaskThread(activeAppServer, taskId, thread);
+  broadcastTasks();
+  return taskId;
+}
+
+function codexAppServerSubagentTitle(thread) {
+  const role = String(thread?.agentRole || "").trim();
+  const nickname = String(thread?.agentNickname || "").trim();
+  const name = String(thread?.name || "").trim();
+  const preview = String(thread?.preview || "").replace(/\s+/g, " ").trim();
+  const label = role || nickname || name || preview || String(thread?.id || "").slice(0, 12);
+  return `App Server subagent: ${label.slice(0, 80)}`;
+}
+
 function sendTaskInputToCodexAppServer(taskId, data, source = "client") {
   const task = tasks.get(taskId);
-  const activeAppServer = activeCodexAppServers.get(taskId);
+  const activeAppServer = findActiveCodexAppServerForTask(taskId);
   if (task?.terminalInputLockedAt) {
     return { ok: false, reason: "terminal-input-locked" };
   }
@@ -1726,6 +1685,11 @@ function sendTaskInputToCodexAppServer(taskId, data, source = "client") {
     return { ok: false, reason: "codex-app-server-auth-failed" };
   }
 
+  const threadId = codexAppServerThreadIdForTask(activeAppServer, taskId);
+  if (!threadId && taskId !== activeAppServer.taskId) {
+    return { ok: false, reason: "no-app-server-thread-for-task" };
+  }
+
   logInputDebug(taskId, data, source);
   updateAgentStateFromTaskDeckEvent(taskId, AgentState.WORKING, {
     reason: "User input was sent to Codex App Server.",
@@ -1737,13 +1701,13 @@ function sendTaskInputToCodexAppServer(taskId, data, source = "client") {
     attentionConfidence: AgentStateConfidence.HIGH,
   });
 
-  if (!activeAppServer.threadId) {
+  if (!threadId && taskId === activeAppServer.taskId) {
     activeAppServer.pendingInputs.push(text);
     appendAndBroadcast(taskId, "[TaskDeck] Queued input until Codex App Server thread is ready.\n");
     return { ok: true };
   }
 
-  sendCodexAppServerTurn(activeAppServer, text);
+  sendCodexAppServerTurn(activeAppServer, text, threadId);
   return { ok: true };
 }
 
@@ -1815,13 +1779,14 @@ function sendCodexAppServerThreadStart(activeAppServer) {
     });
 }
 
-function sendCodexAppServerTurn(activeAppServer, text) {
-  if (!activeAppServer.threadId) {
+function sendCodexAppServerTurn(activeAppServer, text, threadId = activeAppServer.threadId) {
+  const targetThreadId = String(threadId || "").trim();
+  if (!targetThreadId) {
     activeAppServer.pendingInputs.push(text);
     return;
   }
   sendCodexAppServerRequest(activeAppServer, "turn/start", {
-    threadId: activeAppServer.threadId,
+    threadId: targetThreadId,
     input: [
       {
         type: "text",
@@ -1998,18 +1963,27 @@ function handleCodexAppServerResponse(activeAppServer, message) {
 
   if (method === "thread/start") {
     const threadId = String(message.result?.thread?.id || "").trim();
-    activeAppServer.threadId = threadId;
+    registerCodexAppServerTaskThread(activeAppServer, activeAppServer.taskId, message.result?.thread);
     appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server thread ready${threadId ? `: ${threadId}` : ""}.\n`);
     flushCodexAppServerPendingInputs(activeAppServer);
+    broadcastTasks();
     return;
   }
 
   if (method === "turn/start") {
     const turnId = String(message.result?.turn?.id || "").trim();
-    activeAppServer.activeTurnId = turnId;
-    activeAppServer.turnActive = true;
-    activeAppServer.assistantMessageOpen = false;
-    appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server turn accepted${turnId ? `: ${turnId}` : ""}.\n`);
+    const threadId = String(pendingRequest?.params?.threadId || "").trim();
+    const taskId = codexAppServerTaskIdForThreadId(activeAppServer, threadId) || activeAppServer.taskId;
+    const runtime = codexAppServerRuntimeForTask(activeAppServer, taskId);
+    runtime.activeTurnId = turnId;
+    runtime.turnActive = true;
+    runtime.assistantMessageOpen = false;
+    if (taskId === activeAppServer.taskId) {
+      activeAppServer.activeTurnId = turnId;
+      activeAppServer.turnActive = true;
+      activeAppServer.assistantMessageOpen = false;
+    }
+    appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server turn accepted${turnId ? `: ${turnId}` : ""}.\n`, taskId);
     return;
   }
 }
@@ -2218,9 +2192,11 @@ function handleCodexAppServerAuthFailureDiagnostic(activeAppServer, _detail) {
 
 function handleCodexAppServerRequest(activeAppServer, message) {
   const method = String(message.method || "");
+  const threadId = String(message.params?.threadId || "").trim();
+  const targetTaskId = codexAppServerTaskIdForThreadId(activeAppServer, threadId) || activeAppServer.taskId;
   if (isCodexAppServerApprovalRequest(method)) {
-    rememberCodexAppServerRequest(activeAppServer, message, "approval");
-    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WAITING_APPROVAL, {
+    rememberCodexAppServerRequest(activeAppServer, message, "approval", targetTaskId);
+    const didBroadcast = updateAgentStateFromTaskDeckEvent(targetTaskId, AgentState.WAITING_APPROVAL, {
       reason: "Codex App Server requested approval.",
       source: AgentStateSource.PROCESS,
       confidence: AgentStateConfidence.HIGH,
@@ -2229,12 +2205,15 @@ function handleCodexAppServerRequest(activeAppServer, message) {
       attentionSource: AgentStateSource.PROCESS,
       attentionConfidence: AgentStateConfidence.HIGH,
     });
-    appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server approval request is waiting for user handling: ${method}\n`);
+    if (!didBroadcast) {
+      broadcastTasks();
+    }
+    appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server approval request is waiting for user handling: ${method}\n`, targetTaskId);
     return;
   }
   if (isCodexAppServerUserInputRequest(method)) {
-    rememberCodexAppServerRequest(activeAppServer, message, codexAppServerRequestKind(method));
-    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WAITING_INPUT, {
+    rememberCodexAppServerRequest(activeAppServer, message, codexAppServerRequestKind(method), targetTaskId);
+    const didBroadcast = updateAgentStateFromTaskDeckEvent(targetTaskId, AgentState.WAITING_INPUT, {
       reason: "Codex App Server requested user input.",
       source: AgentStateSource.PROCESS,
       confidence: AgentStateConfidence.HIGH,
@@ -2243,7 +2222,10 @@ function handleCodexAppServerRequest(activeAppServer, message) {
       attentionSource: AgentStateSource.PROCESS,
       attentionConfidence: AgentStateConfidence.HIGH,
     });
-    appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server user-input request is waiting for user handling: ${method}\n`);
+    if (!didBroadcast) {
+      broadcastTasks();
+    }
+    appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server user-input request is waiting for user handling: ${method}\n`, targetTaskId);
     return;
   }
   if (message.id !== undefined) {
@@ -2252,15 +2234,27 @@ function handleCodexAppServerRequest(activeAppServer, message) {
   appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Unknown Codex App Server request: ${method}\n`);
 }
 
-function rememberCodexAppServerRequest(activeAppServer, message, kind) {
+function rememberCodexAppServerRequest(activeAppServer, message, kind, targetTaskId = activeAppServer.taskId) {
   activeAppServer.pendingServerRequests.set(message.id, {
     id: message.id,
     kind,
     method: String(message.method || ""),
     params: message.params ?? {},
+    targetTaskId,
     createdAt: Date.now(),
   });
   activeAppServer.currentServerRequestId = message.id;
+  activeAppServer.currentServerRequestIdByTaskId.set(targetTaskId, message.id);
+  appendCodexAppServerStatus(
+    activeAppServer,
+    `[TaskDeck diagnostic] Codex App Server request remembered: ${codexAppServerRequestDiagnosticFields(activeAppServer, {
+      requestId: message.id,
+      method: String(message.method || ""),
+      params: message.params ?? {},
+      targetTaskId,
+    })}\n`,
+    targetTaskId,
+  );
 }
 
 function normalizeCodexAppServerRequestId(value) {
@@ -2282,20 +2276,43 @@ function codexAppServerRequestKind(method) {
 }
 
 function resolveCodexAppServerRequest(taskId, requestId, action) {
-  const activeAppServer = activeCodexAppServers.get(taskId);
+  const activeAppServer = findActiveCodexAppServerForTask(taskId);
   if (!activeAppServer) {
+    appendCodexAppServerResolutionDiagnosticWithoutServer(taskId, requestId, action, "no-active-app-server");
     return { ok: false, error: "No active Codex App Server task is available." };
   }
+  appendCodexAppServerStatus(
+    activeAppServer,
+    `[TaskDeck diagnostic] Codex App Server UI request resolution received: ${codexAppServerResolutionDiagnosticFields(activeAppServer, {
+      taskId,
+      requestId,
+      action,
+    })}\n`,
+    taskId,
+  );
   if (requestId === null) {
+    appendCodexAppServerResolutionFailureDiagnostic(activeAppServer, taskId, requestId, action, "invalid-request-id");
     return { ok: false, error: "Codex App Server request id is invalid." };
   }
   const pendingRequest = activeAppServer.pendingServerRequests.get(requestId);
   if (!pendingRequest) {
+    appendCodexAppServerResolutionFailureDiagnostic(activeAppServer, taskId, requestId, action, "not-pending");
     return { ok: false, error: "Codex App Server request is no longer pending." };
+  }
+  if (pendingRequest.targetTaskId && pendingRequest.targetTaskId !== taskId) {
+    appendCodexAppServerResolutionFailureDiagnostic(
+      activeAppServer,
+      taskId,
+      requestId,
+      action,
+      `target-mismatch:${pendingRequest.targetTaskId}`,
+    );
+    return { ok: false, error: "Codex App Server request belongs to a different task." };
   }
 
   const result = codexAppServerRequestResolution(pendingRequest, action);
   if (!result.ok) {
+    appendCodexAppServerResolutionFailureDiagnostic(activeAppServer, taskId, requestId, action, result.error || "resolution-failed");
     return result;
   }
 
@@ -2304,16 +2321,20 @@ function resolveCodexAppServerRequest(taskId, requestId, action) {
   appendCodexAppServerStatus(
     activeAppServer,
     `[TaskDeck] Codex App Server request ${requestId} resolved: ${codexAppServerActionLabel(action)}.\n`,
+    taskId,
   );
-  updateAgentStateFromTaskDeckEvent(taskId, AgentState.WORKING, {
-    reason: "Codex App Server request was resolved.",
-    source: AgentStateSource.TASKDECK_EVENT,
-    confidence: AgentStateConfidence.HIGH,
-    attentionState: AttentionState.NONE,
-    attentionReason: "Codex App Server request was resolved.",
-    attentionSource: AgentStateSource.TASKDECK_EVENT,
-    attentionConfidence: AgentStateConfidence.HIGH,
-  });
+  appendCodexAppServerStatus(
+    activeAppServer,
+    `[TaskDeck diagnostic] Codex App Server request resolution applied: ${codexAppServerResolutionDiagnosticFields(activeAppServer, {
+      taskId,
+      requestId,
+      action,
+      pendingRequest,
+      responseSent: true,
+    })}\n`,
+    taskId,
+  );
+  updateCodexAppServerTaskStateAfterRequestResolution(activeAppServer, taskId);
   return { ok: true };
 }
 
@@ -2428,15 +2449,207 @@ function codexAppServerElicitationResolution(action) {
 }
 
 function clearCodexAppServerPendingRequest(activeAppServer, requestId) {
+  const pendingRequest = activeAppServer.pendingServerRequests.get(requestId);
   activeAppServer.pendingServerRequests.delete(requestId);
+  if (pendingRequest?.targetTaskId) {
+    const newestForTask = newestCodexAppServerPendingRequestId(activeAppServer, pendingRequest.targetTaskId);
+    if (newestForTask === null) {
+      activeAppServer.currentServerRequestIdByTaskId.delete(pendingRequest.targetTaskId);
+    } else {
+      activeAppServer.currentServerRequestIdByTaskId.set(pendingRequest.targetTaskId, newestForTask);
+    }
+  }
   if (activeAppServer.currentServerRequestId === requestId) {
     activeAppServer.currentServerRequestId = newestCodexAppServerPendingRequestId(activeAppServer);
   }
 }
 
-function newestCodexAppServerPendingRequestId(activeAppServer) {
-  const requestIds = Array.from(activeAppServer.pendingServerRequests.keys());
+function updateCodexAppServerTaskStateAfterRequestResolution(activeAppServer, taskId) {
+  const pendingRequest = codexAppServerCurrentPendingRequestForTask(activeAppServer, taskId);
+  const nextState = pendingRequest
+    ? codexAppServerAgentStateForPendingRequest(pendingRequest)
+    : {
+        agentState: AgentState.WORKING,
+        metadata: {
+          reason: "Codex App Server request was resolved.",
+          source: AgentStateSource.TASKDECK_EVENT,
+          confidence: AgentStateConfidence.HIGH,
+          attentionState: AttentionState.NONE,
+          attentionReason: "Codex App Server request was resolved.",
+          attentionSource: AgentStateSource.TASKDECK_EVENT,
+          attentionConfidence: AgentStateConfidence.HIGH,
+        },
+      };
+  const didBroadcast = updateAgentStateFromTaskDeckEvent(taskId, nextState.agentState, nextState.metadata);
+  if (!didBroadcast) {
+    broadcastTasks();
+  }
+}
+
+function codexAppServerCurrentPendingRequestForTask(activeAppServer, taskId) {
+  const currentRequestId = codexAppServerCurrentRequestIdForTask(activeAppServer, taskId);
+  if (currentRequestId === null || currentRequestId === undefined) {
+    return null;
+  }
+  const pendingRequest = activeAppServer.pendingServerRequests.get(currentRequestId);
+  if (!pendingRequest) {
+    return null;
+  }
+  if (pendingRequest.targetTaskId && pendingRequest.targetTaskId !== taskId) {
+    return null;
+  }
+  return pendingRequest;
+}
+
+function codexAppServerAgentStateForPendingRequest(pendingRequest) {
+  if (pendingRequest.kind === "approval") {
+    return {
+      agentState: AgentState.WAITING_APPROVAL,
+      metadata: {
+        reason: "Codex App Server requested approval.",
+        source: AgentStateSource.PROCESS,
+        confidence: AgentStateConfidence.HIGH,
+        attentionState: AttentionState.NEEDS_APPROVAL,
+        attentionReason: "Codex App Server requested approval.",
+        attentionSource: AgentStateSource.PROCESS,
+        attentionConfidence: AgentStateConfidence.HIGH,
+      },
+    };
+  }
+  return {
+    agentState: AgentState.WAITING_INPUT,
+    metadata: {
+      reason: "Codex App Server requested user input.",
+      source: AgentStateSource.PROCESS,
+      confidence: AgentStateConfidence.HIGH,
+      attentionState: AttentionState.NEEDS_INPUT,
+      attentionReason: "Codex App Server requested user input.",
+      attentionSource: AgentStateSource.PROCESS,
+      attentionConfidence: AgentStateConfidence.HIGH,
+    },
+  };
+}
+
+function newestCodexAppServerPendingRequestId(activeAppServer, targetTaskId = "") {
+  const requestIds = Array.from(activeAppServer.pendingServerRequests.entries())
+    .filter(([, pendingRequest]) => !targetTaskId || pendingRequest.targetTaskId === targetTaskId)
+    .map(([requestId]) => requestId);
   return requestIds.length > 0 ? requestIds[requestIds.length - 1] : null;
+}
+
+function codexAppServerPendingRequestIds(activeAppServer, targetTaskId = "") {
+  return Array.from(activeAppServer.pendingServerRequests.entries())
+    .filter(([, pendingRequest]) => !targetTaskId || pendingRequest.targetTaskId === targetTaskId)
+    .map(([requestId]) => requestId);
+}
+
+function codexAppServerCurrentRequestIdForTask(activeAppServer, taskId) {
+  return (
+    activeAppServer.currentServerRequestIdByTaskId.get(taskId) ??
+    (taskId === activeAppServer.taskId ? activeAppServer.currentServerRequestId : null)
+  );
+}
+
+function codexAppServerRequestDiagnosticFields(activeAppServer, { requestId, method, params, targetTaskId }) {
+  const threadId = String(params?.threadId || "").trim();
+  return [
+    `requestId=${codexAppServerFormatRequestId(requestId)}`,
+    `method=${codexAppServerLogValue(method)}`,
+    `targetTaskId=${codexAppServerLogValue(targetTaskId)}`,
+    `threadId=${codexAppServerLogValue(threadId)}`,
+    `command=${codexAppServerLogValue(codexAppServerRequestCommandForLog(params))}`,
+    codexAppServerPendingRequestDiagnosticFields(activeAppServer, targetTaskId),
+  ].join(" ");
+}
+
+function codexAppServerResolutionDiagnosticFields(
+  activeAppServer,
+  { taskId, requestId, action, pendingRequest = null, responseSent = null },
+) {
+  const fields = [
+    `taskId=${codexAppServerLogValue(taskId)}`,
+    `requestId=${codexAppServerFormatRequestId(requestId)}`,
+    `action=${codexAppServerLogValue(action)}`,
+  ];
+  if (pendingRequest) {
+    fields.push(`method=${codexAppServerLogValue(pendingRequest.method)}`);
+    fields.push(`command=${codexAppServerLogValue(codexAppServerRequestCommandForLog(pendingRequest.params))}`);
+  }
+  if (responseSent !== null) {
+    fields.push(`responseSent=${responseSent ? "true" : "false"}`);
+  }
+  fields.push(codexAppServerPendingRequestDiagnosticFields(activeAppServer, taskId));
+  return fields.join(" ");
+}
+
+function codexAppServerPendingRequestDiagnosticFields(activeAppServer, taskId = "") {
+  const currentRequestId = taskId ? codexAppServerCurrentRequestIdForTask(activeAppServer, taskId) : activeAppServer.currentServerRequestId;
+  const taskPendingIds = taskId ? codexAppServerPendingRequestIds(activeAppServer, taskId) : [];
+  const fields = [
+    `currentRequestId=${codexAppServerFormatRequestId(currentRequestId)}`,
+    `pendingIds=${codexAppServerFormatRequestIdList(codexAppServerPendingRequestIds(activeAppServer))}`,
+  ];
+  if (taskId) {
+    fields.push(`taskPendingIds=${codexAppServerFormatRequestIdList(taskPendingIds)}`);
+  }
+  return fields.join(" ");
+}
+
+function appendCodexAppServerResolutionFailureDiagnostic(activeAppServer, taskId, requestId, action, reason) {
+  appendCodexAppServerStatus(
+    activeAppServer,
+    `[TaskDeck diagnostic] Codex App Server request resolution failed: ${codexAppServerResolutionDiagnosticFields(activeAppServer, {
+      taskId,
+      requestId,
+      action,
+    })} reason=${codexAppServerLogValue(reason)}\n`,
+    taskId,
+  );
+}
+
+function appendCodexAppServerResolutionDiagnosticWithoutServer(taskId, requestId, action, reason) {
+  if (!tasks.has(taskId)) {
+    return;
+  }
+  appendAndBroadcast(
+    taskId,
+    `[TaskDeck diagnostic] Codex App Server request resolution failed: taskId=${codexAppServerLogValue(taskId)} requestId=${codexAppServerFormatRequestId(requestId)} action=${codexAppServerLogValue(action)} reason=${codexAppServerLogValue(reason)}\n`,
+  );
+}
+
+function codexAppServerFormatRequestId(requestId) {
+  if (requestId === null) {
+    return "null";
+  }
+  if (requestId === undefined) {
+    return "undefined";
+  }
+  if (typeof requestId === "string") {
+    return `${JSON.stringify(requestId)}(string)`;
+  }
+  if (typeof requestId === "number") {
+    return `${requestId}(number)`;
+  }
+  return `${codexAppServerLogValue(requestId)}(${typeof requestId})`;
+}
+
+function codexAppServerFormatRequestIdList(requestIds) {
+  return `[${requestIds.map((requestId) => codexAppServerFormatRequestId(requestId)).join(",")}]`;
+}
+
+function codexAppServerRequestCommandForLog(params) {
+  if (typeof params?.command === "string") {
+    return compactCodexAppServerCommand(params.command);
+  }
+  if (Array.isArray(params?.command)) {
+    return compactCodexAppServerCommand(params.command.join(" "));
+  }
+  return "";
+}
+
+function codexAppServerLogValue(value) {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  return text ? JSON.stringify(text.slice(0, 160)) : "-";
 }
 
 function codexAppServerActionLabel(action) {
@@ -2457,7 +2670,15 @@ function handleCodexAppServerNotification(activeAppServer, message) {
     return;
   }
   if (method === "thread/status/changed") {
-    updateCodexAppServerStatus(activeAppServer, message.params?.status);
+    updateCodexAppServerStatus(activeAppServer, message.params?.status, message.params?.threadId);
+    return;
+  }
+  if (method === "thread/closed" || method === "thread/deleted" || method === "thread/archived") {
+    handleCodexAppServerThreadStopped(activeAppServer, message.params, method);
+    return;
+  }
+  if (method === "thread/name/updated") {
+    handleCodexAppServerThreadNameUpdated(activeAppServer, message.params);
     return;
   }
   if (method === "remoteControl/status/changed") {
@@ -2468,9 +2689,17 @@ function handleCodexAppServerNotification(activeAppServer, message) {
     return;
   }
   if (method === "turn/started") {
-    activeAppServer.turnActive = true;
-    activeAppServer.assistantMessageOpen = false;
-    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WORKING, {
+    const targetTaskId = codexAppServerTargetTaskId(activeAppServer, message.params);
+    const runtime = codexAppServerRuntimeForTask(activeAppServer, targetTaskId);
+    runtime.activeTurnId = String(message.params?.turn?.id || "").trim();
+    runtime.turnActive = true;
+    runtime.assistantMessageOpen = false;
+    if (targetTaskId === activeAppServer.taskId) {
+      activeAppServer.activeTurnId = runtime.activeTurnId;
+      activeAppServer.turnActive = true;
+      activeAppServer.assistantMessageOpen = false;
+    }
+    updateAgentStateFromTaskDeckEvent(targetTaskId, AgentState.WORKING, {
       reason: "Codex App Server turn started.",
       source: AgentStateSource.PROCESS,
       confidence: AgentStateConfidence.HIGH,
@@ -2495,13 +2724,24 @@ function handleCodexAppServerNotification(activeAppServer, message) {
   }
   if (
     method === "item/commandExecution/outputDelta" ||
+    method === "item/fileChange/outputDelta"
+  ) {
+    handleCodexAppServerItemOutputDelta(activeAppServer, message.params);
+    return;
+  }
+  if (
     method === "command/exec/outputDelta" ||
     method === "process/outputDelta"
   ) {
     return;
   }
   if (method === "thread/tokenUsage/updated") {
-    activeAppServer.tokenUsage = message.params?.tokenUsage ?? null;
+    const targetTaskId = codexAppServerTargetTaskId(activeAppServer, message.params);
+    const runtime = codexAppServerRuntimeForTask(activeAppServer, targetTaskId);
+    runtime.tokenUsage = message.params?.tokenUsage ?? null;
+    if (targetTaskId === activeAppServer.taskId) {
+      activeAppServer.tokenUsage = runtime.tokenUsage;
+    }
     return;
   }
   if (method === "account/rateLimits/updated") {
@@ -2509,11 +2749,18 @@ function handleCodexAppServerNotification(activeAppServer, message) {
     return;
   }
   if (method === "turn/completed") {
-    activeAppServer.activeTurnId = "";
-    activeAppServer.turnActive = false;
-    activeAppServer.assistantMessageOpen = false;
-    appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server turn completed; ready for next input.\n");
-    updateCodexAppServerReady(activeAppServer, "Codex App Server turn completed.");
+    const targetTaskId = codexAppServerTargetTaskId(activeAppServer, message.params);
+    const runtime = codexAppServerRuntimeForTask(activeAppServer, targetTaskId);
+    runtime.activeTurnId = "";
+    runtime.turnActive = false;
+    runtime.assistantMessageOpen = false;
+    if (targetTaskId === activeAppServer.taskId) {
+      activeAppServer.activeTurnId = "";
+      activeAppServer.turnActive = false;
+      activeAppServer.assistantMessageOpen = false;
+    }
+    appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server turn completed; ready for next input.\n", targetTaskId);
+    updateCodexAppServerReady(activeAppServer, "Codex App Server turn completed.", targetTaskId);
     return;
   }
   if (method === "account/login/completed") {
@@ -2529,7 +2776,8 @@ function handleCodexAppServerNotification(activeAppServer, message) {
       handleCodexAppServerAuthFailureDiagnostic(activeAppServer, message.params);
       return;
     }
-    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.FAILED, {
+    const targetTaskId = codexAppServerTargetTaskId(activeAppServer, message.params);
+    updateAgentStateFromTaskDeckEvent(targetTaskId, AgentState.FAILED, {
       reason: "Codex App Server emitted an error notification.",
       source: AgentStateSource.PROCESS,
       confidence: AgentStateConfidence.HIGH,
@@ -2546,20 +2794,113 @@ function handleCodexAppServerNotification(activeAppServer, message) {
 function handleCodexAppServerRequestResolved(activeAppServer, params) {
   const requestId = normalizeCodexAppServerRequestId(params?.requestId);
   if (requestId === null) {
+    appendCodexAppServerStatus(
+      activeAppServer,
+      "[TaskDeck diagnostic] Codex App Server request resolved notification ignored: requestId=null reason=invalid-request-id\n",
+    );
     return;
   }
   if (!activeAppServer.pendingServerRequests.has(requestId)) {
+    appendCodexAppServerStatus(
+      activeAppServer,
+      `[TaskDeck diagnostic] Codex App Server request resolved notification ignored: requestId=${codexAppServerFormatRequestId(requestId)} reason=not-pending ${codexAppServerPendingRequestDiagnosticFields(activeAppServer)}\n`,
+    );
     return;
   }
+  const pendingRequest = activeAppServer.pendingServerRequests.get(requestId);
+  const targetTaskId = pendingRequest?.targetTaskId || activeAppServer.taskId;
   clearCodexAppServerPendingRequest(activeAppServer, requestId);
-  broadcastTasks();
+  appendCodexAppServerStatus(
+    activeAppServer,
+    `[TaskDeck diagnostic] Codex App Server request resolved notification applied: ${codexAppServerResolutionDiagnosticFields(activeAppServer, {
+      taskId: targetTaskId,
+      requestId,
+      action: "app-server-resolved",
+      pendingRequest,
+      responseSent: false,
+    })}\n`,
+    targetTaskId,
+  );
+  updateCodexAppServerTaskStateAfterRequestResolution(activeAppServer, targetTaskId);
 }
 
 function handleCodexAppServerThreadStarted(activeAppServer, params) {
+  const thread = params?.thread;
   const threadId = String(params?.thread?.id || "").trim();
-  if (threadId && !activeAppServer.threadId) {
-    activeAppServer.threadId = threadId;
+  if (!threadId) {
+    return;
   }
+
+  const parentThreadId = String(thread?.parentThreadId || "").trim();
+  if (!parentThreadId) {
+    registerCodexAppServerTaskThread(activeAppServer, activeAppServer.taskId, thread);
+    broadcastTasks();
+    return;
+  }
+
+  materializeCodexAppServerSubagentTask(activeAppServer, thread);
+}
+
+function handleCodexAppServerThreadStopped(activeAppServer, params, method) {
+  const threadId = String(params?.threadId || "").trim();
+  const taskId = codexAppServerTaskIdForThreadId(activeAppServer, threadId);
+  if (!taskId) {
+    return;
+  }
+
+  if (taskId === activeAppServer.taskId) {
+    return;
+  }
+
+  activeAppServer.threadIdToTaskId.delete(threadId);
+  activeAppServer.taskIdToThreadId.delete(taskId);
+  activeAppServer.threadRuntimeByTaskId.delete(taskId);
+  activeAppServer.currentServerRequestIdByTaskId.delete(taskId);
+
+  const task = tasks.get(taskId);
+  if (!task || task.status !== TaskStatus.RUNNING) {
+    broadcastTasks();
+    return;
+  }
+
+  const now = new Date().toISOString();
+  setTask({
+    ...task,
+    status: TaskStatus.INTERRUPTED,
+    agentState: AgentState.STOPPED,
+    agentStateReason: `Codex App Server thread ${method.replace("thread/", "")}.`,
+    agentStateSource: AgentStateSource.PROCESS,
+    agentStateConfidence: AgentStateConfidence.HIGH,
+    attentionState: AttentionState.NONE,
+    attentionStateReason: "Codex App Server subagent thread stopped.",
+    attentionStateSource: AgentStateSource.PROCESS,
+    attentionStateConfidence: AgentStateConfidence.HIGH,
+    codexAppServerThreadStatus: method.replace("thread/", ""),
+    updatedAt: now,
+    endedAt: now,
+    signal: method,
+  });
+  appendAndBroadcast(taskId, `[TaskDeck] Codex App Server subagent thread ${method.replace("thread/", "")}.\n`);
+  broadcastTasks();
+}
+
+function handleCodexAppServerThreadNameUpdated(activeAppServer, params) {
+  const threadId = String(params?.threadId || "").trim();
+  const taskId = codexAppServerTaskIdForThreadId(activeAppServer, threadId);
+  const threadName = String(params?.threadName || "").trim();
+  if (!taskId || !threadName) {
+    return;
+  }
+  const task = tasks.get(taskId);
+  if (!task) {
+    return;
+  }
+  setTask({
+    ...task,
+    title: taskId === activeAppServer.taskId ? task.title : `App Server subagent: ${threadName.slice(0, 80)}`,
+    updatedAt: new Date().toISOString(),
+  });
+  broadcastTasks();
 }
 
 function handleCodexAppServerMcpStatusUpdated(activeAppServer, params) {
@@ -2587,16 +2928,17 @@ function handleCodexAppServerMcpStatusUpdated(activeAppServer, params) {
 }
 
 function handleCodexAppServerItemStarted(activeAppServer, params) {
+  const targetTaskId = codexAppServerTargetTaskId(activeAppServer, params);
   const item = params?.item;
   const itemType = String(item?.type || "");
   if (itemType === "reasoning") {
-    updateCodexAppServerWorking(activeAppServer, "Codex App Server started reasoning.");
+    updateCodexAppServerWorking(activeAppServer, "Codex App Server started reasoning.", targetTaskId);
     return;
   }
   if (itemType === "commandExecution") {
-    updateCodexAppServerWorking(activeAppServer, "Codex App Server started a command.");
+    updateCodexAppServerWorking(activeAppServer, "Codex App Server started a command.", targetTaskId);
     const command = compactCodexAppServerCommand(String(item.command || ""));
-    appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server command started${command ? `: ${command}` : "."}\n`);
+    appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server command started${command ? `: ${command}` : "."}\n`, targetTaskId);
   }
 }
 
@@ -2605,40 +2947,50 @@ function handleCodexAppServerAgentMessageDelta(activeAppServer, params) {
   if (!delta) {
     return;
   }
-  appendAndBroadcast(activeAppServer.taskId, formatCodexAppServerAssistantText(activeAppServer, delta));
+  const targetTaskId = codexAppServerTargetTaskId(activeAppServer, params);
+  appendAndBroadcast(targetTaskId, formatCodexAppServerAssistantText(activeAppServer, delta, targetTaskId));
 }
 
-function formatCodexAppServerAssistantText(activeAppServer, delta) {
-  if (activeAppServer.assistantMessageOpen) {
+function formatCodexAppServerAssistantText(activeAppServer, delta, taskId = activeAppServer.taskId) {
+  const runtime = codexAppServerRuntimeForTask(activeAppServer, taskId);
+  if (runtime.assistantMessageOpen) {
     return `${codexAppServerAssistantStyleStart}${delta}${codexAppServerAssistantStyleEnd}`;
   }
-  activeAppServer.assistantMessageOpen = true;
-  const currentLog = logs.get(activeAppServer.taskId) || "";
+  runtime.assistantMessageOpen = true;
+  if (taskId === activeAppServer.taskId) {
+    activeAppServer.assistantMessageOpen = true;
+  }
+  const currentLog = logs.get(taskId) || "";
   const prefix = currentLog && !currentLog.endsWith("\n") ? "\n" : "";
   return `${prefix}[Assistant]\n${codexAppServerAssistantStyleStart}${delta}${codexAppServerAssistantStyleEnd}`;
 }
 
-function appendCodexAppServerStatus(activeAppServer, data) {
-  activeAppServer.assistantMessageOpen = false;
-  const taskId = activeAppServer.taskId;
+function appendCodexAppServerStatus(activeAppServer, data, taskId = activeAppServer.taskId) {
+  const runtime = codexAppServerRuntimeForTask(activeAppServer, taskId);
+  runtime.assistantMessageOpen = false;
+  if (taskId === activeAppServer.taskId) {
+    activeAppServer.assistantMessageOpen = false;
+  }
   const currentLog = logs.get(taskId) || "";
   const prefix = currentLog && !currentLog.endsWith("\n") ? "\n" : "";
   const suffix = data.endsWith("\n") ? "" : "\n";
   appendAndBroadcast(taskId, `${prefix}${data}${suffix}`);
 }
 
-function appendCodexAppServerCommandOutput(activeAppServer, output) {
+function appendCodexAppServerCommandOutput(activeAppServer, output, taskId = activeAppServer.taskId) {
   const normalizedOutput = String(output || "").trimEnd();
   if (!normalizedOutput) {
     return;
   }
   appendCodexAppServerStatus(
     activeAppServer,
-    `[TaskDeck] Codex App Server command output:\n${normalizedOutput}\n`
+    `[TaskDeck] Codex App Server command output:\n${normalizedOutput}\n`,
+    taskId,
   );
 }
 
 function handleCodexAppServerItemCompleted(activeAppServer, params) {
+  const targetTaskId = codexAppServerTargetTaskId(activeAppServer, params);
   const item = params?.item;
   if (item?.type !== "commandExecution") {
     return;
@@ -2647,14 +2999,23 @@ function handleCodexAppServerItemCompleted(activeAppServer, params) {
   if (!output) {
     return;
   }
-  appendCodexAppServerCommandOutput(activeAppServer, output);
+  appendCodexAppServerCommandOutput(activeAppServer, output, targetTaskId);
 }
 
-function updateCodexAppServerReady(activeAppServer, reason) {
+function handleCodexAppServerItemOutputDelta(activeAppServer, params) {
+  const delta = String(params?.delta || "");
+  if (!delta) {
+    return;
+  }
+  const targetTaskId = codexAppServerTargetTaskId(activeAppServer, params);
+  appendCodexAppServerCommandOutput(activeAppServer, delta, targetTaskId);
+}
+
+function updateCodexAppServerReady(activeAppServer, reason, taskId = activeAppServer.taskId) {
   if (activeAppServer.authFailureDetected) {
     return;
   }
-  updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.THINKING, {
+  updateAgentStateFromTaskDeckEvent(taskId, AgentState.THINKING, {
     reason,
     source: AgentStateSource.PROCESS,
     confidence: AgentStateConfidence.HIGH,
@@ -2665,11 +3026,11 @@ function updateCodexAppServerReady(activeAppServer, reason) {
   });
 }
 
-function updateCodexAppServerWorking(activeAppServer, reason) {
+function updateCodexAppServerWorking(activeAppServer, reason, taskId = activeAppServer.taskId) {
   if (activeAppServer.authFailureDetected) {
     return;
   }
-  updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WORKING, {
+  updateAgentStateFromTaskDeckEvent(taskId, AgentState.WORKING, {
     reason,
     source: AgentStateSource.PROCESS,
     confidence: AgentStateConfidence.HIGH,
@@ -2680,11 +3041,25 @@ function updateCodexAppServerWorking(activeAppServer, reason) {
   });
 }
 
-function updateCodexAppServerStatus(activeAppServer, status) {
+function updateCodexAppServerStatus(activeAppServer, status, threadId = activeAppServer.threadId) {
+  const normalizedThreadId = String(threadId || "").trim();
+  const mappedTaskId = codexAppServerTaskIdForThreadId(activeAppServer, normalizedThreadId);
+  if (normalizedThreadId && !mappedTaskId) {
+    return;
+  }
+  const taskId = mappedTaskId || activeAppServer.taskId;
+  const task = tasks.get(taskId);
+  if (task) {
+    setTask({
+      ...task,
+      codexAppServerThreadStatus: codexAppServerThreadStatusType(status),
+      updatedAt: new Date().toISOString(),
+    });
+  }
   const statusType = String(status?.type || "");
   const activeFlags = Array.isArray(status?.activeFlags) ? status.activeFlags.map(String) : [];
   if (activeFlags.includes("waitingOnApproval")) {
-    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WAITING_APPROVAL, {
+    updateAgentStateFromTaskDeckEvent(taskId, AgentState.WAITING_APPROVAL, {
       reason: "Codex App Server is waiting on approval.",
       source: AgentStateSource.PROCESS,
       confidence: AgentStateConfidence.HIGH,
@@ -2696,7 +3071,7 @@ function updateCodexAppServerStatus(activeAppServer, status) {
     return;
   }
   if (activeFlags.includes("waitingOnUserInput")) {
-    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WAITING_INPUT, {
+    updateAgentStateFromTaskDeckEvent(taskId, AgentState.WAITING_INPUT, {
       reason: "Codex App Server is waiting on user input.",
       source: AgentStateSource.PROCESS,
       confidence: AgentStateConfidence.HIGH,
@@ -2708,16 +3083,20 @@ function updateCodexAppServerStatus(activeAppServer, status) {
     return;
   }
   if (statusType === "active") {
-    updateCodexAppServerWorking(activeAppServer, "Codex App Server thread is active.");
+    updateCodexAppServerWorking(activeAppServer, "Codex App Server thread is active.", taskId);
     return;
   }
   if (statusType === "idle") {
-    activeAppServer.turnActive = false;
-    updateCodexAppServerReady(activeAppServer, "Codex App Server thread is idle.");
+    const runtime = codexAppServerRuntimeForTask(activeAppServer, taskId);
+    runtime.turnActive = false;
+    if (taskId === activeAppServer.taskId) {
+      activeAppServer.turnActive = false;
+    }
+    updateCodexAppServerReady(activeAppServer, "Codex App Server thread is idle.", taskId);
     return;
   }
   if (statusType === "systemError") {
-    updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.FAILED, {
+    updateAgentStateFromTaskDeckEvent(taskId, AgentState.FAILED, {
       reason: "Codex App Server thread reported a system error.",
       source: AgentStateSource.PROCESS,
       confidence: AgentStateConfidence.HIGH,
@@ -4074,248 +4453,6 @@ function normalizeTerminalInput(input) {
   return String(input).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
-async function refreshCodexStatusInHiddenSession() {
-  const profile = await findCodexStatusProfile();
-  if (!profile) {
-    throw new Error("No Codex container profile is configured.");
-  }
-
-  const status = await queryCodexStatusWithHiddenPty(profile.command);
-  return {
-    ...status,
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-async function findCodexStatusProfile() {
-  const profiles = await loadAgentProfiles();
-  return (
-    profiles.find((profile) => profile.id === "codex" && isCodexStatusProfile(profile)) ??
-    profiles.find((profile) => isCodexStatusProfile(profile)) ??
-    null
-  );
-}
-
-function isCodexStatusProfile(profile) {
-  const haystack = `${profile.id || ""} ${profile.label || ""} ${profile.command || ""}`.toLowerCase();
-  return Boolean(profile.diagnosticContainer) && /\bcodex\b/.test(haystack) && /\bdocker\b[\s\S]*\bexec\b/.test(profile.command || "");
-}
-
-class CodexStatusRefreshError extends Error {
-  constructor(message, debug) {
-    super(message);
-    this.name = "CodexStatusRefreshError";
-    this.debug = debug;
-  }
-}
-
-function queryCodexStatusWithHiddenPty(command) {
-  return new Promise((resolve, reject) => {
-    let output = "";
-    let settled = false;
-    let terminalProcess;
-    let exited = false;
-    let timedOut = false;
-    let sentStatusCount = 0;
-    const timers = [];
-
-    const buildDebug = () => codexStatusDebug(output, {
-      sentStatusCount,
-      exited,
-      timedOut,
-    });
-
-    const settle = (error, status) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timeoutTimer);
-      timers.forEach((timer) => clearTimeout(timer));
-      if (terminalProcess) {
-        try {
-          terminalProcess.kill();
-        } catch {
-          // Hidden status sessions are best-effort and may already have exited.
-        }
-      }
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve(status);
-    };
-
-    const timeoutTimer = setTimeout(() => {
-      timedOut = true;
-      settle(new CodexStatusRefreshError("Codex status refresh timed out.", buildDebug()));
-    }, codexStatusRefreshTimeoutMs);
-
-    try {
-      terminalProcess = pty.spawn(shell, ["-lc", command], {
-        name: "xterm-256color",
-        cols: 100,
-        rows: 28,
-        cwd: repoRoot,
-        env: {
-          ...process.env,
-          TERM: "xterm-256color",
-        },
-      });
-    } catch (error) {
-      settle(new CodexStatusRefreshError(error.message || "Unable to start hidden Codex status session.", buildDebug()));
-      return;
-    }
-
-    const sendStatus = (reason) => {
-      if (settled || !terminalProcess || sentStatusCount >= 2) {
-        return;
-      }
-      sentStatusCount += 1;
-      if (inputDebugEnabled) {
-        console.log(`[TaskDeck codex-status] sent /status reason=${reason} count=${sentStatusCount}`);
-      }
-      terminalProcess.write(formatAgentInputForPty("/status"));
-    };
-
-    terminalProcess.onData((data) => {
-      output = `${output}${data}`.slice(-16_000);
-      const status = parseCodexStatusOutput(output);
-      if (status?.fiveHour && status?.weekly) {
-        settle(null, status);
-        return;
-      }
-      if (sentStatusCount === 0 && hiddenCodexOutputLooksReady(output)) {
-        sendStatus("ready-output");
-      }
-    });
-
-    terminalProcess.onExit(() => {
-      exited = true;
-      const status = parseCodexStatusOutput(output);
-      if (status?.fiveHour && status?.weekly) {
-        settle(null, status);
-        return;
-      }
-      settle(new CodexStatusRefreshError("Codex status output was unavailable.", buildDebug()));
-    });
-
-    timers.push(
-      setTimeout(() => sendStatus("startup-fallback"), 3_000),
-      setTimeout(() => {
-        if (!parseCodexStatusOutput(output)) {
-          sendStatus("retry-no-status");
-        }
-      }, 8_000),
-    );
-  });
-}
-
-function hiddenCodexOutputLooksReady(output) {
-  const text = normalizeCodexStatusOutput(output).toLowerCase();
-  return (
-    /\bcodex\b/.test(text) &&
-    (/(input|prompt|type|enter|ready)/.test(text) || /(?:^|\n)\s*[>›]\s*$/.test(text) || text.length > 800)
-  );
-}
-
-function codexStatusDebug(output, details) {
-  const normalizedOutput = normalizeCodexStatusOutput(output);
-  return {
-    outputTail: normalizedOutput.slice(-1500),
-    sawFiveHour: /5h\s+limit\s*:/i.test(normalizedOutput),
-    sawWeekly: /weekly\s+limit\s*:/i.test(normalizedOutput),
-    sentStatusCount: details.sentStatusCount,
-    exited: details.exited,
-    timedOut: details.timedOut,
-  };
-}
-
-function normalizeCodexStatusOutput(output) {
-  return stripTerminalControlSequences(String(output))
-    .split("\n")
-    .map((line) => removeTerminalBoxDrawing(line).replace(/\s+/g, " ").trim())
-    .filter(Boolean)
-    .join("\n");
-}
-
-function parseCodexStatusOutput(output) {
-  const statusBlock = latestCompleteCodexStatusBlock(output);
-  if (!statusBlock) {
-    return null;
-  }
-
-  const fiveHour = parseCodexStatusLine(statusBlock.fiveHourLine, "5h limit");
-  const weekly = parseCodexStatusLine(statusBlock.weeklyLine, "Weekly limit");
-
-  return {
-    ...(fiveHour ? { fiveHour: { remainingPercent: fiveHour.percent, resetLabel: fiveHour.resetLabel } } : {}),
-    ...(weekly ? { weekly: { remainingPercent: weekly.percent, resetLabel: weekly.resetLabel } } : {}),
-  };
-}
-
-function latestCompleteCodexStatusBlock(output) {
-  const lines = normalizeCodexStatusOutput(output).split("\n").filter(Boolean);
-
-  for (let weeklyIndex = lines.length - 1; weeklyIndex >= 0; weeklyIndex -= 1) {
-    if (!statusLineHasLabel(lines[weeklyIndex], "Weekly limit")) {
-      continue;
-    }
-
-    const fiveHourIndex = findPreviousStatusLineIndex(lines, weeklyIndex - 1, "5h limit");
-    if (fiveHourIndex === -1) {
-      continue;
-    }
-
-    return {
-      fiveHourLine: lines[fiveHourIndex],
-      weeklyLine: lines[weeklyIndex],
-    };
-  }
-
-  return null;
-}
-
-function findPreviousStatusLineIndex(lines, startIndex, label) {
-  for (let index = startIndex; index >= 0; index -= 1) {
-    if (statusLineHasLabel(lines[index], label)) {
-      return index;
-    }
-  }
-  return -1;
-}
-
-function statusLineHasLabel(line, label) {
-  return new RegExp(`${labelPatternForRegex(label)}\\s*:`, "i").test(line);
-}
-
-function parseCodexStatusLine(line, label) {
-  const labelPattern = labelPatternForRegex(label);
-  const match = line.match(new RegExp(`${labelPattern}\\s*:\\s*.*?(\\d{1,3})%\\s+left(?:\\s+\\(resets\\s+([^)]+)\\))?`, "i"));
-  if (!match) {
-    return null;
-  }
-  return {
-    percent: clampPercent(Number(match[1])),
-    resetLabel: String(match[2] || "").trim(),
-  };
-}
-
-function labelPatternForRegex(label) {
-  return label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
-}
-
-function removeTerminalBoxDrawing(value) {
-  return String(value).replace(/[\u2500-\u257f]/g, " ");
-}
-
-function clampPercent(value) {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-  return Math.min(100, Math.max(0, Math.round(value)));
-}
-
 function modelFromCommand(command) {
   const match = String(command || "").match(/(?:^|\s)(?:--model|-m)\s+(?:"([^"]+)"|'([^']+)'|([^\s]+))/);
   return match?.[1] || match?.[2] || match?.[3] || "";
@@ -4616,24 +4753,13 @@ async function serverAccessiblePathForHostCwd(hostCwd) {
 }
 
 function normalizeStoredTaskAgentState(task) {
-  const normalizedTask = {
+  return {
     ...task,
     agentModel: String(task.agentModel || ""),
     isManager: normalizeBoolean(task.isManager) || isManagerAgentProfileId(task.agentProfileId),
     agentState: task.agentState ?? inferAgentStateFromStatus(task),
     attachments: normalizeTaskAttachmentsForServer(task.attachments),
   };
-  if (normalizedTask.agentSessionId && isCodexLikeTask(normalizedTask)) {
-    const agentSessionResumeCommand =
-      normalizedTask.agentSessionResumeCommand || buildCodexSessionResumeCommand(normalizedTask, normalizedTask.agentSessionId);
-    const nextTask = {
-      ...normalizedTask,
-      agentSessionProvider: normalizedTask.agentSessionProvider || "codex",
-      agentSessionResumeCommand,
-    };
-    return withDetectedResumeCommand(nextTask, agentSessionResumeCommand);
-  }
-  return normalizedTask;
 }
 
 function normalizePendingAttachmentRefs(attachments) {
@@ -4751,27 +4877,6 @@ function isSafeAttachmentId(id) {
   return /^[0-9a-f-]{36}$/i.test(id);
 }
 
-function detectInitialAgentSession(command, agentProfileId, agentLabel) {
-  if (!isCodexLikeTask({ command, agentProfileId, agentLabel })) {
-    return {};
-  }
-
-  const explicitResumeId = extractCodexResumeId(command);
-  if (!explicitResumeId) {
-    return {};
-  }
-
-  const agentSessionResumeCommand = buildCodexSessionResumeCommand({ command, agentProfileId }, explicitResumeId);
-  return withDetectedResumeCommand({
-    agentSessionId: explicitResumeId,
-    agentSessionSource: "codex resume command",
-    agentSessionProvider: "codex",
-    agentSessionDetectedAt: new Date().toISOString(),
-    agentSessionResumeCommand,
-    resumeCommand: "",
-  }, agentSessionResumeCommand);
-}
-
 function normalizeExplicitAgentSession({
   agentSessionProvider,
   agentSessionId,
@@ -4783,37 +4888,13 @@ function normalizeExplicitAgentSession({
     return {};
   }
 
-  return withDetectedResumeCommand({
+  return {
     agentSessionProvider,
     agentSessionId,
     agentSessionSource,
     agentSessionDetectedAt,
     agentSessionResumeCommand,
-  }, agentSessionResumeCommand);
-}
-
-function updateAgentSessionFromOutput(taskId, data) {
-  const task = tasks.get(taskId);
-  if (!task || task.agentSessionId || !isCodexLikeTask(task)) {
-    return;
-  }
-
-  const sessionId = extractCodexSessionIdFromOutput(data);
-  if (!sessionId) {
-    return;
-  }
-
-  const agentSessionResumeCommand = buildCodexSessionResumeCommand(task, sessionId);
-  setTask(withDetectedResumeCommand({
-    ...task,
-    agentSessionId: sessionId,
-    agentSessionSource: "codex output",
-    agentSessionProvider: "codex",
-    agentSessionDetectedAt: new Date().toISOString(),
-    agentSessionResumeCommand,
-    updatedAt: new Date().toISOString(),
-  }, agentSessionResumeCommand));
-  broadcastTasks();
+  };
 }
 
 function updateAgentStateFromTaskDeckEvent(taskId, agentState, metadata = {}) {
@@ -5066,22 +5147,11 @@ function getAgentStateInferenceAdapter(task) {
     return gooseAgentStateAdapter;
   }
 
-  if (isCodexLikeTask(task)) {
-    return codexAgentStateAdapter;
-  }
-
   return genericAgentStateAdapter;
 }
 
 const gooseAgentStateAdapter = {
   id: "goose",
-  infer({ recentOutput, latestOutput, activity, activePty }) {
-    return inferWithExplicitPromptFallback({ recentOutput, latestOutput, activity, activePty, agentKind: this.id });
-  },
-};
-
-const codexAgentStateAdapter = {
-  id: "codex",
   infer({ recentOutput, latestOutput, activity, activePty }) {
     return inferWithExplicitPromptFallback({ recentOutput, latestOutput, activity, activePty, agentKind: this.id });
   },
@@ -5321,94 +5391,6 @@ function stripTerminalControlSequences(value) {
     .replace(/\r/g, "\n");
 }
 
-function extractCodexSessionIdFromOutput(data) {
-  const text = stripTerminalControlSequences(String(data));
-  const patterns = [
-    /\b(?:codex\s+)?session(?:\s+id)?\s*[:=]\s*([A-Za-z0-9][A-Za-z0-9_.:-]{5,})/i,
-    /\bconversation(?:\s+id)?\s*[:=]\s*([A-Za-z0-9][A-Za-z0-9_.:-]{5,})/i,
-    /\bresume\s+([A-Za-z0-9][A-Za-z0-9_.:-]{5,})\b/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    const sessionId = normalizeDetectedSessionId(match?.[1]);
-    if (sessionId) {
-      return sessionId;
-    }
-  }
-
-  return "";
-}
-
-function extractCodexResumeId(command) {
-  const match = String(command).match(/\bcodex\b[\s\S]*?\bresume\s+([^\s"';&|()]+)/i);
-  return normalizeDetectedSessionId(match?.[1]);
-}
-
-function buildCodexSessionResumeCommand(task, sessionId, options = {}) {
-  const command = String(task.command || "");
-  const codexCommand = `codex ${codexPermissionArgsForTask(task)} ${codexTaskDeckStartupArgs()} resume ${sessionId}`;
-  const dockerWorkdir = String(options.containerCwd || extractDockerExecWorkdir(command) || "/workspace").trim();
-  if (task.agentProfileId === "ai-dev-container-codex" || /\bdocker\b[\s\S]*\bai-agent-sandbox-agent-1\b/.test(command)) {
-    return `docker start ai-agent-sandbox-agent-1 >/dev/null && docker exec -it -w ${quoteShellToken(dockerWorkdir)} ai-agent-sandbox-agent-1 sh -lc 'TERM=xterm-256color ${codexCommand}'`;
-  }
-  if (/\bdocker\b[\s\S]*\bai-agent-sandbox-codex-1\b/.test(command)) {
-    return `docker start ai-agent-sandbox-codex-1 >/dev/null && docker exec -it -w ${quoteShellToken(dockerWorkdir)} ai-agent-sandbox-codex-1 sh -lc 'TERM=xterm-256color ${codexCommand}'`;
-  }
-  return codexCommand;
-}
-
-function codexPermissionArgsForTask(task) {
-  const permissionLevel = String(task.agentPermissionLevel || "").trim();
-  if (permissionLevel === "workspace_write") {
-    return "--sandbox workspace-write";
-  }
-  if (permissionLevel === "read_only") {
-    return "--sandbox read-only";
-  }
-  if (permissionLevel === "full_access") {
-    return "--dangerously-bypass-approvals-and-sandbox";
-  }
-
-  const command = String(task.command || task.agentSessionResumeCommand || task.resumeCommand || "");
-  const explicitSandbox = command.match(/\bcodex\b[\s\S]*?(--sandbox\s+(?:read-only|workspace-write|danger-full-access))/i);
-  if (explicitSandbox) {
-    return explicitSandbox[1];
-  }
-  if (/\bcodex\b[\s\S]*?--dangerously-bypass-approvals-and-sandbox\b/i.test(command)) {
-    return "--dangerously-bypass-approvals-and-sandbox";
-  }
-  return "--dangerously-bypass-approvals-and-sandbox";
-}
-
-function withDetectedResumeCommand(task, agentSessionResumeCommand) {
-  if (!agentSessionResumeCommand || !canReplaceResumeCommand(task.resumeCommand)) {
-    return task;
-  }
-  return {
-    ...task,
-    resumeCommand: agentSessionResumeCommand,
-  };
-}
-
-function canReplaceResumeCommand(resumeCommand) {
-  const command = String(resumeCommand || "").trim();
-  return !command || /\bcodex\b[\s\S]*?\bresume\s+--last\b/i.test(command);
-}
-
-function normalizeDetectedSessionId(value) {
-  const sessionId = String(value || "").trim().replace(/[),.;\]]+$/, "");
-  if (!sessionId || sessionId.startsWith("-") || sessionId.toLowerCase() === "last") {
-    return "";
-  }
-  return sessionId;
-}
-
-function isCodexLikeTask(task) {
-  const haystack = `${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command || ""}`.toLowerCase();
-  return /\bcodex\b/.test(haystack);
-}
-
 function isGooseLikeTask(task) {
   const haystack = `${task.agentProfileId || ""} ${task.agentLabel || ""} ${task.command || ""}`.toLowerCase();
   return /\bgoose\b/.test(haystack);
@@ -5456,12 +5438,21 @@ function serializeTaskForClient(task) {
 }
 
 function codexAppServerRequestForClient(taskId) {
-  const activeAppServer = activeCodexAppServers.get(taskId);
-  if (!activeAppServer || activeAppServer.currentServerRequestId === null) {
+  const activeAppServer = findActiveCodexAppServerForTask(taskId);
+  if (!activeAppServer) {
     return null;
   }
-  const pendingRequest = activeAppServer.pendingServerRequests.get(activeAppServer.currentServerRequestId);
+  const currentRequestId =
+    activeAppServer.currentServerRequestIdByTaskId.get(taskId) ??
+    (taskId === activeAppServer.taskId ? activeAppServer.currentServerRequestId : null);
+  if (currentRequestId === null || currentRequestId === undefined) {
+    return null;
+  }
+  const pendingRequest = activeAppServer.pendingServerRequests.get(currentRequestId);
   if (!pendingRequest) {
+    return null;
+  }
+  if (pendingRequest.targetTaskId && pendingRequest.targetTaskId !== taskId) {
     return null;
   }
   const summary = codexAppServerRequestSummary(pendingRequest);
@@ -5547,304 +5538,6 @@ function codexAppServerRequestCanDecline(pendingRequest) {
   );
 }
 
-async function listSavedCodexSessions() {
-  const sessionsByKey = new Map();
-
-  for (const task of tasks.values()) {
-    const session = await savedCodexSessionFromTask(task);
-    if (!session) {
-      continue;
-    }
-    const current = sessionsByKey.get(session.key);
-    if (!current || timestampForSort(session.updatedAt) > timestampForSort(current.updatedAt)) {
-      sessionsByKey.set(session.key, session);
-    }
-  }
-
-  for (const session of await listCodexStorageSessions()) {
-    const current = sessionsByKey.get(session.key);
-    if (!current || timestampForSort(session.updatedAt) > timestampForSort(current.updatedAt)) {
-      sessionsByKey.set(session.key, session);
-    }
-  }
-
-  return Array.from(sessionsByKey.values()).sort((left, right) => timestampForSort(right.updatedAt) - timestampForSort(left.updatedAt));
-}
-
-async function listCodexStorageSessions() {
-  const profiles = (await loadAgentProfiles()).filter((profile) =>
-    isCodexLikeTask({ agentProfileId: profile.id, agentLabel: profile.label, command: profile.command }) && profile.diagnosticContainer,
-  );
-  const sessions = [];
-
-  for (const profile of profiles) {
-    sessions.push(...(await listCodexStorageSessionsForProfile(profile)));
-  }
-
-  return sessions;
-}
-
-async function listCodexStorageSessionsForProfile(profile) {
-  const containerName = String(profile.diagnosticContainer || "").trim();
-  if (!isSafeContainerName(containerName)) {
-    return [];
-  }
-
-  try {
-    const [storageOutput, mounts] = await Promise.all([
-      readCodexStorageSessionMetadata(containerName),
-      inspectContainerMounts(containerName),
-    ]);
-    const sessions = [];
-    for (const line of storageOutput.split("\n")) {
-      const session = codexStorageSessionFromLine(line, profile, mounts);
-      if (session) {
-        sessions.push(session);
-      }
-    }
-    return sessions;
-  } catch (_error) {
-    return [];
-  }
-}
-
-async function readCodexStorageSessionMetadata(containerName) {
-  const script =
-    "find /home/dev/.codex/sessions -maxdepth 6 -type f -name '*.jsonl' 2>/dev/null | sort | " +
-    "while IFS= read -r file; do " +
-    "first_line=$(sed -n '1p' \"$file\"); " +
-    "user_line=$(grep -m 1 '\"type\":\"user_message\"' \"$file\" || true); " +
-    "printf '%s\\t%s\\t%s\\n' \"$file\" \"$first_line\" \"$user_line\"; " +
-    "done";
-  const { stdout } = await execFileAsync("docker", ["exec", containerName, "sh", "-lc", script], {
-    maxBuffer: 5 * 1024 * 1024,
-    timeout: 5000,
-  });
-  return stdout;
-}
-
-async function inspectContainerMounts(containerName) {
-  const { stdout } = await execFileAsync("docker", ["inspect", containerName, "--format", "{{json .Mounts}}"], {
-    maxBuffer: 1024 * 1024,
-    timeout: 3000,
-  });
-  return JSON.parse(stdout);
-}
-
-function codexStorageSessionFromLine(line, profile, mounts) {
-  const separatorIndex = line.indexOf("\t");
-  if (separatorIndex === -1) {
-    return null;
-  }
-
-  const filePath = line.slice(0, separatorIndex);
-  const remainder = line.slice(separatorIndex + 1);
-  const secondSeparatorIndex = remainder.indexOf("\t");
-  const jsonText = secondSeparatorIndex === -1 ? remainder : remainder.slice(0, secondSeparatorIndex);
-  const userJsonText = secondSeparatorIndex === -1 ? "" : remainder.slice(secondSeparatorIndex + 1);
-  let event;
-  try {
-    event = JSON.parse(jsonText);
-  } catch (_error) {
-    return null;
-  }
-
-  if (event?.type !== "session_meta") {
-    return null;
-  }
-
-  const sessionId = normalizeDetectedSessionId(event?.payload?.id);
-  if (!sessionId || isLikelySyntheticSession({ agentSessionSource: "codex storage" }, sessionId)) {
-    return null;
-  }
-
-  const provider = "codex";
-  const agentProfileId = String(profile.id || "codex");
-  const agentLabel = String(profile.label || "Codex");
-  const commandEnvironment = codexCommandEnvironment({ command: profile.command, agentProfileId });
-  const detectedAt = String(event?.payload?.timestamp || timestampFromCodexSessionPath(filePath) || "");
-  const containerCwd = String(event?.payload?.cwd || "/workspace");
-  const resumeCommand = buildCodexSessionResumeCommand(
-    { command: profile.command, agentProfileId },
-    sessionId,
-    { containerCwd },
-  );
-  const cwd = mapContainerPathToHostPath(containerCwd, mounts) || repoRoot;
-  const key = `${provider}:${agentProfileId}:${commandEnvironment}:${sessionId}`;
-  const title = sessionLabelForKey(key) || titleFromCodexStorageUserEvent(userJsonText) || "Codex storage session";
-
-  return {
-    key,
-    provider,
-    sessionId,
-    source: "codex storage",
-    resumeCommand,
-    title,
-    cwd,
-    agentProfileId,
-    agentLabel,
-    commandEnvironment,
-    detectedAt,
-    updatedAt: detectedAt,
-  };
-}
-
-function titleFromCodexStorageUserEvent(userJsonText) {
-  if (!userJsonText) {
-    return "";
-  }
-  try {
-    const event = JSON.parse(userJsonText);
-    const message = String(event?.payload?.message || "").trim().replace(/^›\s*/, "");
-    return message.length > 72 ? `${message.slice(0, 69)}...` : message;
-  } catch (_error) {
-    return "";
-  }
-}
-
-function timestampFromCodexSessionPath(filePath) {
-  const match = String(filePath).match(/rollout-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})/);
-  if (!match) {
-    return "";
-  }
-  return `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}.000Z`;
-}
-
-function mapContainerPathToHostPath(containerPath, mounts) {
-  const normalizedContainerPath = path.posix.normalize(String(containerPath || ""));
-  const matchingMounts = Array.isArray(mounts)
-    ? mounts
-        .filter((mount) => mount?.Type === "bind" && mount?.Source && mount?.Destination)
-        .sort((left, right) => String(right.Destination).length - String(left.Destination).length)
-    : [];
-
-  for (const mount of matchingMounts) {
-    const destination = path.posix.normalize(String(mount.Destination));
-    if (normalizedContainerPath !== destination && !normalizedContainerPath.startsWith(`${destination}/`)) {
-      continue;
-    }
-    const relativePath = normalizedContainerPath.slice(destination.length).replace(/^\/+/, "");
-    return path.join(String(mount.Source), relativePath);
-  }
-
-  return "";
-}
-
-async function mapKnownContainerPathToHostPath(containerPath) {
-  const normalizedContainerPath = path.posix.normalize(String(containerPath || ""));
-  if (!normalizedContainerPath || normalizedContainerPath === ".") {
-    return "";
-  }
-
-  const projectRoots = await resolveProjectRoots();
-  for (const projectRoot of projectRoots) {
-    const containerProjectRoot = serverAccessibleProjectRootForHostRoot(projectRoot).split(path.sep).join(path.posix.sep);
-    const normalizedContainerProjectRoot = path.posix.normalize(containerProjectRoot);
-    if (
-      normalizedContainerPath !== normalizedContainerProjectRoot &&
-      !normalizedContainerPath.startsWith(`${normalizedContainerProjectRoot}/`)
-    ) {
-      continue;
-    }
-    const relativePath = normalizedContainerPath.slice(normalizedContainerProjectRoot.length).replace(/^\/+/, "");
-    return path.join(projectRoot, relativePath);
-  }
-
-  return "";
-}
-
-async function hostCwdForSavedSessionTask(task) {
-  const cwd = String(task.cwd || "").trim();
-  if (!cwd) {
-    const projectRoots = await resolveProjectRoots();
-    return hostProjectPathForRepoRoot(projectRoots[0] || repoRoot);
-  }
-
-  const mappedCwd = await mapKnownContainerPathToHostPath(cwd);
-  return mappedCwd || cwd;
-}
-
-async function savedCodexSessionFromTask(task) {
-  if (task.agentSessionProvider !== "codex" || !String(task.agentSessionId || "").trim()) {
-    return null;
-  }
-
-  const resumeCommand = savedCodexResumeCommandForTask(task);
-  if (!resumeCommand) {
-    return null;
-  }
-
-  const provider = String(task.agentSessionProvider).trim();
-  const sessionId = String(task.agentSessionId).trim();
-  if (isLikelySyntheticSession(task, sessionId)) {
-    return null;
-  }
-
-  const agentProfileId = String(task.agentProfileId || "codex");
-  const agentLabel = String(task.agentLabel || "Codex");
-  const commandEnvironment = codexCommandEnvironment(task);
-  const key = `${provider}:${agentProfileId}:${commandEnvironment}:${sessionId}`;
-  return {
-    key,
-    provider,
-    sessionId,
-    source: String(task.agentSessionSource || ""),
-    resumeCommand,
-    title: sessionLabelForKey(key) || normalizeSavedSessionTitle(task.title),
-    cwd: await hostCwdForSavedSessionTask(task),
-    agentProfileId,
-    agentLabel,
-    commandEnvironment,
-    detectedAt: String(task.agentSessionDetectedAt || ""),
-    updatedAt: String(task.updatedAt || task.agentSessionDetectedAt || task.createdAt || ""),
-  };
-}
-
-function savedCodexResumeCommandForTask(task) {
-  const resumeCommand = String(task.agentSessionResumeCommand || task.resumeCommand || "").trim();
-  if (!resumeCommand) {
-    return "";
-  }
-
-  const resumeWorkdir = extractDockerExecWorkdir(resumeCommand);
-  const taskWorkdir = extractDockerExecWorkdir(task.command);
-  if (resumeWorkdir === "/workspace" && taskWorkdir && taskWorkdir !== resumeWorkdir) {
-    return replaceDockerExecWorkdir(resumeCommand, taskWorkdir);
-  }
-
-  return resumeCommand;
-}
-
-function isLikelySyntheticSession(task, sessionId) {
-  const source = String(task.agentSessionSource || "");
-  return /(?:^|[^a-z0-9])(e2e|smoke|fake|test|fixture|example|mock|manual-codex)(?:$|[^a-z0-9])/i.test(sessionId) || source === "manual session id";
-}
-
-function normalizeSavedSessionTitle(title) {
-  const normalizedTitle = String(title || "").trim().replace(/^(?:Resume saved:\s*)+/i, "");
-  return normalizedTitle || "Codex session";
-}
-
-function codexCommandEnvironment(task) {
-  const command = String(task.command || task.agentSessionResumeCommand || task.resumeCommand || "").toLowerCase();
-  const agentProfileId = String(task.agentProfileId || "").toLowerCase();
-
-  if (agentProfileId === "ai-dev-container-codex" || /\bdocker\b[\s\S]*\bai-agent-sandbox-agent-1\b/.test(command)) {
-    return "ai-agent-sandbox-agent-1";
-  }
-
-  if (/\bdocker\b[\s\S]*\bai-agent-sandbox-codex-1\b/.test(command)) {
-    return "ai-agent-sandbox-codex-1";
-  }
-
-  return "local";
-}
-
-function timestampForSort(value) {
-  const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) ? timestamp : 0;
-}
-
 function appendLog(taskId, data) {
   const nextLog = `${logs.get(taskId) || ""}${data}`;
   logs.set(taskId, nextLog.slice(-maxLogLength));
@@ -5912,12 +5605,7 @@ function taskSessionLabelKey(task) {
     return "";
   }
   const agentProfileId = String(task.agentProfileId || provider);
-  const commandEnvironment = codexCommandEnvironment(task);
-  return `${provider}:${agentProfileId}:${commandEnvironment}:${sessionId}`;
-}
-
-function sessionLabelForKey(sessionKey) {
-  return String(sessionLabels.get(sessionKey)?.label || "").trim();
+  return `${provider}:${agentProfileId}:${sessionId}`;
 }
 
 function broadcastTasks() {
@@ -5930,9 +5618,16 @@ function broadcastTasks() {
 }
 
 function getRunningTaskIds() {
+  const activeCodexAppServerTaskIds = [];
+  for (const activeAppServer of activeCodexAppServers.values()) {
+    activeCodexAppServerTaskIds.push(...Array.from(activeAppServer.taskIdToThreadId.keys()).reverse());
+    if (!activeAppServer.taskIdToThreadId.has(activeAppServer.taskId)) {
+      activeCodexAppServerTaskIds.push(activeAppServer.taskId);
+    }
+  }
   return Array.from(new Set([
     ...Array.from(activePtys.keys()).reverse(),
-    ...Array.from(activeCodexAppServers.keys()).reverse(),
+    ...activeCodexAppServerTaskIds.reverse(),
   ]));
 }
 
@@ -5982,8 +5677,13 @@ function stopActivePty(taskId) {
 function stopActiveCodexAppServer(taskId) {
   const activeAppServer = activeCodexAppServers.get(taskId);
   if (!activeAppServer) {
+    const childActiveAppServer = findActiveCodexAppServerForTask(taskId);
+    if (childActiveAppServer) {
+      stopCodexAppServerThreadTask(childActiveAppServer, taskId);
+    }
     return;
   }
+  markCodexAppServerChildTasksExited(activeAppServer, { exitCode: null, signal: "app-server-stopped" });
   cancelCodexAppServerLoginIfNeeded(activeAppServer);
   activeAppServer.loginInProgress = false;
   activeAppServer.loginId = "";
@@ -5992,6 +5692,46 @@ function stopActiveCodexAppServer(taskId) {
     activeAppServer.process.kill();
   } catch (error) {
     console.error("TaskDeck could not stop Codex App Server for " + taskId + ": " + error.message);
+  }
+}
+
+function interruptCodexAppServerTask(activeAppServer, taskId) {
+  const threadId = codexAppServerThreadIdForTask(activeAppServer, taskId);
+  const runtime = codexAppServerRuntimeForTask(activeAppServer, taskId);
+  if (!threadId || !runtime.activeTurnId) {
+    return { ok: false, error: "No active Codex App Server turn is available for the selected task." };
+  }
+
+  sendCodexAppServerRequest(activeAppServer, "turn/interrupt", {
+    threadId,
+    turnId: runtime.activeTurnId,
+  });
+  appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Requested Codex App Server turn interrupt.\n", taskId);
+  return { ok: true };
+}
+
+function stopCodexAppServerThreadTask(activeAppServer, taskId) {
+  const threadId = codexAppServerThreadIdForTask(activeAppServer, taskId);
+  if (!threadId || taskId === activeAppServer.taskId) {
+    return;
+  }
+  interruptCodexAppServerTask(activeAppServer, taskId);
+  activeAppServer.threadIdToTaskId.delete(threadId);
+  activeAppServer.taskIdToThreadId.delete(taskId);
+  activeAppServer.threadRuntimeByTaskId.delete(taskId);
+  activeAppServer.currentServerRequestIdByTaskId.delete(taskId);
+}
+
+function markCodexAppServerChildTasksExited(activeAppServer, { exitCode, signal }) {
+  if (!activeAppServer) {
+    return;
+  }
+  const childTaskIds = Array.from(activeAppServer.taskIdToThreadId.keys()).filter((taskId) => taskId !== activeAppServer.taskId);
+  for (const childTaskId of childTaskIds) {
+    const childTask = tasks.get(childTaskId);
+    if (childTask?.status === TaskStatus.RUNNING) {
+      setTask(markTaskExited(childTask, { exitCode, signal }));
+    }
   }
 }
 

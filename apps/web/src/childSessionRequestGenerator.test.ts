@@ -11,9 +11,7 @@ const draft: ChildSessionBatchRequestDraft = {
   sessions: [
     {
       title: "Generator test child",
-      agentProfileId: "codex",
-      agentPermissionLevel: "read_only",
-      agentReasoningEffort: "low",
+      agentProfileId: "codex-app-server",
       cwd: "/Users/example/task-deck",
       workPackageId: "generator-test",
       filesLikelyToChange: ["apps/web/src/childSessionRequestGenerator.ts"],
@@ -62,13 +60,6 @@ describe("createChildSessionBatchRequestBlock", () => {
     expect(parsed.sessions[0].initialInstruction).toBe(initialInstruction);
   });
 
-  it("preserves Codex low reasoning effort and workPackageId", () => {
-    const parsed = JSON.parse(jsonBodyFor(createChildSessionBatchRequestBlock(draft)));
-
-    expect(parsed.sessions[0].agentReasoningEffort).toBe("low");
-    expect(parsed.sessions[0].workPackageId).toBe("generator-test");
-  });
-
   it("generates output accepted by the existing parser", () => {
     const result = parseChildSessionRequestsFromText(createChildSessionBatchRequestBlock(draft));
 
@@ -76,9 +67,7 @@ describe("createChildSessionBatchRequestBlock", () => {
     expect(result.requests).toHaveLength(1);
     expect(result.requests[0].sessions[0]).toMatchObject({
       title: "Generator test child",
-      agentProfileId: "codex",
-      agentPermissionLevel: "read_only",
-      agentReasoningEffort: "low",
+      agentProfileId: "codex-app-server",
       cwd: "/Users/example/task-deck",
       workPackageId: "generator-test",
       filesLikelyToChange: ["apps/web/src/childSessionRequestGenerator.ts"],
