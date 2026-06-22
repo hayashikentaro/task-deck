@@ -42,20 +42,17 @@ export function InputComposer({
   const isInputLocked = Boolean(task?.inputLockedAt);
   const isCodexAppServerTask = task?.agentProfileId === "codex-app-server";
   const codexAppServerRequest = task?.codexAppServerRequest ?? null;
-  const needsUserAttention = taskNeedsUserAttention(task);
-  const isCodexAppServerNeedsAttention = Boolean(isCodexAppServerTask && needsUserAttention);
   const isCodexAppServerTurnActive = Boolean(isCodexAppServerTask && task?.codexAppServerTurnActive);
   const canInteractWithRunningTask = Boolean(task && task.status === "running" && isConnected);
   const canStopCodexAppServerTurn = Boolean(canInteractWithRunningTask && isCodexAppServerTurnActive && !isStopRequested);
-  const canEditComposer = canInteractWithRunningTask && !isInputLocked && !isCodexAppServerNeedsAttention;
-  const canSend = canInteractWithRunningTask && !isInputLocked && !isCodexAppServerTurnActive && !isCodexAppServerNeedsAttention;
+  const canSend = canInteractWithRunningTask && !isInputLocked && !isCodexAppServerTurnActive;
   const hasComposerContent = Boolean(value || selectedImages.length);
   const canSubmit = canSend && hasComposerContent && !isUploadingAttachments;
   const canResolveCodexAppServerRequest = Boolean(canInteractWithRunningTask && codexAppServerRequest);
   const actionLabel = isCodexAppServerTurnActive
     ? "Stop active Codex turn"
     : "Send input to running task";
-  const modeText = getComposerMode(task, isConnected, { isCodexAppServerNeedsAttention, isCodexAppServerTurnActive });
+  const modeText = getComposerMode(task, isConnected, { isCodexAppServerTurnActive });
   const inputPlaceholder = canSend
     ? isCodexAppServerTask
       ? "Send input to Codex App Server task"
@@ -302,7 +299,6 @@ export function InputComposer({
           autoCapitalize="off"
           autoComplete="off"
           autoCorrect="off"
-          disabled={!canEditComposer}
           onChange={(event) => onValueChange(event.target.value)}
           onCompositionEnd={() => setIsComposing(false)}
           onCompositionStart={() => setIsComposing(true)}
@@ -531,9 +527,8 @@ function getComposerMode(
   task: Task | null,
   isConnected: boolean,
   {
-    isCodexAppServerNeedsAttention = false,
     isCodexAppServerTurnActive = false,
-  }: { isCodexAppServerNeedsAttention?: boolean; isCodexAppServerTurnActive?: boolean } = {},
+  }: { isCodexAppServerTurnActive?: boolean } = {},
 ) {
   if (!task) {
     return "No task selected";
@@ -546,9 +541,6 @@ function getComposerMode(
   }
   if (task.inputLockedAt) {
     return "Input locked";
-  }
-  if (isCodexAppServerNeedsAttention) {
-    return "Task needs your attention";
   }
   if (isCodexAppServerTurnActive) {
     return "Codex is running";
@@ -583,8 +575,4 @@ function getComposerInputState({
     return "readonly";
   }
   return "ready";
-}
-
-function taskNeedsUserAttention(task: Task | null) {
-  return Boolean(task?.attentionState && task.attentionState !== "none");
 }

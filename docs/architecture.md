@@ -103,7 +103,7 @@ Expanded task cards show command, cwd, process status, exit code, timing, initia
 
 The output pane displays human-readable Codex App Server status, assistant text, command output, and request state in a plain scrollable text view. The pane strips legacy ANSI control sequences when replaying older logs. It includes operator controls for output font size, reloading persisted logs, and counting simple search matches.
 
-Task input is sent through the fixed bottom composer. For Codex App Server tasks it becomes structured turn input. The composer stays disabled for read-only logs, disconnected sessions, or no selected task. It supports multi-line instructions. Enter sends, Shift+Enter inserts a newline, Cmd/Ctrl+Enter sends, and IME composition is preserved for Japanese input.
+Task input is sent through the fixed bottom composer. For Codex App Server tasks it becomes structured turn input. The text composer remains editable so operators can draft while a task is busy, waiting for attention, disconnected, locked, or otherwise not currently sendable; the send and attachment controls reflect whether input can be delivered to the selected running task. It supports multi-line instructions. Enter sends, Shift+Enter inserts a newline, Cmd/Ctrl+Enter sends, and IME composition is preserved for Japanese input.
 
 Input locking blocks new input without foregrounding the task in the task list. Unlocking a running task is an operator attention action: the UI selects that task and refreshes its activity timestamp so it moves up within its current supervision bucket.
 
