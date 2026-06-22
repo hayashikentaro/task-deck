@@ -120,6 +120,7 @@ const shell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe"
 const inputDebugEnabled = process.env.TASKDECK_INPUT_DEBUG === "1";
 const codexAppServerDebugEnabled = process.env.TASKDECK_CODEX_APP_SERVER_DEBUG === "1";
 const decisionGatewayUrl = normalizeDecisionGatewayUrl(process.env.DECISION_GATEWAY_URL);
+const decisionGatewayRequestTimeoutMs = 10_000;
 
 const clients = new Set();
 const tasks = new Map();
@@ -457,13 +458,21 @@ app.post("/api/tasks/:taskId/decision-request", async (request, response) => {
       },
       recentOutput,
     });
-    const gatewayResponse = await fetch(`${decisionGatewayUrl}/api/decision-requests`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(decisionRequest),
-    });
+    const abortController = new AbortController();
+    const timeout = setTimeout(() => abortController.abort(), decisionGatewayRequestTimeoutMs);
+    let gatewayResponse;
+    try {
+      gatewayResponse = await fetch(`${decisionGatewayUrl}/api/decision-requests`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(decisionRequest),
+        signal: abortController.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
     const payload = await gatewayResponse.json().catch(() => ({}));
 
     if (!gatewayResponse.ok) {
@@ -480,8 +489,11 @@ app.post("/api/tasks/:taskId/decision-request", async (request, response) => {
       requestId: String(payload?.requestId || ""),
     });
   } catch (error) {
-    response.status(502).json({
-      error: `Unable to send decision request: ${error.message}`,
+    const timedOut = error?.name === "AbortError";
+    response.status(timedOut ? 504 : 502).json({
+      error: timedOut
+        ? `Decision Gateway request timed out after ${decisionGatewayRequestTimeoutMs / 1000} seconds.`
+        : `Unable to send decision request: ${error.message}`,
     });
   }
 });

@@ -1,4 +1,5 @@
 export const DECISION_GATEWAY_RECENT_OUTPUT_LIMIT = 4000;
+export const DECISION_GATEWAY_CONTEXT_FIELD_LIMIT = 2000;
 
 const redactionPatterns = [
   {
@@ -8,6 +9,10 @@ const redactionPatterns = [
   {
     pattern: /\b(?:api[_-]?key|token|secret|password)\s*[:=]\s*["']?[^"'\s]+/gi,
     replacement: (match) => `${match.split(/[:=]/)[0].trim()}=[REDACTED]`,
+  },
+  {
+    pattern: /\bauthorization\s*:\s*bearer\s+[^"'\s]+/gi,
+    replacement: "authorization: Bearer [REDACTED]",
   },
   {
     pattern: /\b[A-Za-z0-9._%+-]+:[A-Za-z0-9._~+/-]{16,}@/g,
@@ -45,16 +50,30 @@ export function boundedDecisionGatewayRecentOutput(value, limit = DECISION_GATEW
   return `[TaskDeck truncated recent output to the last ${limit} characters.]\n${redacted.slice(-limit)}`;
 }
 
+export function boundedDecisionGatewayContextField(value, limit = DECISION_GATEWAY_CONTEXT_FIELD_LIMIT) {
+  const redacted = redactDecisionGatewayText(value);
+  if (redacted.length <= limit) {
+    return redacted;
+  }
+
+  return `${redacted.slice(0, limit)}\n[TaskDeck truncated this field to ${limit} characters.]`;
+}
+
 export function buildTaskDeckDecisionRequest({ task, recentOutput = "" }) {
   const taskId = String(task?.id || "").trim();
   const sessionId = String(task?.agentSessionId || "").trim();
-  const title = String(task?.sessionLabel || task?.title || "").trim();
-  const goal = title || String(task?.initialInstruction || "").trim() || "Decide what this TaskDeck session should do next.";
+  const title = boundedDecisionGatewayContextField(String(task?.sessionLabel || task?.title || "").trim(), 500);
+  const initialInstruction = boundedDecisionGatewayContextField(String(task?.initialInstruction || "").trim());
+  const attentionStateReason = boundedDecisionGatewayContextField(String(task?.attentionStateReason || "").trim(), 1000);
+  const workingDirectory = boundedDecisionGatewayContextField(String(task?.cwd || "").trim(), 1000);
+  const agentKind = boundedDecisionGatewayContextField(String(task?.agentLabel || task?.agentProfileId || "").trim(), 500);
+  const agentProfileId = boundedDecisionGatewayContextField(String(task?.agentProfileId || "").trim(), 500);
+  const goal = title || initialInstruction || "Decide what this TaskDeck session should do next.";
   const currentState = [
     task?.status ? `Process status: ${task.status}.` : "",
     task?.agentState ? `Agent state: ${task.agentState}.` : "",
     task?.attentionState ? `Attention state: ${task.attentionState}.` : "",
-    task?.attentionStateReason ? `Attention reason: ${task.attentionStateReason}` : "",
+    attentionStateReason ? `Attention reason: ${attentionStateReason}` : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -65,7 +84,7 @@ export function buildTaskDeckDecisionRequest({ task, recentOutput = "" }) {
       type: "taskdeck",
       taskId,
       ...(sessionId ? { sessionId } : {}),
-      ...(task?.agentProfileId ? { agentProfileId: String(task.agentProfileId) } : {}),
+      ...(agentProfileId ? { agentProfileId } : {}),
       label: "TaskDeck",
     },
     goal,
@@ -93,14 +112,14 @@ export function buildTaskDeckDecisionRequest({ task, recentOutput = "" }) {
           {
             taskId,
             sessionId: sessionId || null,
-            agentKind: task?.agentLabel || task?.agentProfileId || "",
-            agentProfileId: task?.agentProfileId || "",
-            workingDirectory: task?.cwd || "",
+            agentKind,
+            agentProfileId,
+            workingDirectory,
             currentGoal: goal,
             taskTitle: title,
-            initialInstruction: task?.initialInstruction || "",
+            initialInstruction,
             attentionState: task?.attentionState || "",
-            attentionStateReason: task?.attentionStateReason || "",
+            attentionStateReason,
           },
           null,
           2,
@@ -120,7 +139,7 @@ export function buildTaskDeckDecisionRequest({ task, recentOutput = "" }) {
 }
 
 function decisionQuestionForTask(task) {
-  const title = String(task?.sessionLabel || task?.title || "").trim();
+  const title = boundedDecisionGatewayContextField(String(task?.sessionLabel || task?.title || "").trim(), 500);
   if (title) {
     return `This TaskDeck session needs human judgment for "${title}". What should the agent do next?`;
   }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildTaskDeckDecisionRequest,
+  boundedDecisionGatewayContextField,
   boundedDecisionGatewayRecentOutput,
   normalizeDecisionGatewayUrl,
 } from "@taskdeck/core/decision-gateway";
@@ -45,6 +46,34 @@ describe("Decision Gateway connector helpers", () => {
     expect(output).not.toContain("super-secret-value");
     expect(output).not.toContain("sk-abcdefghijklmnopqrstuvwxyz");
     expect(output.length).toBeLessThan(120);
+  });
+
+  it("bounds and redacts source context fields", () => {
+    const context = boundedDecisionGatewayContextField(
+      `Authorization: Bearer secret-token-value\npassword=hunter2\n${"x".repeat(80)}`,
+      40,
+    );
+
+    expect(context).toContain("TaskDeck truncated this field");
+    expect(context).not.toContain("secret-token-value");
+    expect(context).not.toContain("hunter2");
+  });
+
+  it("redacts task source context in the request material", () => {
+    const request = buildTaskDeckDecisionRequest({
+      task: {
+        id: "task_123",
+        title: "Needs user choice",
+        initialInstruction: `password=hunter2\n${"x".repeat(2100)}`,
+        attentionStateReason: "Authorization: Bearer secret-token-value",
+      },
+      recentOutput: "",
+    });
+    const sourceMaterial = request.materials.find((material) => material.label === "TaskDeck source context");
+
+    expect(sourceMaterial?.text).toContain("TaskDeck truncated this field");
+    expect(sourceMaterial?.text).not.toContain("hunter2");
+    expect(sourceMaterial?.text).not.toContain("secret-token-value");
   });
 
   it("normalizes configured Decision Gateway URLs", () => {
