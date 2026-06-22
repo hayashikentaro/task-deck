@@ -57,7 +57,9 @@ export function InputComposer({
     ? isCodexAppServerTask
       ? "Send input to Codex App Server task"
       : "Input to running task"
-    : modeText;
+    : isCodexAppServerTurnActive
+      ? ""
+      : modeText;
   const inputState = getComposerInputState({ task, isConnected, isUploadingAttachments, isCodexAppServerTurnActive });
   const modelOptions = useMemo(
     () => ensureSelectedModelOption(codexModels, selectedModel || task?.agentModel || ""),
