@@ -5,6 +5,7 @@ import {
   buildCodexAppServerTurnStartParams,
   codexAppServerThreadIdFromMessage,
   isCodexAppServerAuthError,
+  isRoutineCodexAppServerNotification,
   normalizeCodexAppServerModels,
   resolveCodexAppServerTaskIdForThread,
   shouldIgnoreCodexAppServerMessageAfterAuthFailure,
@@ -30,6 +31,42 @@ describe("Codex App Server helper contracts", () => {
   it("ignores stale App Server messages after authentication failure", () => {
     expect(shouldIgnoreCodexAppServerMessageAfterAuthFailure({ authFailureDetected: true })).toBe(true);
     expect(shouldIgnoreCodexAppServerMessageAfterAuthFailure({ authFailureDetected: false })).toBe(false);
+  });
+
+  it("classifies noisy App Server progress notifications as routine", () => {
+    expect(isRoutineCodexAppServerNotification("thread/settings/updated")).toBe(true);
+    expect(isRoutineCodexAppServerNotification("turn/diff/updated")).toBe(true);
+    expect(isRoutineCodexAppServerNotification("item/commandExecution/terminalInteraction")).toBe(true);
+    expect(isRoutineCodexAppServerNotification("item/agentMessage/delta")).toBe(false);
+    expect(isRoutineCodexAppServerNotification("error")).toBe(false);
+  });
+
+  it("keeps assistant text contiguous when routine notifications arrive between deltas", () => {
+    let log = "";
+    let assistantMessageOpen = false;
+    const appendAssistantDelta = (delta) => {
+      if (assistantMessageOpen) {
+        log += delta;
+        return;
+      }
+      assistantMessageOpen = true;
+      const prefix = log && !log.endsWith("\n") ? "\n" : "";
+      log += `${prefix}[Assistant]\n${delta}`;
+    };
+    const appendStatus = (data) => {
+      assistantMessageOpen = false;
+      const prefix = log && !log.endsWith("\n") ? "\n" : "";
+      const suffix = data.endsWith("\n") ? "" : "\n";
+      log += `${prefix}${data}${suffix}`;
+    };
+
+    appendAssistantDelta("日本");
+    if (!isRoutineCodexAppServerNotification("turn/diff/updated")) {
+      appendStatus("[TaskDeck] Unknown Codex App Server notification: turn/diff/updated\n");
+    }
+    appendAssistantDelta("語出力");
+
+    expect(log).toBe("[Assistant]\n日本語出力");
   });
 
   it("extracts thread ids from App Server responses and notifications", () => {

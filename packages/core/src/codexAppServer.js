@@ -23,6 +23,15 @@ export function shouldSuppressCodexAppServerAuthErrorLine({ authFailureDetected,
   return Boolean(authFailureDetected && isCodexAppServerAuthError(line));
 }
 
+export function isRoutineCodexAppServerNotification(method) {
+  const normalizedMethod = String(method || "").trim();
+  return (
+    normalizedMethod === "thread/settings/updated" ||
+    normalizedMethod === "turn/diff/updated" ||
+    normalizedMethod === "item/commandExecution/terminalInteraction"
+  );
+}
+
 export function codexAppServerThreadIdFromMessage(message) {
   const params = message?.params ?? {};
   const result = message?.result ?? {};

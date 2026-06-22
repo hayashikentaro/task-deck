@@ -44,6 +44,7 @@ import {
   buildCodexAppServerTurnStartParams,
   codexAppServerThreadIdFromMessage,
   isCodexAppServerAuthError,
+  isRoutineCodexAppServerNotification,
   normalizeCodexAppServerModels,
   resolveCodexAppServerTaskIdForThread,
   shouldSuppressCodexAppServerAuthErrorLine,
@@ -2383,6 +2384,10 @@ function handleCodexAppServerNotification(activeAppServer, message) {
     });
     return;
   }
+  if (isRoutineCodexAppServerNotification(method)) {
+    appendCodexAppServerDebugDiagnostic(activeAppServer, `[TaskDeck] Ignored Codex App Server notification: ${method}\n`);
+    return;
+  }
   appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Unknown Codex App Server notification: ${method}\n`);
 }
 
@@ -2523,6 +2528,16 @@ function appendCodexAppServerStatus(activeAppServer, data) {
 
 function appendCodexAppServerStatusForTask(activeAppServer, taskId, data) {
   setCodexAppServerAssistantMessageOpen(activeAppServer, taskId, false);
+  const currentLog = logs.get(taskId) || "";
+  const prefix = currentLog && !currentLog.endsWith("\n") ? "\n" : "";
+  const suffix = data.endsWith("\n") ? "" : "\n";
+  appendAndBroadcast(taskId, `${prefix}${data}${suffix}`);
+}
+
+function appendCodexAppServerDebugDiagnostic(activeAppServer, data, taskId = activeAppServer.taskId) {
+  if (!codexAppServerDebugEnabled) {
+    return;
+  }
   const currentLog = logs.get(taskId) || "";
   const prefix = currentLog && !currentLog.endsWith("\n") ? "\n" : "";
   const suffix = data.endsWith("\n") ? "" : "\n";
