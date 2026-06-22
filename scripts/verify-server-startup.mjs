@@ -5,6 +5,7 @@ import process from "node:process";
 
 const host = "127.0.0.1";
 const startupTimeoutMs = Number(process.env.TASKDECK_VERIFY_STARTUP_TIMEOUT_MS || 12_000);
+const requestTimeoutMs = Number(process.env.TASKDECK_VERIFY_REQUEST_TIMEOUT_MS || 5_000);
 const serverCommand = process.execPath;
 const serverArgs = ["apps/server/src/server.js"];
 
@@ -95,7 +96,7 @@ function requestContext(portNumber) {
         host,
         port: portNumber,
         path: "/api/context",
-        timeout: 1000,
+        timeout: requestTimeoutMs,
       },
       (response) => {
         response.resume();

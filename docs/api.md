@@ -16,6 +16,7 @@ GET /api/tasks/:taskId
 PATCH /api/tasks/:taskId/title
 PATCH /api/tasks/:taskId/attention/acknowledge
 PATCH /api/tasks/:taskId/input-lock
+POST /api/tasks/:taskId/decision-request
 DELETE /api/tasks/:taskId
 GET /api/tasks/:taskId/logs
 GET /api/tasks/:taskId/logs?tail=200000
@@ -59,6 +60,8 @@ The server still recognizes the legacy `taskdeck-manager` agent profile id on st
 `PATCH /api/tasks/:taskId/attention/acknowledge` clears the current attention event for a running task without stopping or modifying its active runtime. The task stores `attentionAcknowledgedAt`, returns to Not now by setting `attentionState` to `none`, and can surface again when a future App Server request, child-status report, or manager action sets a new attention state.
 
 `PATCH /api/tasks/:taskId/input-lock` accepts `{ "locked": true }` or `{ "locked": false }` for running tasks. Locking blocks new user input without moving the task in the list. Unlocking stores a fresh activity timestamp so the operator can resume that task intentionally.
+
+`POST /api/tasks/:taskId/decision-request` sends a manual one-way decision request to Decision Gateway when `DECISION_GATEWAY_URL` is configured. TaskDeck includes source context such as task id, session id when available, agent profile, cwd, attention state, and a bounded redacted recent-output snippet. The route returns `{ "ok": true, "decisionUrl": "...", "decisionId": "...", "requestId": "..." }`. It does not change TaskDeck task state, poll for results, resume agents, or deliver decisions back.
 
 `DELETE /api/tasks` bulk-clears tasks and their logs. `DELETE /api/tasks/:taskId` clears a single task; clearing an individual running task stops its active App Server runtime and removes that task.
 

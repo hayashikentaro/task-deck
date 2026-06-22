@@ -58,6 +58,10 @@ import {
   createManagerActionCapabilitiesDocument,
   createManagerReadableEventsDocument,
 } from "@taskdeck/core/manager-readable";
+import {
+  buildTaskDeckDecisionRequest,
+  normalizeDecisionGatewayUrl,
+} from "@taskdeck/core/decision-gateway";
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
@@ -115,6 +119,7 @@ const host = process.env.HOST || "127.0.0.1";
 const shell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "bash");
 const inputDebugEnabled = process.env.TASKDECK_INPUT_DEBUG === "1";
 const codexAppServerDebugEnabled = process.env.TASKDECK_CODEX_APP_SERVER_DEBUG === "1";
+const decisionGatewayUrl = normalizeDecisionGatewayUrl(process.env.DECISION_GATEWAY_URL);
 
 const clients = new Set();
 const tasks = new Map();
@@ -171,6 +176,10 @@ app.get("/api/context", async (_request, response) => {
     defaultModel: await loadDefaultModel(),
     agentProfiles: await loadAgentProfiles(),
     agentProfileConfig: await getAgentProfileConfigSummary(),
+    decisionGateway: {
+      configured: Boolean(decisionGatewayUrl),
+      url: decisionGatewayUrl,
+    },
   });
 });
 
@@ -422,6 +431,59 @@ app.get("/api/tasks/:taskId/logs", (request, response) => {
         error: error.message,
       });
     });
+});
+
+app.post("/api/tasks/:taskId/decision-request", async (request, response) => {
+  const task = tasks.get(request.params.taskId);
+
+  if (!task) {
+    response.status(404).json({ error: "Task not found." });
+    return;
+  }
+
+  if (!decisionGatewayUrl) {
+    response.status(400).json({
+      error: "Decision Gateway is not configured. Set DECISION_GATEWAY_URL to enable this action.",
+    });
+    return;
+  }
+
+  try {
+    const recentOutput = await readTaskLogTail(task.id, 4000);
+    const decisionRequest = buildTaskDeckDecisionRequest({
+      task: {
+        ...task,
+        sessionLabel: taskSessionLabel(task),
+      },
+      recentOutput,
+    });
+    const gatewayResponse = await fetch(`${decisionGatewayUrl}/api/decision-requests`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(decisionRequest),
+    });
+    const payload = await gatewayResponse.json().catch(() => ({}));
+
+    if (!gatewayResponse.ok) {
+      response.status(502).json({
+        error: payload?.error || `Decision Gateway request failed with status ${gatewayResponse.status}.`,
+      });
+      return;
+    }
+
+    response.json({
+      ok: true,
+      decisionUrl: String(payload?.url || ""),
+      decisionId: String(payload?.id || ""),
+      requestId: String(payload?.requestId || ""),
+    });
+  } catch (error) {
+    response.status(502).json({
+      error: `Unable to send decision request: ${error.message}`,
+    });
+  }
 });
 
 function normalizeTailLength(rawTail) {
@@ -5336,6 +5398,12 @@ async function readTaskLog(taskId) {
     }
     throw error;
   }
+}
+
+async function readTaskLogTail(taskId, tailLength) {
+  const taskLog = await readTaskLog(taskId);
+  const boundedTailLength = Math.max(0, Math.min(Number(tailLength) || 0, maxLogLength));
+  return boundedTailLength > 0 ? taskLog.slice(-boundedTailLength) : "";
 }
 
 function writeTaskLog(taskId, data) {

@@ -5,23 +5,29 @@ import type { AttentionState, Task } from "../types";
 type TaskFilter = "all" | "needs_you" | "not_now";
 
 type TaskListProps = {
+  decisionGatewayConfigured: boolean;
   tasks: Task[];
   selectedTaskId: string | null;
   runningTaskIds: string[];
   onClearTask: (taskId: string) => void;
   onClearTasks: () => void | Promise<void>;
   onRenameTask: (taskId: string, title: string) => Promise<boolean>;
+  onSendDecisionRequest: (
+    taskId: string,
+  ) => Promise<{ ok: true; decisionUrl: string; decisionId: string; requestId: string } | { ok: false; error: string }>;
   onSelectTask: (taskId: string) => void;
   onToggleInputLock: (taskId: string, locked: boolean) => void | Promise<boolean>;
 };
 
 export function TaskList({
+  decisionGatewayConfigured,
   tasks,
   selectedTaskId,
   runningTaskIds,
   onClearTask,
   onClearTasks,
   onRenameTask,
+  onSendDecisionRequest,
   onSelectTask,
   onToggleInputLock,
 }: TaskListProps) {
@@ -30,6 +36,9 @@ export function TaskList({
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
+  const [decisionRequestByTaskId, setDecisionRequestByTaskId] = useState<
+    Record<string, { status: "sending" | "sent" | "failed"; decisionUrl?: string; error?: string }>
+  >({});
   const itemRefs = useRef(new Map<string, HTMLElement>());
   const previousRectsRef = useRef(new Map<string, DOMRect>());
   const reorderAnimationFrameRef = useRef<number | null>(null);
@@ -124,6 +133,20 @@ export function TaskList({
     }
   };
 
+  const sendTaskToDecisionGateway = async (task: Task) => {
+    setDecisionRequestByTaskId((current) => ({
+      ...current,
+      [task.id]: { status: "sending" },
+    }));
+    const result = await onSendDecisionRequest(task.id);
+    setDecisionRequestByTaskId((current) => ({
+      ...current,
+      [task.id]: result.ok
+        ? { status: "sent", decisionUrl: result.decisionUrl }
+        : { status: "failed", error: result.error },
+    }));
+  };
+
   return (
     <aside className="task-list" aria-label="Tasks">
       <div className="task-list-toolbar">
@@ -175,6 +198,7 @@ export function TaskList({
           const isEditingTitle = editingTaskId === task.id;
           const isInputLocked = Boolean(task.inputLockedAt);
           const isNativeSubagent = isNativeSubagentTask(task);
+          const decisionRequestState = decisionRequestByTaskId[task.id] ?? null;
           const inputLockLabel = isNativeSubagent
             ? "Native subagent input is read-only"
             : isInputLocked
@@ -290,6 +314,19 @@ export function TaskList({
                     <path d="M9.5 4.5l1-1 2 2-1 1" />
                   </svg>
                 </button>
+                <button
+                  className="task-decision-gateway-button"
+                  disabled={!decisionGatewayConfigured || decisionRequestState?.status === "sending"}
+                  onClick={() => sendTaskToDecisionGateway(task)}
+                  title={
+                    decisionGatewayConfigured
+                      ? "Send a manual decision request to Decision Gateway"
+                      : "Set DECISION_GATEWAY_URL to enable Decision Gateway"
+                  }
+                  type="button"
+                >
+                  {decisionRequestState?.status === "sending" ? "Sending..." : "Ask for decision"}
+                </button>
                 <button aria-label="Clear task" className="task-clear-button" onClick={() => onClearTask(task.id)} title="Clear task" type="button">
                   <svg aria-hidden="true" className="task-clear-icon" focusable="false" viewBox="0 0 16 16">
                     <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
@@ -320,6 +357,17 @@ export function TaskList({
                   </svg>
                 )}
               </button>
+              {decisionRequestState?.status === "sent" && decisionRequestState.decisionUrl ? (
+                <p className="task-action-status" data-kind="success">
+                  Decision request sent:{" "}
+                  <a href={decisionRequestState.decisionUrl} rel="noreferrer" target="_blank">
+                    Open workspace
+                  </a>
+                </p>
+              ) : null}
+              {decisionRequestState?.status === "failed" ? (
+                <p className="task-action-error">{decisionRequestState.error || "Unable to send decision request."}</p>
+              ) : null}
             </article>
           );
         })}

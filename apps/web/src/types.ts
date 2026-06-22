@@ -198,6 +198,10 @@ export type TaskDeckContext = {
   defaultModel?: string;
   agentProfiles: AgentProfile[];
   agentProfileConfig?: AgentProfileConfigSummary;
+  decisionGateway?: {
+    configured: boolean;
+    url?: string;
+  };
 };
 
 export type CwdValidation = {

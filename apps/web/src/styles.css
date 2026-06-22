@@ -1946,6 +1946,14 @@ dd {
   padding: 0;
 }
 
+.task-decision-gateway-button {
+  min-width: 0;
+  max-width: 124px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .task-clear-button:hover:not(:disabled),
 .task-edit-title-button:hover:not(:disabled),
 .task-input-lock-button:hover:not(:disabled) {
@@ -1995,6 +2003,24 @@ dd {
   border: 1px solid var(--status-failed);
   border-radius: 6px;
   color: var(--status-failed);
+}
+
+.task-action-status {
+  margin: 10px 8px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.task-action-status[data-kind="success"] {
+  border-color: var(--status-done-border);
+  color: var(--text-secondary);
+}
+
+.task-action-status a {
+  color: var(--status-focus);
 }
 
 .modal-backdrop {

@@ -228,6 +228,36 @@ export function App() {
     }
   };
 
+  const sendDecisionRequest = async (taskId: string) => {
+    try {
+      const response = await fetch(`/api/tasks/${taskId}/decision-request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        decisionUrl?: string;
+        decisionId?: string;
+        requestId?: string;
+        error?: string;
+      };
+      if (!response.ok || !payload.ok || !payload.decisionUrl) {
+        throw new Error(payload.error || "Unable to send decision request.");
+      }
+      return {
+        ok: true as const,
+        decisionUrl: payload.decisionUrl,
+        decisionId: payload.decisionId || "",
+        requestId: payload.requestId || "",
+      };
+    } catch (error) {
+      return {
+        ok: false as const,
+        error: error instanceof Error ? error.message : "Unable to send decision request.",
+      };
+    }
+  };
+
   const applyTaskList = (nextTasks: Task[], nextRunningTaskIds: string[]) => {
     setTasks(nextTasks);
     setRunningTaskIds(nextRunningTaskIds);
@@ -252,8 +282,10 @@ export function App() {
           onClearTask={clearTask}
           onClearTasks={clearTasks}
           onRenameTask={renameTask}
+          onSendDecisionRequest={sendDecisionRequest}
           onSelectTask={setSelectedTaskId}
           onToggleInputLock={toggleInputLock}
+          decisionGatewayConfigured={Boolean(taskDeckContext?.decisionGateway?.configured)}
         />
         <OutputPane
           codexModels={codexModels}

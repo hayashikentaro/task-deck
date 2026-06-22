@@ -91,6 +91,18 @@ The committed App Server route uses `danger-full-access` and `--ask-for-approval
 
 Agent profiles merge by `id`: built-in defaults load first, then committed config, ignored local config, and finally `TASKDECK_CONFIG`.
 
+## Decision Gateway
+
+TaskDeck can send a manual one-way decision request to Decision Gateway from a task card. Configure the gateway URL before starting TaskDeck:
+
+```bash
+DECISION_GATEWAY_URL=http://localhost:3000 npm run dev
+```
+
+When configured, use **Ask for decision** on a task card. TaskDeck sends source context and a bounded redacted recent-output snippet to `POST /api/decision-requests` on Decision Gateway, then shows the returned Decision Workspace URL.
+
+This is only a source connector. TaskDeck does not generate the Decision Workspace UI, poll for results, resume agents, or deliver decisions back.
+
 ## Branch Worktree Lifecycle
 
 TaskDeck branch work uses `git worktree`. Use the main repository as the base development checkout and create one worktree per branch and purpose.
