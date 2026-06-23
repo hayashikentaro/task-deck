@@ -120,15 +120,7 @@ export function App() {
           if (message.type === "snapshot" && message.codexModels) {
             setCodexModels(message.codexModels);
           }
-          setSelectedTaskId((current) => {
-            if (current && message.tasks.some((task) => task.id === current)) {
-              return current;
-            }
-            if (nextRunningTaskIds[0]) {
-              return nextRunningTaskIds[0];
-            }
-            return message.tasks[0]?.id ?? null;
-          });
+          setSelectedTaskId((current) => selectTaskIdForTaskList(current, message.tasks, nextRunningTaskIds));
           return;
         }
 
@@ -346,15 +338,7 @@ export function App() {
   const applyTaskList = (nextTasks: Task[], nextRunningTaskIds: string[]) => {
     setTasks(nextTasks);
     setRunningTaskIds(nextRunningTaskIds);
-    setSelectedTaskId((current) => {
-      if (current && nextTasks.some((task) => task.id === current)) {
-        return current;
-      }
-      if (nextRunningTaskIds[0]) {
-        return nextRunningTaskIds[0];
-      }
-      return nextTasks[0]?.id ?? null;
-    });
+    setSelectedTaskId((current) => selectTaskIdForTaskList(current, nextTasks, nextRunningTaskIds));
   };
 
   return (
@@ -429,6 +413,40 @@ function handleSnapshotOutputSeq(
 function positiveInteger(value: unknown) {
   const numericValue = Number(value);
   return Number.isInteger(numericValue) && numericValue > 0 ? numericValue : 0;
+}
+
+type TaskListSelectionTask = Pick<Task, "id" | "status" | "agentSessionSource" | "inputLockedAt">;
+
+export function selectTaskIdForTaskList(
+  currentTaskId: string | null,
+  tasks: TaskListSelectionTask[],
+  runningTaskIds: string[],
+) {
+  if (currentTaskId && tasks.some((task) => task.id === currentTaskId)) {
+    return currentTaskId;
+  }
+
+  const taskById = new Map(tasks.map((task) => [task.id, task]));
+  for (const taskId of runningTaskIds) {
+    if (taskById.has(taskId)) {
+      return taskId;
+    }
+  }
+
+  return (
+    tasks.find(isPreferredFallbackTask)?.id ??
+    tasks.find((task) => !isNativeSubagentTask(task))?.id ??
+    tasks[0]?.id ??
+    null
+  );
+}
+
+function isPreferredFallbackTask(task: TaskListSelectionTask) {
+  return task.status === "running" && !task.inputLockedAt && !isNativeSubagentTask(task);
+}
+
+function isNativeSubagentTask(task: TaskListSelectionTask) {
+  return task.agentSessionSource === "codex_app_server_native_subagent";
 }
 
 function updateSelectedTaskRecord<T>(record: Record<string, T>, taskId: string | null, value: T) {

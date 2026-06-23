@@ -525,7 +525,7 @@ function normalizeComposerInput(input: string) {
   return input.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
-function getComposerMode(
+export function getComposerMode(
   task: Task | null,
   isConnected: boolean,
   {
@@ -541,6 +541,9 @@ function getComposerMode(
   if (task.status !== "running") {
     return "Read-only log";
   }
+  if (isNativeSubagentTask(task)) {
+    return "Read-only log";
+  }
   if (task.inputLockedAt) {
     return "Input locked";
   }
@@ -550,7 +553,7 @@ function getComposerMode(
   return "Interactive task";
 }
 
-function getComposerInputState({
+export function getComposerInputState({
   task,
   isConnected,
   isUploadingAttachments,
@@ -567,14 +570,18 @@ function getComposerInputState({
   if (!isConnected) {
     return "disconnected";
   }
+  if (task.status !== "running" || isNativeSubagentTask(task)) {
+    return "readonly";
+  }
   if (task.inputLockedAt) {
     return "locked";
   }
   if (isUploadingAttachments || isCodexAppServerTurnActive) {
     return "busy";
   }
-  if (task.status !== "running") {
-    return "readonly";
-  }
   return "ready";
+}
+
+function isNativeSubagentTask(task: Task) {
+  return task.agentSessionSource === "codex_app_server_native_subagent";
 }
