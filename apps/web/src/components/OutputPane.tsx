@@ -27,6 +27,21 @@ const outputDefaultFontSize = 16;
 const outputFontSizes = [11, 12, 13, 14, 15, 16, 18];
 const outputBottomScrollTolerancePx = 16;
 
+type OutputSegmentTone =
+  | "assistant"
+  | "user"
+  | "taskdeck"
+  | "command"
+  | "warning"
+  | "error"
+  | "debug"
+  | "metadata";
+
+type OutputSegment = {
+  text: string;
+  tone: OutputSegmentTone;
+};
+
 export function OutputPane({
   codexModels,
   composerValue,
@@ -54,6 +69,7 @@ export function OutputPane({
 
   const taskId = task?.id ?? null;
   const outputText = useMemo(() => stripAnsiControlSequences(rawLog), [rawLog]);
+  const outputSegments = useMemo(() => segmentOutputText(outputText), [outputText]);
   const searchMatchCount = useMemo(() => countMatches(outputText, searchTerm), [outputText, searchTerm]);
   const taskIdentityStyle = useMemo(
     () => (task ? taskIdentityCssProperties({ taskId: task.id, identityColorSlot: task.identityColorSlot }) : undefined),
@@ -267,7 +283,13 @@ export function OutputPane({
       {outputMessage ? <p className="output-message">{outputMessage}</p> : null}
       <div className="output-host">
         <div className="output-scroll" ref={outputViewportRef} onScroll={updateOutputBottomStickiness}>
-          <pre className="output-surface" style={{ fontSize: outputFontSize }}>{outputText}</pre>
+          <pre className="output-surface" style={{ fontSize: outputFontSize }}>
+            {outputSegments.map((segment, index) => (
+              <span key={index} data-output-tone={segment.tone}>
+                {segment.text}
+              </span>
+            ))}
+          </pre>
         </div>
       </div>
       <InputComposer
@@ -313,6 +335,87 @@ function stripAnsiControlSequences(value: string) {
     .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
     .replace(/\x1b[PX^_].*?\x1b\\/g, "")
     .replace(/\r/g, "\n");
+}
+
+function segmentOutputText(value: string): OutputSegment[] {
+  if (!value) {
+    return [];
+  }
+
+  const segments: OutputSegment[] = [];
+  let currentTone: OutputSegmentTone = "taskdeck";
+  let inCommandOutput = false;
+  const lines = value.match(/[^\n]*\n|[^\n]+/g) || [];
+
+  for (const line of lines) {
+    const lineTone = classifyOutputLine(line, { inCommandOutput, currentTone });
+    inCommandOutput = lineTone.inCommandOutput;
+    currentTone = lineTone.tone;
+    const previousSegment = segments[segments.length - 1];
+    if (previousSegment?.tone === lineTone.tone) {
+      previousSegment.text += line;
+    } else {
+      segments.push({ text: line, tone: lineTone.tone });
+    }
+  }
+
+  return segments;
+}
+
+function classifyOutputLine(
+  line: string,
+  state: { inCommandOutput: boolean; currentTone: OutputSegmentTone },
+): { tone: OutputSegmentTone; inCommandOutput: boolean } {
+  const trimmed = line.trimStart();
+
+  if (trimmed.startsWith("[Assistant]")) {
+    return { tone: "assistant", inCommandOutput: false };
+  }
+  if (trimmed.startsWith("[You]")) {
+    return { tone: "user", inCommandOutput: false };
+  }
+  if (trimmed.startsWith("[TaskDeck -> Codex App Server]")) {
+    return { tone: "debug", inCommandOutput: false };
+  }
+  if (trimmed.startsWith("[TaskDeck] Codex App Server command output:")) {
+    return { tone: "command", inCommandOutput: true };
+  }
+  if (trimmed.startsWith("[TaskDeck]")) {
+    return {
+      tone: taskDeckLineTone(trimmed),
+      inCommandOutput: false,
+    };
+  }
+  if (state.inCommandOutput) {
+    return { tone: "command", inCommandOutput: true };
+  }
+  return { tone: state.currentTone, inCommandOutput: false };
+}
+
+function taskDeckLineTone(line: string): OutputSegmentTone {
+  const lowered = line.toLocaleLowerCase();
+  if (
+    lowered.includes("failed") ||
+    lowered.includes("error") ||
+    lowered.includes("unauthorized") ||
+    lowered.includes("invalid") ||
+    lowered.includes("revoked")
+  ) {
+    return "error";
+  }
+  if (
+    lowered.includes("login required") ||
+    lowered.includes("needs chatgpt") ||
+    lowered.includes("approval request") ||
+    lowered.includes("user-input request") ||
+    lowered.includes("waiting for user")
+  ) {
+    return "warning";
+  }
+  if (lowered.includes("native subagent") || lowered.includes("thread ready")) {
+    return "metadata";
+  }
+  return "taskdeck";
 }
 
 function positiveInteger(value: unknown) {

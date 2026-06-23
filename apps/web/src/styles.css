@@ -10,6 +10,14 @@
   --text-secondary: #cfc6b2;
   --text-muted: #8c8578;
   --output-background: #080907;
+  --output-tone-assistant: #e2dac8;
+  --output-tone-user: #d0bd72;
+  --output-tone-taskdeck: #837b6e;
+  --output-tone-command: #78949d;
+  --output-tone-warning: #c6a45b;
+  --output-tone-error: #c3774f;
+  --output-tone-debug: #5f5138;
+  --output-tone-metadata: #8c749b;
   --surface: #181714;
   --surface-input: #0d0d0b;
   --surface-raised: #131411;
@@ -1396,6 +1404,38 @@ dd {
   white-space: pre;
   overflow-wrap: normal;
   word-break: normal;
+}
+
+.output-surface [data-output-tone="assistant"] {
+  color: var(--output-tone-assistant);
+}
+
+.output-surface [data-output-tone="user"] {
+  color: var(--output-tone-user);
+}
+
+.output-surface [data-output-tone="taskdeck"] {
+  color: var(--output-tone-taskdeck);
+}
+
+.output-surface [data-output-tone="command"] {
+  color: var(--output-tone-command);
+}
+
+.output-surface [data-output-tone="warning"] {
+  color: var(--output-tone-warning);
+}
+
+.output-surface [data-output-tone="error"] {
+  color: var(--output-tone-error);
+}
+
+.output-surface [data-output-tone="debug"] {
+  color: var(--output-tone-debug);
+}
+
+.output-surface [data-output-tone="metadata"] {
+  color: var(--output-tone-metadata);
 }
 
 .right-rail {
