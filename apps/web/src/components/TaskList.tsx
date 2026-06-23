@@ -261,17 +261,66 @@ export function TaskList({
               ) : (
                 <div
                   className="task-select-button"
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      selectTask(task.id);
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
                 >
-                  <span className="task-row-heading">
-                    <span className="task-title">{taskDisplayName(task)}</span>
+                  <span className="task-card-header">
+                    <span
+                      className="task-row-heading"
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          selectTask(task.id);
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <span className="task-title">{taskDisplayName(task)}</span>
+                    </span>
+                    <span className="task-card-actions" onClick={(event) => event.stopPropagation()}>
+                      <button
+                        aria-label="Edit TaskDeck display name"
+                        className="task-edit-title-button"
+                        onClick={() => startEditingTitle(task)}
+                        title="Edit TaskDeck display name"
+                        type="button"
+                      >
+                        <svg aria-hidden="true" className="task-edit-title-icon" focusable="false" viewBox="0 0 16 16">
+                          <path d="M3.5 11.5l1 1 6.7-6.7-1-1L3.5 11.5z" />
+                          <path d="M9.5 4.5l1-1 2 2-1 1" />
+                        </svg>
+                      </button>
+                      <IconButton
+                        className="task-decision-gateway-button"
+                        disabled={!decisionGatewayConfigured || decisionRequestState?.status === "sending"}
+                        label={
+                          decisionRequestState?.status === "sending"
+                            ? "Sending decision request"
+                            : "Ask for decision"
+                        }
+                        onClick={() => sendTaskToDecisionGateway(task)}
+                        size="sm"
+                        title={
+                          decisionRequestState?.status === "sending"
+                            ? "Sending decision request"
+                            : decisionGatewayConfigured
+                              ? "Send a manual decision request to Decision Gateway"
+                              : "Set DECISION_GATEWAY_URL to enable Decision Gateway"
+                        }
+                        variant="ghost"
+                      >
+                        <svg aria-hidden="true" className="task-decision-gateway-icon" focusable="false" viewBox="0 0 16 16">
+                          <path d="M8 2.5v7" />
+                          <path d="M5.5 5 8 2.5 10.5 5" />
+                          <path d="M4.5 7.5h-1a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1h-1" />
+                          <path d="M5.25 10.5h5.5" />
+                        </svg>
+                      </IconButton>
+                      <button aria-label="Clear task" className="task-clear-button" onClick={() => onClearTask(task.id)} title="Clear task" type="button">
+                        <svg aria-hidden="true" className="task-clear-icon" focusable="false" viewBox="0 0 16 16">
+                          <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
+                        </svg>
+                      </button>
+                    </span>
                   </span>
                   <span className="task-badge-row">
                     <span className="task-human-signal" data-kind={`supervision-${bucket}`} title={supervisionTitle(task)}>
@@ -311,81 +360,36 @@ export function TaskList({
                     </span>
                     <span className="task-meta-spacer" />
                     <span className="task-updated">{formatTime(task.updatedAt)}</span>
+                    <button
+                      aria-label={inputLockLabel}
+                      aria-pressed={isInputLocked}
+                      className="task-input-lock-button"
+                      data-active={isInputLocked ? "true" : "false"}
+                      disabled={task.status !== "running" || isNativeSubagent}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onToggleInputLock(task.id, !isInputLocked);
+                      }}
+                      title={inputLockLabel}
+                      type="button"
+                    >
+                      {isInputLocked ? (
+                        <svg aria-hidden="true" className="task-input-lock-icon" focusable="false" viewBox="0 0 16 16">
+                          <path d="M5 7V5.5a3 3 0 0 1 6 0V7" />
+                          <path d="M4.5 7.5h7v6h-7z" />
+                          <path d="M8 10v1.5" />
+                        </svg>
+                      ) : (
+                        <svg aria-hidden="true" className="task-input-lock-icon" focusable="false" viewBox="0 0 16 16">
+                          <path d="M5 7V5.5a3 3 0 0 1 5.6-1.5" />
+                          <path d="M4.5 7.5h7v6h-7z" />
+                          <path d="M8 10v1.5" />
+                        </svg>
+                      )}
+                    </button>
                   </span>
                 </div>
               )}
-              <div className="task-card-actions" onClick={(event) => event.stopPropagation()}>
-                <button
-                  aria-label="Edit TaskDeck display name"
-                  className="task-edit-title-button"
-                  onClick={() => startEditingTitle(task)}
-                  title="Edit TaskDeck display name"
-                  type="button"
-                >
-                  <svg aria-hidden="true" className="task-edit-title-icon" focusable="false" viewBox="0 0 16 16">
-                    <path d="M3.5 11.5l1 1 6.7-6.7-1-1L3.5 11.5z" />
-                    <path d="M9.5 4.5l1-1 2 2-1 1" />
-                  </svg>
-                </button>
-                <IconButton
-                  className="task-decision-gateway-button"
-                  disabled={!decisionGatewayConfigured || decisionRequestState?.status === "sending"}
-                  label={
-                    decisionRequestState?.status === "sending"
-                      ? "Sending decision request"
-                      : "Ask for decision"
-                  }
-                  onClick={() => sendTaskToDecisionGateway(task)}
-                  size="sm"
-                  title={
-                    decisionRequestState?.status === "sending"
-                      ? "Sending decision request"
-                      : decisionGatewayConfigured
-                        ? "Send a manual decision request to Decision Gateway"
-                        : "Set DECISION_GATEWAY_URL to enable Decision Gateway"
-                  }
-                  variant="ghost"
-                >
-                  <svg aria-hidden="true" className="task-decision-gateway-icon" focusable="false" viewBox="0 0 16 16">
-                    <path d="M8 2.5v7" />
-                    <path d="M5.5 5 8 2.5 10.5 5" />
-                    <path d="M4.5 7.5h-1a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1h-1" />
-                    <path d="M5.25 10.5h5.5" />
-                  </svg>
-                </IconButton>
-                <button aria-label="Clear task" className="task-clear-button" onClick={() => onClearTask(task.id)} title="Clear task" type="button">
-                  <svg aria-hidden="true" className="task-clear-icon" focusable="false" viewBox="0 0 16 16">
-                    <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
-                  </svg>
-                </button>
-              </div>
-              <button
-                aria-label={inputLockLabel}
-                aria-pressed={isInputLocked}
-                className="task-input-lock-button"
-                data-active={isInputLocked ? "true" : "false"}
-                disabled={task.status !== "running" || isNativeSubagent}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onToggleInputLock(task.id, !isInputLocked);
-                }}
-                title={inputLockLabel}
-                type="button"
-              >
-                {isInputLocked ? (
-                  <svg aria-hidden="true" className="task-input-lock-icon" focusable="false" viewBox="0 0 16 16">
-                    <path d="M5 7V5.5a3 3 0 0 1 6 0V7" />
-                    <path d="M4.5 7.5h7v6h-7z" />
-                    <path d="M8 10v1.5" />
-                  </svg>
-                ) : (
-                  <svg aria-hidden="true" className="task-input-lock-icon" focusable="false" viewBox="0 0 16 16">
-                    <path d="M5 7V5.5a3 3 0 0 1 5.6-1.5" />
-                    <path d="M4.5 7.5h7v6h-7z" />
-                    <path d="M8 10v1.5" />
-                  </svg>
-                )}
-              </button>
               {decisionRequestState?.status === "sent" && decisionRequestState.decisionUrl ? (
                 <div
                   className="task-action-status task-decision-gateway-result"
