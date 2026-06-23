@@ -112,7 +112,6 @@ button:disabled {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 6px;
-  box-sizing: border-box;
   background: var(--panel-soft);
   overflow: hidden;
   padding: 0 10px;
@@ -122,13 +121,6 @@ button:disabled {
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.td-button[href] {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
 }
 
 .td-button[data-size="sm"] {
@@ -1590,8 +1582,6 @@ dd {
   align-items: end;
 }
 
-.codex-app-server-login-bar,
-.codex-app-server-auth-failed-bar,
 .codex-app-server-request-bar {
   min-width: 0;
   display: grid;
@@ -1602,17 +1592,6 @@ dd {
   border: 1px solid color-mix(in srgb, var(--status-needs-approval) 44%, var(--line));
   border-radius: 8px;
   background: color-mix(in srgb, var(--surface-input) 82%, var(--status-needs-approval));
-}
-
-.codex-app-server-login-bar {
-  border-color: color-mix(in srgb, var(--accent) 44%, var(--line));
-  background: color-mix(in srgb, var(--surface-input) 88%, var(--accent));
-}
-
-.codex-app-server-auth-failed-bar {
-  grid-template-columns: minmax(0, 1fr);
-  border-color: color-mix(in srgb, var(--status-failed) 50%, var(--line));
-  background: color-mix(in srgb, var(--surface-input) 84%, var(--status-failed));
 }
 
 .codex-app-server-request-copy {
@@ -1992,8 +1971,6 @@ dd {
     flex-wrap: wrap;
   }
 
-  .codex-app-server-login-bar,
-  .codex-app-server-auth-failed-bar,
   .codex-app-server-request-bar {
     grid-template-columns: 1fr;
   }

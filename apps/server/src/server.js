@@ -966,7 +966,7 @@ function startOrReuseCodexAppServerRuntime({ launchCommand, task }) {
 }
 
 function codexRuntimeIsWritable(activeRuntime) {
-  return Boolean(activeRuntime?.process?.stdin?.writable && !activeRuntime.process.stdin.destroyed && !activeRuntime.authFailureDetected);
+  return Boolean(activeRuntime?.process?.stdin?.writable && !activeRuntime.process.stdin.destroyed);
 }
 
 function createActiveCodexRuntime({ runtimeId, runtimeProcess, launchCommand, defaultTaskId }) {
@@ -991,8 +991,6 @@ function createActiveCodexRuntime({ runtimeId, runtimeProcess, launchCommand, de
     loginInProgress: false,
     loginId: "",
     loginMethod: codexAppServerDefaultLoginMethod,
-    loginUrl: "",
-    loginUserCode: "",
     loginCompletedAt: 0,
     forcedAccountRefreshAttempted: false,
     modelListRequested: false,
@@ -1347,7 +1345,6 @@ async function sendCodexAppServerLoginStart(activeAppServer, loginMethod = codex
   }
   activeRuntime.loginInProgress = true;
   activeRuntime.loginMethod = normalizeCodexAppServerLoginMethod(loginMethod) || codexAppServerDefaultLoginMethod;
-  clearCodexAppServerLoginAction(activeRuntime);
   const requestId = sendCodexAppServerRequest(
     activeAppServer,
     "account/login/start",
@@ -1778,7 +1775,6 @@ function handleCodexAppServerResponse(activeAppServer, message, pendingRequest =
     }
     activeRuntime.accountReady = true;
     activeRuntime.loginInProgress = false;
-    clearCodexAppServerLoginAction(activeRuntime);
     sendCodexAppServerModelList(activeAppServer);
     appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server account is ready; starting thread.\n");
     resumeCodexAppServerRuntimeThreadStarts(activeRuntime, activeAppServer);
@@ -1907,8 +1903,6 @@ function handleCodexAppServerDeviceCodeLoginStartResponse(activeAppServer, resul
   const loginId = String(result.loginId || "").trim();
   activeRuntime.loginId = loginId;
   activeRuntime.loginMethod = codexAppServerLoginMethodDeviceCode;
-  activeRuntime.loginUrl = verificationUrl;
-  activeRuntime.loginUserCode = userCode;
   const loginMessage = [
     "[TaskDeck] ChatGPT device login required.",
     verificationUrl ? `[TaskDeck] Verification URL: ${verificationUrl}` : "",
@@ -1927,7 +1921,6 @@ function handleCodexAppServerDeviceCodeLoginStartResponse(activeAppServer, resul
       attentionConfidence: AgentStateConfidence.HIGH,
     });
   }
-  broadcastTasks();
 }
 
 function handleCodexAppServerBrowserLoginStartResponse(activeAppServer, result) {
@@ -1936,8 +1929,6 @@ function handleCodexAppServerBrowserLoginStartResponse(activeAppServer, result) 
   const loginId = String(result.loginId || "").trim();
   activeRuntime.loginId = loginId;
   activeRuntime.loginMethod = codexAppServerLoginMethodBrowserRedirect;
-  activeRuntime.loginUrl = authUrl;
-  activeRuntime.loginUserCode = "";
   const loginMessage = [
     "[TaskDeck] ChatGPT browser login required.",
     authUrl ? `[TaskDeck] Login URL: ${authUrl}` : "",
@@ -1955,7 +1946,6 @@ function handleCodexAppServerBrowserLoginStartResponse(activeAppServer, result) 
       attentionConfidence: AgentStateConfidence.HIGH,
     });
   }
-  broadcastTasks();
 }
 
 function handleCodexAppServerLoginCompleted(activeAppServer, params) {
@@ -1970,7 +1960,7 @@ function handleCodexAppServerLoginCompleted(activeAppServer, params) {
     const failureReason = error || `ChatGPT ${loginKind} login failed.`;
     const failureMessage = [
       `[TaskDeck] Codex App Server login failed: ${failureReason}`,
-      `[TaskDeck] TaskDeck will not start another ${loginKind} login automatically. Start a new Codex session to request a fresh login.`,
+      `[TaskDeck] TaskDeck will not start another ${loginKind} login automatically. Restart this task to request a fresh login.`,
     ].join("\n") + "\n";
     const threadSessions = codexThreadSessionsForRuntime(activeRuntime);
     for (const threadSession of threadSessions.length > 0 ? threadSessions : [activeAppServer]) {
@@ -1980,12 +1970,11 @@ function handleCodexAppServerLoginCompleted(activeAppServer, params) {
         source: AgentStateSource.PROCESS,
         confidence: AgentStateConfidence.HIGH,
         attentionState: AttentionState.NEEDS_INPUT,
-        attentionReason: `${failureReason} TaskDeck will not start another ${loginKind} login automatically; start a new Codex session to request a fresh login.`,
+        attentionReason: `${failureReason} TaskDeck will not start another ${loginKind} login automatically; restart this task to request a fresh login.`,
         attentionSource: AgentStateSource.PROCESS,
         attentionConfidence: AgentStateConfidence.HIGH,
       });
     }
-    broadcastTasks();
     return;
   }
 
@@ -1995,7 +1984,6 @@ function handleCodexAppServerLoginCompleted(activeAppServer, params) {
   activeRuntime.modelListRequested = false;
   activeRuntime.forcedAccountRefreshAttempted = true;
   sendCodexAppServerAccountRead(activeAppServer, { refreshToken: true });
-  broadcastTasks();
 }
 
 function codexAppServerLoginKind(loginMethod) {
@@ -2018,7 +2006,6 @@ function handleCodexAppServerAccountUpdated(activeAppServer) {
   appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server account updated; resuming.\n");
   activeRuntime.loginInProgress = false;
   activeRuntime.accountReady = true;
-  clearCodexAppServerLoginAction(activeRuntime);
   resumeCodexAppServerAfterLogin(activeAppServer);
 }
 
@@ -2125,7 +2112,7 @@ function handleCodexAppServerAuthFailureDiagnostic(activeAppServer, _detail) {
   const failureMessage = [
     "[TaskDeck] Codex App Server authentication failed after login.",
     "[TaskDeck] The current App Server environment still has an invalid or revoked ChatGPT token.",
-    "[TaskDeck] Fix Codex login in the App Server environment, or point the codex-app-server profile at the host environment that already has a valid login, then start a new Codex session.",
+    "[TaskDeck] Fix Codex login in the App Server environment, or point the codex-app-server profile at the host environment that already has a valid login, then restart this task.",
   ].join("\n") + "\n";
   const threadSessions = codexThreadSessionsForRuntime(activeRuntime);
   for (const threadSession of threadSessions.length > 0 ? threadSessions : [activeAppServer]) {
@@ -2136,7 +2123,7 @@ function handleCodexAppServerAuthFailureDiagnostic(activeAppServer, _detail) {
       source: AgentStateSource.PROCESS,
       confidence: AgentStateConfidence.HIGH,
       attentionState: AttentionState.NEEDS_INPUT,
-      attentionReason: "Codex App Server token is invalid or revoked. Fix Codex login in the App Server environment, then start a new Codex session.",
+      attentionReason: "Codex App Server token is invalid or revoked. Fix Codex login in the App Server environment, then restart this task.",
       attentionSource: AgentStateSource.PROCESS,
       attentionConfidence: AgentStateConfidence.HIGH,
     });
@@ -4713,39 +4700,9 @@ function serializeTaskForClient(task) {
   return {
     ...serializedTask,
     sessionLabel: taskSessionLabel(task),
-    codexAppServerAuthFailed: Boolean(activeAppServer && codexRuntimeStateForThreadSession(activeAppServer).authFailureDetected),
-    codexAppServerLogin: codexAppServerLoginForClient(task.id),
     codexAppServerRequest: codexAppServerRequestForClient(task.id),
     codexAppServerTurnActive: Boolean(activeAppServer?.turnActive && activeAppServer?.activeTurnId),
   };
-}
-
-function codexAppServerLoginForClient(taskId) {
-  const activeAppServer = activeCodexThreadSessions.get(taskId);
-  const activeRuntime = activeAppServer ? codexRuntimeStateForThreadSession(activeAppServer) : null;
-  if (!activeRuntime?.loginUrl || (!activeRuntime.loginInProgress && !activeRuntime.authFailureDetected)) {
-    return null;
-  }
-  const loginMethod = normalizeCodexAppServerLoginMethod(activeRuntime.loginMethod) || codexAppServerDefaultLoginMethod;
-  return {
-    method: loginMethod,
-    title: codexAppServerLoginTitleForClient(activeRuntime, loginMethod),
-    url: activeRuntime.loginUrl,
-    userCode: activeRuntime.loginUserCode || "",
-  };
-}
-
-function codexAppServerLoginTitleForClient(activeRuntime, loginMethod) {
-  if (activeRuntime.authFailureDetected) {
-    return "ChatGPT login needs repair";
-  }
-  return loginMethod === codexAppServerLoginMethodBrowserRedirect ? "ChatGPT browser login required" : "ChatGPT device login required";
-}
-
-function clearCodexAppServerLoginAction(activeRuntime) {
-  activeRuntime.loginId = "";
-  activeRuntime.loginUrl = "";
-  activeRuntime.loginUserCode = "";
 }
 
 function codexAppServerRequestForClient(taskId) {

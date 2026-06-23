@@ -41,20 +41,18 @@ export function InputComposer({
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const isInputLocked = Boolean(task?.inputLockedAt);
   const isCodexAppServerTask = task?.agentProfileId === "codex-app-server";
-  const isCodexAppServerAuthFailed = Boolean(isCodexAppServerTask && task?.codexAppServerAuthFailed);
-  const codexAppServerLogin = task?.codexAppServerLogin ?? null;
   const codexAppServerRequest = task?.codexAppServerRequest ?? null;
   const isCodexAppServerTurnActive = Boolean(isCodexAppServerTask && task?.codexAppServerTurnActive);
   const canInteractWithRunningTask = Boolean(task && task.status === "running" && isConnected);
   const canStopCodexAppServerTurn = Boolean(canInteractWithRunningTask && isCodexAppServerTurnActive && !isStopRequested);
-  const canSend = canInteractWithRunningTask && !isInputLocked && !isCodexAppServerTurnActive && !isCodexAppServerAuthFailed;
+  const canSend = canInteractWithRunningTask && !isInputLocked && !isCodexAppServerTurnActive;
   const hasComposerContent = Boolean(value || selectedImages.length);
   const canSubmit = canSend && hasComposerContent && !isUploadingAttachments;
   const canResolveCodexAppServerRequest = Boolean(canInteractWithRunningTask && codexAppServerRequest);
   const actionLabel = isCodexAppServerTurnActive
     ? "Stop active Codex turn"
     : "Send input to running task";
-  const modeText = getComposerMode(task, isConnected, { isCodexAppServerAuthFailed, isCodexAppServerTurnActive });
+  const modeText = getComposerMode(task, isConnected, { isCodexAppServerTurnActive });
   const inputPlaceholder = canSend
     ? isCodexAppServerTask
       ? "Send input to Codex App Server task"
@@ -62,7 +60,7 @@ export function InputComposer({
     : isCodexAppServerTurnActive
       ? ""
       : modeText;
-  const inputState = getComposerInputState({ task, isConnected, isCodexAppServerAuthFailed, isUploadingAttachments, isCodexAppServerTurnActive });
+  const inputState = getComposerInputState({ task, isConnected, isUploadingAttachments, isCodexAppServerTurnActive });
   const modelOptions = useMemo(
     () => ensureSelectedModelOption(codexModels, selectedModel || task?.agentModel || ""),
     [codexModels, selectedModel, task?.agentModel],
@@ -72,7 +70,7 @@ export function InputComposer({
     () => getReasoningEffortOptions(selectedModelOption, selectedReasoningEffort),
     [selectedModelOption, selectedReasoningEffort],
   );
-  const canConfigureTurn = Boolean(isCodexAppServerTask && canInteractWithRunningTask && !isInputLocked && !isCodexAppServerTurnActive && !isCodexAppServerAuthFailed);
+  const canConfigureTurn = Boolean(isCodexAppServerTask && canInteractWithRunningTask && !isInputLocked && !isCodexAppServerTurnActive);
 
   useEffect(() => {
     setSelectedModel(String(task?.agentModel || "").trim());
@@ -176,13 +174,6 @@ export function InputComposer({
     });
   };
 
-  const copyCodexAppServerLoginCode = async () => {
-    if (!codexAppServerLogin?.userCode) {
-      return;
-    }
-    await navigator.clipboard?.writeText(codexAppServerLogin.userCode);
-  };
-
   const stopCodexAppServerTurn = () => {
     if (!task || !canStopCodexAppServerTurn) {
       return;
@@ -241,32 +232,6 @@ export function InputComposer({
 
   return (
     <form className="input-composer" data-input-state={inputState} onSubmit={handleSubmit}>
-      {codexAppServerLogin ? (
-        <div className="codex-app-server-login-bar">
-          <div className="codex-app-server-request-copy">
-            <strong>{codexAppServerLogin.title}</strong>
-            {codexAppServerLogin.userCode ? <span title={codexAppServerLogin.userCode}>Code: {codexAppServerLogin.userCode}</span> : null}
-          </div>
-          <div className="codex-app-server-request-actions">
-            {codexAppServerLogin.userCode ? (
-              <Button onClick={copyCodexAppServerLoginCode} size="sm" type="button" variant="secondary">
-                Copy code
-              </Button>
-            ) : null}
-            <Button href={codexAppServerLogin.url} rel="noreferrer" size="sm" target="_blank" variant="panel">
-              Open login
-            </Button>
-          </div>
-        </div>
-      ) : null}
-      {isCodexAppServerAuthFailed ? (
-        <div className="codex-app-server-auth-failed-bar">
-          <div className="codex-app-server-request-copy">
-            <strong>Codex login failed</strong>
-            <span>Fix Codex login, then start a new Codex session.</span>
-          </div>
-        </div>
-      ) : null}
       {codexAppServerRequest ? (
         <div className="codex-app-server-request-bar">
           <div className="codex-app-server-request-copy">
@@ -564,9 +529,8 @@ function getComposerMode(
   task: Task | null,
   isConnected: boolean,
   {
-    isCodexAppServerAuthFailed = false,
     isCodexAppServerTurnActive = false,
-  }: { isCodexAppServerAuthFailed?: boolean; isCodexAppServerTurnActive?: boolean } = {},
+  }: { isCodexAppServerTurnActive?: boolean } = {},
 ) {
   if (!task) {
     return "No task selected";
@@ -580,9 +544,6 @@ function getComposerMode(
   if (task.inputLockedAt) {
     return "Input locked";
   }
-  if (isCodexAppServerAuthFailed) {
-    return "Codex login failed";
-  }
   if (isCodexAppServerTurnActive) {
     return "Codex is running";
   }
@@ -592,12 +553,10 @@ function getComposerMode(
 function getComposerInputState({
   task,
   isConnected,
-  isCodexAppServerAuthFailed,
   isUploadingAttachments,
   isCodexAppServerTurnActive,
 }: {
   isConnected: boolean;
-  isCodexAppServerAuthFailed: boolean;
   isUploadingAttachments: boolean;
   isCodexAppServerTurnActive: boolean;
   task: Task | null;
@@ -609,9 +568,6 @@ function getComposerInputState({
     return "disconnected";
   }
   if (task.inputLockedAt) {
-    return "locked";
-  }
-  if (isCodexAppServerAuthFailed) {
     return "locked";
   }
   if (isUploadingAttachments || isCodexAppServerTurnActive) {

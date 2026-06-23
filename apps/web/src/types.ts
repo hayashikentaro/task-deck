@@ -54,13 +54,6 @@ export type CodexAppServerRequest = {
   canCancel: boolean;
 };
 
-export type CodexAppServerLogin = {
-  method: "deviceCode" | "browserRedirect";
-  title: string;
-  url: string;
-  userCode?: string;
-};
-
 export type Task = {
   id: string;
   title: string;
@@ -112,8 +105,6 @@ export type Task = {
   signal: number | string | null;
   initialInstruction?: string;
   attachments?: TaskAttachment[];
-  codexAppServerAuthFailed?: boolean;
-  codexAppServerLogin?: CodexAppServerLogin | null;
   codexAppServerRequest?: CodexAppServerRequest | null;
   codexAppServerTurnActive?: boolean;
 };
