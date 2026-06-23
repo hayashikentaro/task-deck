@@ -3,6 +3,7 @@ import {
   buildTaskDeckDecisionRequest,
   boundedDecisionGatewayContextField,
   boundedDecisionGatewayRecentOutput,
+  normalizeDecisionGatewayMailboxItem,
   normalizeDecisionGatewayUrl,
 } from "@taskdeck/core/decision-gateway";
 
@@ -79,5 +80,61 @@ describe("Decision Gateway connector helpers", () => {
   it("normalizes configured Decision Gateway URLs", () => {
     expect(normalizeDecisionGatewayUrl(" http://localhost:3000/ ")).toBe("http://localhost:3000");
     expect(normalizeDecisionGatewayUrl("")).toBe("");
+  });
+
+  it("normalizes Decision Gateway mailbox decision results", () => {
+    const item = normalizeDecisionGatewayMailboxItem(
+      {
+        id: "mail_123",
+        status: "pending",
+        payload: {
+          type: "decision_result",
+          decisionRequestId: "decision_123",
+          decisionActionId: "action_123",
+          requestId: "request_123",
+          taskId: "task_123",
+          sessionId: "session_123",
+          action: {
+            type: "accept",
+            condition: "Proceed with the smaller scope.",
+            reason: "It is enough for this release.",
+            decidedAt: "2026-06-24T00:00:00.000Z",
+          },
+          goal: "Choose implementation scope",
+          axis: "scope",
+          urgency: "blocking",
+        },
+        createdAt: "2026-06-24T00:00:01.000Z",
+      },
+      { receivedAt: "2026-06-24T00:00:02.000Z" },
+    );
+
+    expect(item).toMatchObject({
+      mailboxItemId: "mail_123",
+      mailboxStatus: "pending",
+      decisionRequestId: "decision_123",
+      decisionActionId: "action_123",
+      requestId: "request_123",
+      taskId: "task_123",
+      sessionId: "session_123",
+      actionType: "accept",
+      condition: "Proceed with the smaller scope.",
+      reason: "It is enough for this release.",
+      decidedAt: "2026-06-24T00:00:00.000Z",
+      receivedAt: "2026-06-24T00:00:02.000Z",
+    });
+  });
+
+  it("rejects malformed Decision Gateway mailbox payloads", () => {
+    expect(normalizeDecisionGatewayMailboxItem({ id: "mail_123", payload: null })).toBeNull();
+    expect(
+      normalizeDecisionGatewayMailboxItem({
+        id: "mail_123",
+        payload: {
+          type: "decision_result",
+          action: {},
+        },
+      }),
+    ).toBeNull();
   });
 });

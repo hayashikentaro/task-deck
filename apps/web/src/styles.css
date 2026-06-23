@@ -1310,6 +1310,11 @@ dd {
   color: var(--status-failed);
 }
 
+.task-badge[data-kind="decision-received"] {
+  border-color: color-mix(in srgb, var(--status-focus) 70%, var(--line));
+  color: var(--status-focus);
+}
+
 .task-badge[data-kind="risk-medium"] {
   border-color: var(--status-risk-medium);
   color: var(--status-risk-medium);
@@ -2152,6 +2157,96 @@ dd {
   font-size: 12px;
 }
 
+.decision-inbox-panel {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 14px;
+}
+
+.decision-inbox-heading {
+  min-width: 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.decision-inbox-heading h2 {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.decision-inbox-heading span {
+  flex: 0 0 auto;
+  color: var(--status-muted);
+  font-size: 12px;
+}
+
+.decision-inbox-items {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.decision-inbox-item {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.decision-inbox-status {
+  justify-self: start;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 7px;
+  color: var(--status-muted);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.decision-inbox-status[data-status="stale"] {
+  border-color: var(--status-stopped);
+  color: var(--status-stopped);
+}
+
+.decision-inbox-status[data-status="unmatched"] {
+  border-color: var(--status-needs-input);
+  color: var(--status-needs-input);
+}
+
+.decision-inbox-action,
+.decision-inbox-meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.decision-inbox-action {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.decision-inbox-action span,
+.decision-inbox-meta {
+  color: var(--status-muted);
+}
+
 .task-card-actions {
   display: flex;
   flex-wrap: nowrap;
@@ -2244,6 +2339,10 @@ dd {
   color: var(--text-secondary);
 }
 
+.task-action-status[data-kind="decision"] {
+  border-color: color-mix(in srgb, var(--status-focus) 48%, var(--line));
+}
+
 .task-action-status a {
   color: var(--status-focus);
 }
@@ -2265,6 +2364,25 @@ dd {
 
 .task-decision-gateway-copy-button {
   justify-self: start;
+}
+
+.task-decision-received {
+  display: grid;
+  gap: 5px;
+}
+
+.task-decision-received-detail {
+  min-width: 0;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-decision-received-detail span {
+  color: var(--status-muted);
 }
 
 .modal-backdrop {

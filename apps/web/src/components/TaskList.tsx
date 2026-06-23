@@ -1,6 +1,6 @@
 import { FormEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { taskIdentityCssProperties } from "../taskIdentity";
-import type { AttentionState, Task } from "../types";
+import type { AttentionState, DecisionGatewayMailboxItem, Task } from "../types";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
 
@@ -215,6 +215,7 @@ export function TaskList({
           const isInputLocked = Boolean(task.inputLockedAt);
           const isNativeSubagent = isNativeSubagentTask(task);
           const decisionRequestState = decisionRequestByTaskId[task.id] ?? null;
+          const latestDecisionResult = latestDecisionResultForTask(task);
           const inputLockLabel = isNativeSubagent
             ? "Native subagent input is read-only"
             : isInputLocked
@@ -353,6 +354,11 @@ export function TaskList({
                         Status error
                       </span>
                     ) : null}
+                    {latestDecisionResult ? (
+                      <span className="task-badge" data-kind="decision-received" title={decisionResultTitle(latestDecisionResult)}>
+                        Decision received
+                      </span>
+                    ) : null}
                   </span>
                   <span className="task-card-meta">
                     <span className="task-cwd" title={task.cwd}>
@@ -419,6 +425,15 @@ export function TaskList({
               ) : null}
               {decisionRequestState?.status === "failed" ? (
                 <p className="task-action-error">{decisionRequestState.error || "Unable to send decision request."}</p>
+              ) : null}
+              {latestDecisionResult ? (
+                <div className="task-action-status task-decision-received" data-kind="decision">
+                  <span>Decision received</span>
+                  <span className="task-decision-received-detail">
+                    {decisionActionLabel(latestDecisionResult.actionType)}
+                    <span>{formatDecisionDateTime(latestDecisionResult.decidedAt || latestDecisionResult.receivedAt)}</span>
+                  </span>
+                </div>
               ) : null}
             </article>
           );
@@ -580,6 +595,32 @@ function childReportedStatusTitle(task: Task) {
   const state = task.childReportedState ? String(task.childReportedState).replace(/_/g, " ") : "unknown";
   const summary = task.childStatusSummary ? `: ${task.childStatusSummary}` : "";
   return `Reported ${state}${summary}`;
+}
+
+function latestDecisionResultForTask(task: Task) {
+  const results = Array.isArray(task.decisionResults) ? task.decisionResults : [];
+  return results.find((item) => item.validationStatus !== "unmatched") ?? null;
+}
+
+function decisionResultTitle(item: DecisionGatewayMailboxItem) {
+  return [item.validationReason, item.condition, item.reason].filter(Boolean).join(" ");
+}
+
+function decisionActionLabel(value: string | undefined) {
+  return String(value || "decision").replace(/_/g, " ");
+}
+
+function formatDecisionDateTime(value: string | undefined) {
+  const timestamp = Date.parse(String(value || ""));
+  if (!Number.isFinite(timestamp)) {
+    return "unknown time";
+  }
+  return new Date(timestamp).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function taskDisplayName(task: Task) {

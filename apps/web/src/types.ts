@@ -54,6 +54,28 @@ export type CodexAppServerRequest = {
   canCancel: boolean;
 };
 
+export type DecisionGatewayMailboxValidationStatus = "valid" | "unmatched" | "stale";
+
+export type DecisionGatewayMailboxItem = {
+  mailboxItemId: string;
+  mailboxStatus?: string;
+  decisionRequestId?: string;
+  decisionActionId?: string;
+  requestId?: string;
+  taskId?: string;
+  sessionId?: string;
+  actionType: string;
+  condition?: string;
+  reason?: string;
+  decidedAt?: string;
+  receivedAt: string;
+  validationStatus: DecisionGatewayMailboxValidationStatus;
+  validationReason?: string;
+  createdAt?: string;
+  pickedUpAt?: string;
+  ackedAt?: string;
+};
+
 export type Task = {
   id: string;
   title: string;
@@ -107,6 +129,7 @@ export type Task = {
   attachments?: TaskAttachment[];
   codexAppServerRequest?: CodexAppServerRequest | null;
   codexAppServerTurnActive?: boolean;
+  decisionResults?: DecisionGatewayMailboxItem[];
 };
 
 export type OutputEvent = {
@@ -206,6 +229,8 @@ export type TaskDeckContext = {
   decisionGateway?: {
     configured: boolean;
     url?: string;
+    mailboxPollingEnabled?: boolean;
+    mailboxPollIntervalMs?: number;
   };
 };
 

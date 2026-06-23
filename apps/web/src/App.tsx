@@ -3,7 +3,8 @@ import { TaskCreateForm } from "./components/TaskCreateForm";
 import { TaskList } from "./components/TaskList";
 import { OutputPane } from "./components/OutputPane";
 import { PhonePairingPanel } from "./components/PhonePairingPanel";
-import type { CodexModel, CreateTaskInput, OutputEvent, Task, TaskDeckContext } from "./types";
+import { DecisionInboxPanel } from "./components/DecisionInboxPanel";
+import type { CodexModel, CreateTaskInput, DecisionGatewayMailboxItem, OutputEvent, Task, TaskDeckContext } from "./types";
 import type { SelectedImageAttachment } from "./components/InputComposer";
 import { appendOutputEventToQueue } from "./outputReplay";
 
@@ -16,9 +17,16 @@ type ServerMessage =
       runningTaskId?: string | null;
       runningTaskIds?: string[];
       codexModels?: CodexModel[];
+      decisionGatewayMailboxItems?: DecisionGatewayMailboxItem[];
       outputSeq?: number;
     }
-  | { type: "tasks"; tasks: Task[]; runningTaskId?: string | null; runningTaskIds?: string[] }
+  | {
+      type: "tasks";
+      tasks: Task[];
+      runningTaskId?: string | null;
+      runningTaskIds?: string[];
+      decisionGatewayMailboxItems?: DecisionGatewayMailboxItem[];
+    }
   | { type: "started"; taskId: string }
   | {
       type: "output";
@@ -40,6 +48,7 @@ export function App() {
   const [outputEvents, setOutputEvents] = useState<OutputEvent[]>([]);
   const [outputReloadToken, setOutputReloadToken] = useState(0);
   const [taskDeckContext, setTaskDeckContext] = useState<TaskDeckContext | null>(null);
+  const [decisionGatewayMailboxItems, setDecisionGatewayMailboxItems] = useState<DecisionGatewayMailboxItem[]>([]);
   const [composerDraftsByTaskId, setComposerDraftsByTaskId] = useState<Record<string, string>>({});
   const [composerImagesByTaskId, setComposerImagesByTaskId] = useState<Record<string, SelectedImageAttachment[]>>({});
   const [outputMessage, setOutputMessage] = useState("");
@@ -104,6 +113,9 @@ export function App() {
             handleSnapshotOutputSeq(message.outputSeq, latestServerOutputSeqRef, setOutputReloadToken);
           }
           setTasks(message.tasks);
+          if (message.decisionGatewayMailboxItems) {
+            setDecisionGatewayMailboxItems(message.decisionGatewayMailboxItems);
+          }
           setRunningTaskIds(nextRunningTaskIds);
           if (message.type === "snapshot" && message.codexModels) {
             setCodexModels(message.codexModels);
@@ -197,6 +209,22 @@ export function App() {
       })
       .then((context: TaskDeckContext) => setTaskDeckContext(context))
       .catch(() => setTaskDeckContext(null));
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/decision-gateway/mailbox/local")
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Unable to load Decision Gateway mailbox.");
+        }
+        return response.json();
+      })
+      .then((payload: { items?: DecisionGatewayMailboxItem[] }) => {
+        if (Array.isArray(payload.items)) {
+          setDecisionGatewayMailboxItems(payload.items);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const selectedTask = useMemo(
@@ -365,6 +393,7 @@ export function App() {
             onCreateTask={createTask}
           />
           <PhonePairingPanel decisionGatewayConfigured={Boolean(taskDeckContext?.decisionGateway?.configured)} />
+          <DecisionInboxPanel items={decisionGatewayMailboxItems} />
         </aside>
       </section>
     </main>

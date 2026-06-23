@@ -98,7 +98,7 @@ Agent profiles merge by `id`: built-in defaults load first, then committed confi
 
 ## Decision Gateway
 
-TaskDeck can pair a phone through Decision Gateway and send a manual one-way decision request to Decision Gateway from a task card. Configure the gateway URL before starting TaskDeck:
+TaskDeck can pair a phone through Decision Gateway, send a manual one-way decision request from a task card, and poll the Decision Result Mailbox for display-only results. Configure the gateway URL before starting TaskDeck:
 
 ```bash
 PORT=3001 DECISION_GATEWAY_URL=http://localhost:3000 npm run dev
@@ -106,13 +106,17 @@ PORT=3001 DECISION_GATEWAY_URL=http://localhost:3000 npm run dev
 
 The `PORT=3001` example keeps TaskDeck from colliding with a local Decision Gateway dev server running on `localhost:3000`. If Decision Gateway is running elsewhere, set `DECISION_GATEWAY_URL` to that base URL.
 
-Use **Pair phone** in the right rail to create a pairing request. TaskDeck calls `POST /api/pairing-requests` on Decision Gateway with a stable local `taskdeckInstanceId` and a simple local label, then displays the returned `pairingUrl` as a QR code with its expiry time and a copyable URL fallback. The phone scans the QR and completes pairing on Decision Gateway. TaskDeck does not store mobile browser sessions, poll for decision results, apply decisions back to agents, resume AI work, or execute remote commands.
+Mailbox polling uses the same stable local `taskdeckInstanceId` as the Pair phone flow. Set `DECISION_GATEWAY_MAILBOX_POLL_MS` to override the default 30000 ms interval. If `DECISION_GATEWAY_URL` is missing, mailbox polling is disabled quietly.
+
+Use **Pair phone** in the right rail to create a pairing request. TaskDeck calls `POST /api/pairing-requests` on Decision Gateway with the stable local `taskdeckInstanceId` and a simple local label, then displays the returned `pairingUrl` as a QR code with its expiry time and a copyable URL fallback. The phone scans the QR and completes pairing on Decision Gateway. Decision Gateway owns mobile browser sessions.
 
 When configured, use **Ask for decision** on a task card. TaskDeck sends source context and a bounded redacted recent-output snippet to `POST /api/decision-requests` on Decision Gateway, then shows the returned Decision Workspace URL.
 
-For local testing, run Decision Gateway locally first, then start TaskDeck with `PORT=3001 DECISION_GATEWAY_URL=http://localhost:3000 npm run dev`. If Supabase is not configured yet, the local Decision Gateway may use its file-store fallback for first verification. For deployed Decision Gateway use, Supabase is required for reliable deployed workspace loading. Decision Gateway owns mobile browser sessions; TaskDeck only initiates pairing and displays the QR. Slack remains notification-only.
+When the mailbox returns decision results addressed to this TaskDeck instance, TaskDeck records them under `.taskdeck/decision-gateway-mailbox.json`, validates them against local task/session/request metadata where possible, then acknowledges the mailbox item. Matched task cards show **Decision received** with the action and decision time. Unmatched or stale results appear in the right-rail Decision inbox.
 
-Decision Gateway integration is only a source connector and pairing launcher. TaskDeck does not generate the Decision Workspace UI, poll for results, resume agents, or deliver decisions back.
+For local testing, run Decision Gateway locally first, then start TaskDeck with `PORT=3001 DECISION_GATEWAY_URL=http://localhost:3000 npm run dev`. If Supabase is not configured yet, the local Decision Gateway may use its file-store fallback for first verification. For deployed Decision Gateway use, Supabase is required for reliable deployed workspace loading. Slack remains notification-only.
+
+Decision Gateway integration is still display-only for received decisions. TaskDeck does not generate the Decision Workspace UI, apply mailbox decisions to agents, resume AI work, execute remote commands, send received condition/reason text into PTY/stdin, or mark decisions as applied. A future apply path must validate `requestId`, `taskId`, and `sessionId` before any agent delivery.
 
 ## Branch Worktree Lifecycle
 
@@ -124,7 +128,7 @@ See [Branch worktree lifecycle](docs/branch-worktree-lifecycle.md) for the stand
 
 ## Local Data
 
-TaskDeck stores runtime data under `.taskdeck/`, including task records, persisted logs, session labels, presets, and attachments. This directory is intentionally ignored by Git and may contain sensitive agent output.
+TaskDeck stores runtime data under `.taskdeck/`, including task records, persisted logs, session labels, presets, attachments, and received Decision Gateway mailbox records. This directory is intentionally ignored by Git and may contain sensitive agent output.
 
 TaskDeck also starts local manager action transports and records them in `.taskdeck/run/manager-actions.json`. The preferred transport is the Unix socket at `.taskdeck/run/manager-actions.sock`; a token-protected loopback TCP fallback is advertised for manager sessions running inside Docker containers where a mounted macOS host socket is visible but not connectable. Manager sessions use `taskdeckctl ack`, `taskdeckctl review`, and `taskdeckctl close`; the server validates, logs under `.taskdeck/manager-actions/`, mutates, and broadcasts the result.
 

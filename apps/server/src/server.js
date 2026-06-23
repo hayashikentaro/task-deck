@@ -62,6 +62,7 @@ import {
 } from "@taskdeck/core/manager-readable";
 import {
   buildTaskDeckDecisionRequest,
+  normalizeDecisionGatewayMailboxItem,
   normalizeDecisionGatewayUrl,
 } from "@taskdeck/core/decision-gateway";
 
@@ -76,6 +77,7 @@ const taskStorePath = path.join(dataRoot, "tasks.json");
 const presetStorePath = path.join(dataRoot, "presets.json");
 const sessionLabelStorePath = path.join(dataRoot, "session-labels.json");
 const taskdeckInstanceStorePath = path.join(dataRoot, "taskdeck-instance.json");
+const decisionGatewayMailboxStorePath = path.join(dataRoot, "decision-gateway-mailbox.json");
 const logRoot = path.join(dataRoot, "logs");
 const attachmentRoot = path.join(dataRoot, "attachments");
 const pendingAttachmentRoot = path.join(attachmentRoot, "pending");
@@ -111,6 +113,9 @@ const codexAppServerLoginMethods = new Set([
 ]);
 const codexAppServerOnlyTaskError =
   "TaskDeck now only starts Codex App Server tasks while the App Server thread model is being rebuilt.";
+const decisionGatewayMailboxLimit = 20;
+const decisionGatewayMailboxValidationStatuses = new Set(["valid", "unmatched", "stale"]);
+const decisionGatewayRequestStatuses = new Set(["pending", "received"]);
 const defaultAgentProfiles = [
   {
     id: codexAppServerAgentProfileId,
@@ -131,6 +136,10 @@ const inputDebugEnabled = process.env.TASKDECK_INPUT_DEBUG === "1";
 const codexAppServerDebugEnabled = process.env.TASKDECK_CODEX_APP_SERVER_DEBUG === "1";
 const decisionGatewayUrl = normalizeDecisionGatewayUrl(process.env.DECISION_GATEWAY_URL);
 const decisionGatewayRequestTimeoutMs = 10_000;
+const decisionGatewayMailboxPollIntervalMs = normalizePositiveInteger(
+  process.env.DECISION_GATEWAY_MAILBOX_POLL_MS,
+  30_000,
+);
 
 const clients = new Set();
 const tasks = new Map();
@@ -138,6 +147,8 @@ const logs = new Map();
 const taskLogWriteQueues = new Map();
 const taskOutputSequences = new Map();
 const sessionLabels = new Map();
+const decisionGatewayMailboxItems = new Map();
+const decisionGatewayRequestRecords = new Map();
 let presets = [];
 let outputSequence = 0;
 const maxLogLength = 250_000;
@@ -161,7 +172,10 @@ let managerActionTcpToken = "";
 let persistTasksQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
 let persistSessionLabelsQueue = Promise.resolve();
+let persistDecisionGatewayMailboxQueue = Promise.resolve();
 let childStatusPollInFlight = false;
+let decisionGatewayMailboxPollInFlight = false;
+let decisionGatewayMailboxPollWarning = "";
 let codexModels = [];
 let taskdeckInstanceIdPromise = null;
 
@@ -199,6 +213,8 @@ app.get("/api/context", async (_request, response) => {
     decisionGateway: {
       configured: Boolean(decisionGatewayUrl),
       url: decisionGatewayUrl,
+      mailboxPollingEnabled: Boolean(decisionGatewayUrl),
+      mailboxPollIntervalMs: decisionGatewayMailboxPollIntervalMs,
     },
   });
 });
@@ -270,6 +286,7 @@ app.get("/api/tasks", (_request, response) => {
     runningTaskId: getPrimaryRunningTaskId(),
     runningTaskIds: getRunningTaskIds(),
     codexModels,
+    decisionGatewayMailboxItems: listDecisionGatewayMailboxItemsForClient(),
   });
 });
 
@@ -503,11 +520,25 @@ app.post("/api/tasks/:taskId/decision-request", async (request, response) => {
       return;
     }
 
+    const decisionUrl = String(payload?.url || "");
+    const decisionId = String(payload?.id || "");
+    const requestId = String(payload?.requestId || "");
+    if (requestId) {
+      await recordDecisionGatewayPendingRequest({
+        requestId,
+        decisionRequestId: decisionId,
+        taskId: task.id,
+        sessionId: String(task.agentSessionId || "").trim(),
+      }).catch((error) => {
+        console.warn(`TaskDeck could not record Decision Gateway request ${requestId}: ${error.message}`);
+      });
+    }
+
     response.json({
       ok: true,
-      decisionUrl: String(payload?.url || ""),
-      decisionId: String(payload?.id || ""),
-      requestId: String(payload?.requestId || ""),
+      decisionUrl,
+      decisionId,
+      requestId,
     });
   } catch (error) {
     const timedOut = error?.name === "AbortError";
@@ -579,6 +610,15 @@ app.post("/api/decision-gateway/pairing-requests", async (_request, response) =>
   }
 });
 
+app.get("/api/decision-gateway/mailbox/local", (_request, response) => {
+  response.json({
+    configured: Boolean(decisionGatewayUrl),
+    mailboxPollingEnabled: Boolean(decisionGatewayUrl),
+    mailboxPollIntervalMs: decisionGatewayMailboxPollIntervalMs,
+    items: listDecisionGatewayMailboxItemsForClient(),
+  });
+});
+
 function normalizeTailLength(rawTail) {
   if (rawTail === undefined) {
     return null;
@@ -590,6 +630,14 @@ function normalizeTailLength(rawTail) {
   }
 
   return Math.min(Math.floor(tailLength), maxLogLength);
+}
+
+function normalizePositiveInteger(value, fallback) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    return fallback;
+  }
+  return Math.floor(numericValue);
 }
 
 function normalizeBoolean(value) {
@@ -657,6 +705,7 @@ wss.on("connection", (socket) => {
     runningTaskId: getPrimaryRunningTaskId(),
     runningTaskIds: getRunningTaskIds(),
     codexModels,
+    decisionGatewayMailboxItems: listDecisionGatewayMailboxItemsForClient(),
     outputSeq: outputSequence,
   });
 
@@ -757,6 +806,7 @@ server.listen(port, host, () => {
 
 const childStatusTimer = setInterval(scanChildStatusFiles, childStatusPollIntervalMs);
 childStatusTimer.unref?.();
+startDecisionGatewayMailboxPolling();
 
 function buildUniqueNewSessionTitle(title, sessionMode) {
   const normalizedTitle = String(title || "").trim();
@@ -4038,6 +4088,326 @@ function isManagerAgentProfileId(agentProfileId) {
   return String(agentProfileId || "").trim() === managerAgentProfileId;
 }
 
+function startDecisionGatewayMailboxPolling() {
+  if (!decisionGatewayUrl) {
+    return null;
+  }
+
+  pollDecisionGatewayMailbox();
+  const timer = setInterval(pollDecisionGatewayMailbox, decisionGatewayMailboxPollIntervalMs);
+  timer.unref?.();
+  return timer;
+}
+
+async function pollDecisionGatewayMailbox() {
+  if (!decisionGatewayUrl || decisionGatewayMailboxPollInFlight) {
+    return;
+  }
+
+  decisionGatewayMailboxPollInFlight = true;
+  try {
+    const taskdeckInstanceId = await readOrCreateTaskDeckInstanceId();
+    const rawItems = await fetchDecisionGatewayMailboxItems(taskdeckInstanceId);
+    let changed = false;
+    let malformedCount = 0;
+    let itemFailure = false;
+
+    for (const rawItem of rawItems) {
+      try {
+        const result = await processDecisionGatewayMailboxItem(rawItem, taskdeckInstanceId);
+        if (result.malformed) {
+          malformedCount += 1;
+        }
+        if (result.ok === false && !result.malformed) {
+          itemFailure = true;
+        }
+        changed = changed || Boolean(result.changed);
+      } catch (error) {
+        itemFailure = true;
+        warnDecisionGatewayMailboxPollFailure(`Unable to process mailbox item: ${error.message}`);
+      }
+    }
+
+    if (malformedCount > 0) {
+      warnDecisionGatewayMailboxPollFailure(
+        `Ignored ${malformedCount} malformed Decision Gateway mailbox item${malformedCount === 1 ? "" : "s"}.`,
+      );
+    } else if (!itemFailure) {
+      decisionGatewayMailboxPollWarning = "";
+    }
+
+    if (changed) {
+      broadcastTasks();
+    }
+  } catch (error) {
+    warnDecisionGatewayMailboxPollFailure(`Decision Gateway mailbox poll failed: ${error.message}`);
+  } finally {
+    decisionGatewayMailboxPollInFlight = false;
+  }
+}
+
+async function fetchDecisionGatewayMailboxItems(taskdeckInstanceId) {
+  const url = new URL(`${decisionGatewayUrl}/api/taskdeck/mailbox`);
+  url.searchParams.set("taskdeckInstanceId", taskdeckInstanceId);
+  url.searchParams.set("limit", String(decisionGatewayMailboxLimit));
+
+  const abortController = new AbortController();
+  const timeout = setTimeout(() => abortController.abort(), decisionGatewayRequestTimeoutMs);
+  let gatewayResponse;
+  try {
+    gatewayResponse = await fetch(url, {
+      method: "GET",
+      signal: abortController.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const payload = await gatewayResponse.json().catch(() => ({}));
+  if (!gatewayResponse.ok) {
+    throw new Error(payload?.error || `Decision Gateway mailbox request failed with status ${gatewayResponse.status}.`);
+  }
+  if (!Array.isArray(payload?.items)) {
+    throw new Error("Decision Gateway returned a malformed mailbox response.");
+  }
+
+  return payload.items;
+}
+
+async function acknowledgeDecisionGatewayMailboxItem(mailboxItemId, taskdeckInstanceId) {
+  const abortController = new AbortController();
+  const timeout = setTimeout(() => abortController.abort(), decisionGatewayRequestTimeoutMs);
+  let gatewayResponse;
+  try {
+    gatewayResponse = await fetch(
+      `${decisionGatewayUrl}/api/taskdeck/mailbox/${encodeURIComponent(mailboxItemId)}/ack`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ taskdeckInstanceId }),
+        signal: abortController.signal,
+      },
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const payload = await gatewayResponse.json().catch(() => ({}));
+  if (!gatewayResponse.ok) {
+    throw new Error(payload?.error || `Decision Gateway mailbox ack failed with status ${gatewayResponse.status}.`);
+  }
+}
+
+async function processDecisionGatewayMailboxItem(rawItem, taskdeckInstanceId) {
+  const recordResult = await recordDecisionGatewayMailboxItem(rawItem);
+  if (!recordResult.ok) {
+    return recordResult;
+  }
+
+  const { record } = recordResult;
+  try {
+    await acknowledgeDecisionGatewayMailboxItem(record.mailboxItemId, taskdeckInstanceId);
+  } catch (error) {
+    warnDecisionGatewayMailboxPollFailure(
+      `Unable to acknowledge Decision Gateway mailbox item ${record.mailboxItemId}: ${error.message}`,
+    );
+    return { ok: false, changed: recordResult.recorded, record };
+  }
+
+  const ackedAt = new Date().toISOString();
+  decisionGatewayMailboxItems.set(record.mailboxItemId, {
+    ...decisionGatewayMailboxItems.get(record.mailboxItemId),
+    ackedAt,
+    ackError: "",
+  });
+  try {
+    await persistDecisionGatewayMailbox();
+  } catch (error) {
+    console.warn(`TaskDeck could not persist Decision Gateway mailbox ack state: ${error.message}`);
+  }
+
+  return { ok: true, changed: recordResult.recorded || !record.ackedAt, record };
+}
+
+async function recordDecisionGatewayMailboxItem(rawItem) {
+  const receivedAt = new Date().toISOString();
+  const normalizedItem = normalizeDecisionGatewayMailboxItem(rawItem, { receivedAt });
+  if (!normalizedItem) {
+    return { ok: false, malformed: true, changed: false };
+  }
+
+  const existingRecord = decisionGatewayMailboxItems.get(normalizedItem.mailboxItemId);
+  if (existingRecord) {
+    return { ok: true, record: existingRecord, recorded: false, changed: false };
+  }
+
+  const linkedRequestRecord = normalizedItem.requestId
+    ? decisionGatewayRequestRecords.get(normalizedItem.requestId)
+    : null;
+  const recordBase = {
+    ...normalizedItem,
+    taskId: normalizedItem.taskId || linkedRequestRecord?.taskId || "",
+    sessionId: normalizedItem.sessionId || linkedRequestRecord?.sessionId || "",
+  };
+  const validation = validateDecisionGatewayMailboxRecord(recordBase);
+  const record = {
+    ...recordBase,
+    validationStatus: validation.validationStatus,
+    validationReason: validation.validationReason,
+    ackedAt: "",
+    ackError: "",
+  };
+  const previousRequestRecord = record.requestId ? decisionGatewayRequestRecords.get(record.requestId) : undefined;
+
+  decisionGatewayMailboxItems.set(record.mailboxItemId, record);
+  markDecisionGatewayRequestReceived(record);
+  try {
+    await persistDecisionGatewayMailbox();
+  } catch (error) {
+    decisionGatewayMailboxItems.delete(record.mailboxItemId);
+    if (record.requestId) {
+      if (previousRequestRecord) {
+        decisionGatewayRequestRecords.set(record.requestId, previousRequestRecord);
+      } else {
+        decisionGatewayRequestRecords.delete(record.requestId);
+      }
+    }
+    throw error;
+  }
+
+  return { ok: true, record, recorded: true, changed: true };
+}
+
+function validateDecisionGatewayMailboxRecord(record) {
+  const taskId = String(record.taskId || "").trim();
+  const requestId = String(record.requestId || "").trim();
+  const sessionId = String(record.sessionId || "").trim();
+  const requestRecord = requestId ? decisionGatewayRequestRecords.get(requestId) : null;
+
+  if (taskId && !tasks.has(taskId)) {
+    return {
+      validationStatus: "unmatched",
+      validationReason: "Mailbox taskId does not match a local TaskDeck task.",
+    };
+  }
+
+  if (requestId && !requestRecord) {
+    return {
+      validationStatus: "unmatched",
+      validationReason: "Mailbox requestId does not match a recorded pending Decision Gateway request.",
+    };
+  }
+
+  const resolvedTaskId = taskId || requestRecord?.taskId || "";
+  const task = resolvedTaskId ? tasks.get(resolvedTaskId) : null;
+  if (!task) {
+    return {
+      validationStatus: "unmatched",
+      validationReason: "Mailbox item does not identify a known local TaskDeck task.",
+    };
+  }
+
+  if (requestRecord?.taskId && requestRecord.taskId !== task.id) {
+    return {
+      validationStatus: "unmatched",
+      validationReason: "Mailbox requestId belongs to a different local TaskDeck task.",
+    };
+  }
+
+  if (sessionId) {
+    const taskSessionId = String(task.agentSessionId || "").trim();
+    if (!taskSessionId) {
+      return {
+        validationStatus: "unmatched",
+        validationReason: "Mailbox sessionId cannot be verified against local task metadata.",
+      };
+    }
+    if (taskSessionId !== sessionId) {
+      return {
+        validationStatus: "unmatched",
+        validationReason: "Mailbox sessionId does not match the local TaskDeck task session.",
+      };
+    }
+  }
+
+  if (requestRecord?.sessionId && sessionId && requestRecord.sessionId !== sessionId) {
+    return {
+      validationStatus: "unmatched",
+      validationReason: "Mailbox requestId belongs to a different local TaskDeck session.",
+    };
+  }
+
+  if (requestRecord?.status && requestRecord.status !== "pending") {
+    return {
+      validationStatus: "stale",
+      validationReason: "The local Decision Gateway request was already resolved.",
+    };
+  }
+
+  if (task.status !== TaskStatus.RUNNING) {
+    return {
+      validationStatus: "stale",
+      validationReason: "The local TaskDeck task is no longer running.",
+    };
+  }
+
+  return {
+    validationStatus: "valid",
+    validationReason: "Mailbox item matches local task/session metadata.",
+  };
+}
+
+async function recordDecisionGatewayPendingRequest({ requestId, decisionRequestId = "", taskId = "", sessionId = "" }) {
+  const normalizedRequestId = String(requestId || "").trim();
+  if (!normalizedRequestId) {
+    return null;
+  }
+
+  const existingRecord = decisionGatewayRequestRecords.get(normalizedRequestId);
+  const record = {
+    requestId: normalizedRequestId,
+    decisionRequestId: String(decisionRequestId || existingRecord?.decisionRequestId || "").trim(),
+    taskId: String(taskId || existingRecord?.taskId || "").trim(),
+    sessionId: String(sessionId || existingRecord?.sessionId || "").trim(),
+    status: existingRecord?.status === "received" ? "received" : "pending",
+    sentAt: existingRecord?.sentAt || new Date().toISOString(),
+    receivedAt: existingRecord?.receivedAt || "",
+    receivedMailboxItemId: existingRecord?.receivedMailboxItemId || "",
+  };
+
+  decisionGatewayRequestRecords.set(record.requestId, record);
+  await persistDecisionGatewayMailbox();
+  return record;
+}
+
+function markDecisionGatewayRequestReceived(record) {
+  if (!record.requestId) {
+    return;
+  }
+  const requestRecord = decisionGatewayRequestRecords.get(record.requestId);
+  if (!requestRecord || requestRecord.status === "received") {
+    return;
+  }
+
+  decisionGatewayRequestRecords.set(record.requestId, {
+    ...requestRecord,
+    status: "received",
+    receivedAt: record.receivedAt,
+    receivedMailboxItemId: record.mailboxItemId,
+    decisionRequestId: requestRecord.decisionRequestId || record.decisionRequestId,
+  });
+}
+
+function warnDecisionGatewayMailboxPollFailure(message) {
+  if (decisionGatewayMailboxPollWarning === message) {
+    return;
+  }
+  decisionGatewayMailboxPollWarning = message;
+  console.warn(`TaskDeck ${message}`);
+}
+
 async function readOrCreateTaskDeckInstanceId() {
   if (!taskdeckInstanceIdPromise) {
     taskdeckInstanceIdPromise = readOrCreateTaskDeckInstanceIdFromStore().catch((error) => {
@@ -4790,6 +5160,63 @@ function listTasks() {
   return Array.from(tasks.values()).filter(isTaskVisibleInNormalList).map(serializeTaskForClient).reverse();
 }
 
+function listDecisionGatewayMailboxItemsForClient() {
+  return Array.from(decisionGatewayMailboxItems.values())
+    .sort(compareDecisionGatewayMailboxRecordsNewestFirst)
+    .map(serializeDecisionGatewayMailboxRecordForClient);
+}
+
+function decisionGatewayMailboxItemsForTask(taskId) {
+  const normalizedTaskId = String(taskId || "").trim();
+  if (!normalizedTaskId) {
+    return [];
+  }
+
+  return Array.from(decisionGatewayMailboxItems.values())
+    .filter((record) => record.taskId === normalizedTaskId && record.validationStatus !== "unmatched")
+    .sort(compareDecisionGatewayMailboxRecordsNewestFirst)
+    .slice(0, 3)
+    .map(serializeDecisionGatewayMailboxRecordForClient);
+}
+
+function serializeDecisionGatewayMailboxRecordForClient(record) {
+  return {
+    mailboxItemId: record.mailboxItemId,
+    mailboxStatus: record.mailboxStatus || "",
+    decisionRequestId: record.decisionRequestId || "",
+    decisionActionId: record.decisionActionId || "",
+    requestId: record.requestId || "",
+    taskId: record.taskId || "",
+    sessionId: record.sessionId || "",
+    actionType: record.actionType || "",
+    condition: record.condition || "",
+    reason: record.reason || "",
+    decidedAt: record.decidedAt || "",
+    receivedAt: record.receivedAt || "",
+    validationStatus: decisionGatewayMailboxValidationStatuses.has(record.validationStatus)
+      ? record.validationStatus
+      : "unmatched",
+    validationReason: record.validationReason || "",
+    createdAt: record.createdAt || "",
+    pickedUpAt: record.pickedUpAt || "",
+    ackedAt: record.ackedAt || "",
+  };
+}
+
+function compareDecisionGatewayMailboxRecordsNewestFirst(left, right) {
+  const leftTimestamp = timestampForDecisionGatewayMailboxRecord(left);
+  const rightTimestamp = timestampForDecisionGatewayMailboxRecord(right);
+  if (leftTimestamp !== rightTimestamp) {
+    return rightTimestamp - leftTimestamp;
+  }
+  return String(right.mailboxItemId || "").localeCompare(String(left.mailboxItemId || ""));
+}
+
+function timestampForDecisionGatewayMailboxRecord(record) {
+  const timestamp = Date.parse(record.receivedAt || record.decidedAt || record.createdAt || "");
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
 function serializeTaskForClient(task) {
   if (!task) {
     return null;
@@ -4799,6 +5226,7 @@ function serializeTaskForClient(task) {
   return {
     ...serializedTask,
     sessionLabel: taskSessionLabel(task),
+    decisionResults: decisionGatewayMailboxItemsForTask(task.id),
     codexAppServerRequest: codexAppServerRequestForClient(task.id),
     codexAppServerTurnActive: Boolean(activeAppServer?.turnActive && activeAppServer?.activeTurnId),
   };
@@ -4972,6 +5400,7 @@ function broadcastTasks() {
     tasks: listTasks(),
     runningTaskId: getPrimaryRunningTaskId(),
     runningTaskIds: getRunningTaskIds(),
+    decisionGatewayMailboxItems: listDecisionGatewayMailboxItemsForClient(),
   });
 }
 
@@ -5209,10 +5638,11 @@ async function initializePersistence() {
   await fs.mkdir(logRoot, { recursive: true });
   await fs.mkdir(pendingAttachmentRoot, { recursive: true });
 
-  const [storedTasks, storedPresets, storedSessionLabels] = await Promise.all([
+  const [storedTasks, storedPresets, storedSessionLabels, storedDecisionGatewayMailbox] = await Promise.all([
     readJsonArray(taskStorePath, "tasks"),
     readJsonArray(presetStorePath, "presets"),
     readJsonObject(sessionLabelStorePath, "session labels"),
+    readJsonObject(decisionGatewayMailboxStorePath, "Decision Gateway mailbox"),
   ]);
 
   for (const [key, value] of Object.entries(storedSessionLabels)) {
@@ -5229,6 +5659,8 @@ async function initializePersistence() {
   if (presets.length !== storedPresets.length) {
     persistPresets();
   }
+
+  const mailboxChanged = loadDecisionGatewayMailboxStore(storedDecisionGatewayMailbox);
 
   let changed = false;
   for (const storedTask of storedTasks) {
@@ -5251,6 +5683,100 @@ async function initializePersistence() {
   if (changed) {
     persistTasks();
   }
+  if (mailboxChanged) {
+    persistDecisionGatewayMailbox().catch((error) => {
+      console.warn(`TaskDeck could not persist normalized Decision Gateway mailbox store: ${error.message}`);
+    });
+  }
+}
+
+function loadDecisionGatewayMailboxStore(storedStore) {
+  const storedItems = Array.isArray(storedStore?.items) ? storedStore.items : [];
+  const storedRequests = Array.isArray(storedStore?.sentRequests) ? storedStore.sentRequests : [];
+  let changed = false;
+
+  for (const storedItem of storedItems) {
+    const record = normalizeStoredDecisionGatewayMailboxRecord(storedItem);
+    if (!record) {
+      changed = true;
+      continue;
+    }
+    decisionGatewayMailboxItems.set(record.mailboxItemId, record);
+  }
+
+  for (const storedRequest of storedRequests) {
+    const record = normalizeStoredDecisionGatewayRequestRecord(storedRequest);
+    if (!record) {
+      changed = true;
+      continue;
+    }
+    decisionGatewayRequestRecords.set(record.requestId, record);
+  }
+
+  return changed || decisionGatewayMailboxItems.size !== storedItems.length || decisionGatewayRequestRecords.size !== storedRequests.length;
+}
+
+function normalizeStoredDecisionGatewayMailboxRecord(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const mailboxItemId = String(value.mailboxItemId || value.id || "").trim();
+  const actionType = String(value.actionType || "").trim();
+  if (!mailboxItemId || !actionType) {
+    return null;
+  }
+
+  const validationStatus = decisionGatewayMailboxValidationStatuses.has(value.validationStatus)
+    ? value.validationStatus
+    : "unmatched";
+
+  return {
+    mailboxItemId,
+    mailboxStatus: String(value.mailboxStatus || "").trim(),
+    decisionRequestId: String(value.decisionRequestId || "").trim(),
+    decisionActionId: String(value.decisionActionId || "").trim(),
+    requestId: String(value.requestId || "").trim(),
+    taskId: String(value.taskId || "").trim(),
+    sessionId: String(value.sessionId || "").trim(),
+    actionType,
+    condition: String(value.condition || "").trim(),
+    reason: String(value.reason || "").trim(),
+    decidedAt: String(value.decidedAt || "").trim(),
+    receivedAt: String(value.receivedAt || "").trim(),
+    validationStatus,
+    validationReason: String(value.validationReason || "").trim(),
+    createdAt: String(value.createdAt || "").trim(),
+    pickedUpAt: String(value.pickedUpAt || "").trim(),
+    goal: String(value.goal || "").trim(),
+    axis: String(value.axis || "").trim(),
+    urgency: String(value.urgency || "").trim(),
+    ackedAt: String(value.ackedAt || "").trim(),
+    ackError: String(value.ackError || "").trim(),
+  };
+}
+
+function normalizeStoredDecisionGatewayRequestRecord(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const requestId = String(value.requestId || "").trim();
+  if (!requestId) {
+    return null;
+  }
+
+  const status = decisionGatewayRequestStatuses.has(value.status) ? value.status : "pending";
+  return {
+    requestId,
+    decisionRequestId: String(value.decisionRequestId || "").trim(),
+    taskId: String(value.taskId || "").trim(),
+    sessionId: String(value.sessionId || "").trim(),
+    status,
+    sentAt: String(value.sentAt || "").trim(),
+    receivedAt: String(value.receivedAt || "").trim(),
+    receivedMailboxItemId: String(value.receivedMailboxItemId || "").trim(),
+  };
 }
 
 async function readJsonArray(filePath, label) {
@@ -5729,6 +6255,44 @@ function persistSessionLabels() {
     });
 
   return persistSessionLabelsQueue;
+}
+
+function persistDecisionGatewayMailbox() {
+  const updatedAt = new Date().toISOString();
+  const store = {
+    kind: "taskDeckDecisionGatewayMailboxStore",
+    version: 1,
+    updatedAt,
+    items: Array.from(decisionGatewayMailboxItems.values()).sort(compareDecisionGatewayMailboxRecordsNewestFirst),
+    sentRequests: Array.from(decisionGatewayRequestRecords.values()).sort(compareDecisionGatewayRequestRecordsNewestFirst),
+  };
+
+  const writePromise = persistDecisionGatewayMailboxQueue.then(async () => {
+    await fs.mkdir(dataRoot, { recursive: true });
+    const tempPath = `${decisionGatewayMailboxStorePath}.tmp`;
+    await fs.writeFile(tempPath, `${JSON.stringify(store, null, 2)}\n`);
+    await fs.rename(tempPath, decisionGatewayMailboxStorePath);
+  });
+
+  persistDecisionGatewayMailboxQueue = writePromise.catch((error) => {
+    console.error(`TaskDeck could not persist Decision Gateway mailbox: ${error.message}`);
+  });
+
+  return writePromise;
+}
+
+function compareDecisionGatewayRequestRecordsNewestFirst(left, right) {
+  const leftTimestamp = timestampForDecisionGatewayRequestRecord(left);
+  const rightTimestamp = timestampForDecisionGatewayRequestRecord(right);
+  if (leftTimestamp !== rightTimestamp) {
+    return rightTimestamp - leftTimestamp;
+  }
+  return String(right.requestId || "").localeCompare(String(left.requestId || ""));
+}
+
+function timestampForDecisionGatewayRequestRecord(record) {
+  const timestamp = Date.parse(record.receivedAt || record.sentAt || "");
+  return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
 function savePreset(taskSpec) {

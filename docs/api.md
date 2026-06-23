@@ -11,6 +11,7 @@ POST /api/diagnostics/containers/:containerName/start
 POST /api/validate-cwd
 POST /api/attachments
 POST /api/decision-gateway/pairing-requests
+GET /api/decision-gateway/mailbox/local
 GET /api/tasks
 DELETE /api/tasks
 GET /api/tasks/:taskId
@@ -52,7 +53,13 @@ It returns whether the cwd resolves to an existing directory, its absolute path,
 
 ## Decision Gateway
 
-`POST /api/decision-gateway/pairing-requests` creates a phone pairing request when `DECISION_GATEWAY_URL` is configured. The server reads or generates the stable local TaskDeck instance id stored under `.taskdeck/taskdeck-instance.json`, sends `{ "taskdeckInstanceId": "...", "taskdeckLabel": "..." }` to `POST <DECISION_GATEWAY_URL>/api/pairing-requests`, and returns `{ "pairingUrl": "...", "expiresAt": "..." }` to the web UI. TaskDeck does not log the returned pairing URL, store mobile browser sessions, poll for decisions, or apply mobile decisions back to agents.
+`POST /api/decision-gateway/pairing-requests` creates a phone pairing request when `DECISION_GATEWAY_URL` is configured. The server reads or generates the stable local TaskDeck instance id stored under `.taskdeck/taskdeck-instance.json`, sends `{ "taskdeckInstanceId": "...", "taskdeckLabel": "..." }` to `POST <DECISION_GATEWAY_URL>/api/pairing-requests`, and returns `{ "pairingUrl": "...", "expiresAt": "..." }` to the web UI. TaskDeck does not log the returned pairing URL or store mobile browser sessions.
+
+When `DECISION_GATEWAY_URL` is configured, TaskDeck polls outward to `GET <DECISION_GATEWAY_URL>/api/taskdeck/mailbox?taskdeckInstanceId=<id>&limit=20` using the same stable local `taskdeckInstanceId`. `DECISION_GATEWAY_MAILBOX_POLL_MS` optionally overrides the default 30000 ms interval. Mailbox polling is disabled quietly when `DECISION_GATEWAY_URL` is missing.
+
+Received `decision_result` mailbox items are persisted under `.taskdeck/decision-gateway-mailbox.json` before TaskDeck posts `POST <DECISION_GATEWAY_URL>/api/taskdeck/mailbox/:id/ack` with `{ "taskdeckInstanceId": "..." }`. Malformed mailbox payloads and records that fail local persistence are not acknowledged.
+
+`GET /api/decision-gateway/mailbox/local` returns locally recorded mailbox items for UI rendering. Records carry `validationStatus` as `valid`, `unmatched`, or `stale`. TaskDeck may acknowledge both valid and unmatched records after local persistence because this step only surfaces decisions to the user.
 
 ## Tasks
 
@@ -68,7 +75,7 @@ The server still recognizes the legacy `taskdeck-manager` agent profile id on st
 
 The WebSocket composer sends `{ "type": "codex-app-server-interrupt-turn", "taskId": "..." }` to stop the selected task's active Codex App Server turn. The server translates this into `turn/interrupt` with the task's current App Server `threadId` and active `turnId`; it does not close the TaskDeck task or kill the shared runtime.
 
-`POST /api/tasks/:taskId/decision-request` sends a manual one-way decision request to Decision Gateway when `DECISION_GATEWAY_URL` is configured. TaskDeck includes source context such as task id, session id when available, agent profile, cwd, attention state, and a bounded redacted recent-output snippet. The route returns `{ "ok": true, "decisionUrl": "...", "decisionId": "...", "requestId": "..." }`. It does not change TaskDeck task state, poll for results, resume agents, or deliver decisions back.
+`POST /api/tasks/:taskId/decision-request` sends a manual one-way decision request to Decision Gateway when `DECISION_GATEWAY_URL` is configured. TaskDeck includes source context such as task id, session id when available, agent profile, cwd, attention state, and a bounded redacted recent-output snippet. The route returns `{ "ok": true, "decisionUrl": "...", "decisionId": "...", "requestId": "..." }` and records the returned request id locally for later mailbox validation. It does not change TaskDeck task state, resume agents, deliver decisions back, or mark decisions as applied.
 
 `DELETE /api/tasks` bulk-clears tasks and their logs. `DELETE /api/tasks/:taskId` clears a single task; clearing an individual running task stops its active App Server runtime and removes that task.
 

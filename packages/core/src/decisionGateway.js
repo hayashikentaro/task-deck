@@ -1,5 +1,6 @@
 export const DECISION_GATEWAY_RECENT_OUTPUT_LIMIT = 4000;
 export const DECISION_GATEWAY_CONTEXT_FIELD_LIMIT = 2000;
+export const DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT = 2000;
 
 const redactionPatterns = [
   {
@@ -138,6 +139,49 @@ export function buildTaskDeckDecisionRequest({ task, recentOutput = "" }) {
   };
 }
 
+export function normalizeDecisionGatewayMailboxItem(value, { receivedAt = new Date().toISOString() } = {}) {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+
+  const mailboxItemId = normalizedString(value.id);
+  const payload = isPlainObject(value.payload) ? value.payload : null;
+  if (!mailboxItemId || !payload || payload.type !== "decision_result") {
+    return null;
+  }
+
+  const action = isPlainObject(payload.action) ? payload.action : null;
+  const actionType = normalizedString(action?.type);
+  if (!action || !actionType) {
+    return null;
+  }
+
+  const source = isPlainObject(payload.source) ? payload.source : {};
+
+  return {
+    mailboxItemId,
+    mailboxStatus: normalizedString(value.status),
+    decisionRequestId: normalizedString(payload.decisionRequestId),
+    decisionActionId: normalizedString(payload.decisionActionId),
+    requestId: normalizedString(payload.requestId),
+    taskId: normalizedString(payload.taskId || source.taskId),
+    sessionId: normalizedString(payload.sessionId || source.sessionId),
+    actionType,
+    condition: boundedDecisionGatewayContextField(
+      normalizedString(action.condition),
+      DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT,
+    ),
+    reason: boundedDecisionGatewayContextField(normalizedString(action.reason), DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT),
+    decidedAt: normalizedString(action.decidedAt),
+    receivedAt: normalizedString(receivedAt) || new Date().toISOString(),
+    createdAt: normalizedString(value.createdAt),
+    pickedUpAt: normalizedString(value.pickedUpAt),
+    goal: boundedDecisionGatewayContextField(normalizedString(payload.goal), DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT),
+    axis: normalizedString(payload.axis),
+    urgency: normalizedString(payload.urgency),
+  };
+}
+
 function decisionQuestionForTask(task) {
   const title = boundedDecisionGatewayContextField(String(task?.sessionLabel || task?.title || "").trim(), 500);
   if (title) {
@@ -145,4 +189,12 @@ function decisionQuestionForTask(task) {
   }
 
   return "This TaskDeck session needs human judgment. What should the agent do next?";
+}
+
+function normalizedString(value) {
+  return String(value || "").trim();
+}
+
+function isPlainObject(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
