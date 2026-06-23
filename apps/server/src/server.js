@@ -991,6 +991,8 @@ function createActiveCodexRuntime({ runtimeId, runtimeProcess, launchCommand, de
     loginInProgress: false,
     loginId: "",
     loginMethod: codexAppServerDefaultLoginMethod,
+    loginUrl: "",
+    loginUserCode: "",
     loginCompletedAt: 0,
     forcedAccountRefreshAttempted: false,
     modelListRequested: false,
@@ -1903,6 +1905,8 @@ function handleCodexAppServerDeviceCodeLoginStartResponse(activeAppServer, resul
   const loginId = String(result.loginId || "").trim();
   activeRuntime.loginId = loginId;
   activeRuntime.loginMethod = codexAppServerLoginMethodDeviceCode;
+  activeRuntime.loginUrl = verificationUrl;
+  activeRuntime.loginUserCode = userCode;
   const loginMessage = [
     "[TaskDeck] ChatGPT device login required.",
     verificationUrl ? `[TaskDeck] Verification URL: ${verificationUrl}` : "",
@@ -1929,6 +1933,8 @@ function handleCodexAppServerBrowserLoginStartResponse(activeAppServer, result) 
   const loginId = String(result.loginId || "").trim();
   activeRuntime.loginId = loginId;
   activeRuntime.loginMethod = codexAppServerLoginMethodBrowserRedirect;
+  activeRuntime.loginUrl = authUrl;
+  activeRuntime.loginUserCode = "";
   const loginMessage = [
     "[TaskDeck] ChatGPT browser login required.",
     authUrl ? `[TaskDeck] Login URL: ${authUrl}` : "",
@@ -1954,6 +1960,8 @@ function handleCodexAppServerLoginCompleted(activeAppServer, params) {
   const error = String(params?.error || "").trim();
   activeRuntime.loginInProgress = false;
   activeRuntime.loginId = "";
+  activeRuntime.loginUrl = "";
+  activeRuntime.loginUserCode = "";
   if (!success) {
     activeRuntime.accountReady = false;
     const loginKind = codexAppServerLoginKind(activeRuntime.loginMethod);
@@ -2106,6 +2114,8 @@ function handleCodexAppServerAuthFailureDiagnostic(activeAppServer, _detail) {
   activeRuntime.accountReady = false;
   activeRuntime.loginInProgress = false;
   activeRuntime.loginId = "";
+  activeRuntime.loginUrl = "";
+  activeRuntime.loginUserCode = "";
   activeRuntime.pendingRequests?.clear();
   activeRuntime.pendingThreadStartTaskIds?.clear();
 
@@ -4700,8 +4710,24 @@ function serializeTaskForClient(task) {
   return {
     ...serializedTask,
     sessionLabel: taskSessionLabel(task),
+    codexAppServerLogin: codexAppServerLoginForClient(task.id),
     codexAppServerRequest: codexAppServerRequestForClient(task.id),
     codexAppServerTurnActive: Boolean(activeAppServer?.turnActive && activeAppServer?.activeTurnId),
+  };
+}
+
+function codexAppServerLoginForClient(taskId) {
+  const activeAppServer = activeCodexThreadSessions.get(taskId);
+  const activeRuntime = activeAppServer ? codexRuntimeStateForThreadSession(activeAppServer) : null;
+  if (!activeRuntime?.loginInProgress || !activeRuntime.loginUrl) {
+    return null;
+  }
+  const loginMethod = normalizeCodexAppServerLoginMethod(activeRuntime.loginMethod) || codexAppServerDefaultLoginMethod;
+  return {
+    method: loginMethod,
+    title: loginMethod === codexAppServerLoginMethodBrowserRedirect ? "ChatGPT browser login required" : "ChatGPT device login required",
+    url: activeRuntime.loginUrl,
+    userCode: activeRuntime.loginUserCode || "",
   };
 }
 

@@ -1582,6 +1582,7 @@ dd {
   align-items: end;
 }
 
+.codex-app-server-login-bar,
 .codex-app-server-request-bar {
   min-width: 0;
   display: grid;
@@ -1592,6 +1593,11 @@ dd {
   border: 1px solid color-mix(in srgb, var(--status-needs-approval) 44%, var(--line));
   border-radius: 8px;
   background: color-mix(in srgb, var(--surface-input) 82%, var(--status-needs-approval));
+}
+
+.codex-app-server-login-bar {
+  border-color: color-mix(in srgb, var(--accent) 44%, var(--line));
+  background: color-mix(in srgb, var(--surface-input) 88%, var(--accent));
 }
 
 .codex-app-server-request-copy {
@@ -1971,6 +1977,7 @@ dd {
     flex-wrap: wrap;
   }
 
+  .codex-app-server-login-bar,
   .codex-app-server-request-bar {
     grid-template-columns: 1fr;
   }

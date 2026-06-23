@@ -41,6 +41,7 @@ export function InputComposer({
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const isInputLocked = Boolean(task?.inputLockedAt);
   const isCodexAppServerTask = task?.agentProfileId === "codex-app-server";
+  const codexAppServerLogin = task?.codexAppServerLogin ?? null;
   const codexAppServerRequest = task?.codexAppServerRequest ?? null;
   const isCodexAppServerTurnActive = Boolean(isCodexAppServerTask && task?.codexAppServerTurnActive);
   const canInteractWithRunningTask = Boolean(task && task.status === "running" && isConnected);
@@ -174,6 +175,20 @@ export function InputComposer({
     });
   };
 
+  const openCodexAppServerLogin = () => {
+    if (!codexAppServerLogin?.url) {
+      return;
+    }
+    window.open(codexAppServerLogin.url, "_blank", "noopener,noreferrer");
+  };
+
+  const copyCodexAppServerLoginCode = async () => {
+    if (!codexAppServerLogin?.userCode) {
+      return;
+    }
+    await navigator.clipboard?.writeText(codexAppServerLogin.userCode);
+  };
+
   const stopCodexAppServerTurn = () => {
     if (!task || !canStopCodexAppServerTurn) {
       return;
@@ -232,6 +247,24 @@ export function InputComposer({
 
   return (
     <form className="input-composer" data-input-state={inputState} onSubmit={handleSubmit}>
+      {codexAppServerLogin ? (
+        <div className="codex-app-server-login-bar">
+          <div className="codex-app-server-request-copy">
+            <strong>{codexAppServerLogin.title}</strong>
+            {codexAppServerLogin.userCode ? <span title={codexAppServerLogin.userCode}>Code: {codexAppServerLogin.userCode}</span> : null}
+          </div>
+          <div className="codex-app-server-request-actions">
+            {codexAppServerLogin.userCode ? (
+              <Button onClick={copyCodexAppServerLoginCode} size="sm" type="button" variant="secondary">
+                Copy code
+              </Button>
+            ) : null}
+            <Button onClick={openCodexAppServerLogin} size="sm" type="button" variant="panel">
+              Open login
+            </Button>
+          </div>
+        </div>
+      ) : null}
       {codexAppServerRequest ? (
         <div className="codex-app-server-request-bar">
           <div className="codex-app-server-request-copy">
