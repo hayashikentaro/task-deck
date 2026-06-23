@@ -1041,7 +1041,6 @@ dd {
 }
 
 .task-updated,
-.task-command,
 .task-cwd,
 .task-work-package {
   min-width: 0;
@@ -1058,15 +1057,90 @@ dd {
   text-align: right;
 }
 
-.task-command {
-  color: var(--text-secondary);
-}
-
 .task-badge-row {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
   align-items: center;
+}
+
+.task-human-signal,
+.task-detail-state {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.task-human-signal[data-kind="supervision-needs_you"] {
+  border-color: color-mix(in srgb, var(--status-needs-input) 76%, var(--line));
+  background: color-mix(in srgb, var(--status-needs-input) 10%, transparent);
+  color: var(--status-needs-input);
+}
+
+.task-human-signal[data-kind="supervision-not_now"] {
+  border-color: color-mix(in srgb, var(--status-ready) 38%, var(--line));
+  background: color-mix(in srgb, var(--status-ready) 5%, transparent);
+  color: color-mix(in srgb, var(--status-ready) 58%, var(--status-muted));
+}
+
+.task-detail-state {
+  border-color: color-mix(in srgb, var(--status-muted) 42%, var(--line));
+  color: color-mix(in srgb, var(--status-muted) 72%, var(--text-secondary));
+}
+
+.task-detail-state[data-kind="attention-needs_input"],
+.task-detail-state[data-kind="agent-waiting_input"] {
+  border-color: color-mix(in srgb, var(--status-needs-input) 44%, var(--line));
+  color: color-mix(in srgb, var(--status-needs-input) 72%, var(--text-secondary));
+}
+
+.task-detail-state[data-kind="attention-needs_approval"],
+.task-detail-state[data-kind="agent-waiting_approval"] {
+  border-color: color-mix(in srgb, var(--status-needs-approval) 44%, var(--line));
+  color: color-mix(in srgb, var(--status-needs-approval) 72%, var(--text-secondary));
+}
+
+.task-detail-state[data-kind="attention-review_ready"],
+.task-detail-state[data-kind="agent-review_ready"] {
+  border-color: color-mix(in srgb, var(--status-review-ready) 50%, var(--line));
+  color: color-mix(in srgb, var(--status-review-ready) 78%, var(--text-secondary));
+}
+
+.task-detail-state[data-kind="attention-failed"],
+.task-detail-state[data-kind="process-failed"],
+.task-detail-state[data-kind="agent-failed"] {
+  border-color: color-mix(in srgb, var(--status-failed) 54%, var(--line));
+  color: color-mix(in srgb, var(--status-failed) 82%, var(--text-secondary));
+}
+
+.task-detail-state[data-kind="process-succeeded"],
+.task-detail-state[data-kind="agent-done"] {
+  border-color: color-mix(in srgb, var(--status-done) 48%, var(--line));
+  color: color-mix(in srgb, var(--status-done) 78%, var(--text-secondary));
+}
+
+.task-detail-state[data-kind="process-interrupted"],
+.task-detail-state[data-kind="process-closed"],
+.task-detail-state[data-kind="agent-stopped"] {
+  border-color: color-mix(in srgb, var(--status-stopped) 48%, var(--line));
+  color: color-mix(in srgb, var(--status-stopped) 78%, var(--text-secondary));
+}
+
+.task-detail-state[data-kind="agent-starting"],
+.task-detail-state[data-kind="agent-thinking"] {
+  border-color: color-mix(in srgb, var(--status-thinking) 44%, var(--line));
+  color: color-mix(in srgb, var(--status-thinking) 72%, var(--text-secondary));
+}
+
+.task-detail-state[data-kind="agent-ready"],
+.task-detail-state[data-kind="agent-working"] {
+  border-color: color-mix(in srgb, var(--status-working) 42%, var(--line));
+  color: color-mix(in srgb, var(--status-working) 72%, var(--text-secondary));
 }
 
 .task-badge {
@@ -1077,20 +1151,6 @@ dd {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-}
-
-.task-badge[data-kind="status"] {
-  color: var(--status-muted);
-}
-
-.task-badge[data-kind="agent-profile"] {
-  max-width: 112px;
-  overflow: hidden;
-  border-color: color-mix(in srgb, var(--task-card-border) 70%, var(--line));
-  background: color-mix(in srgb, var(--task-card-wash) 42%, var(--surface-raised));
-  color: var(--text-secondary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .task-badge[data-kind^="process-"] {
@@ -2050,12 +2110,6 @@ dd {
 .task-meta-spacer {
   flex: 1 1 auto;
   min-width: 6px;
-}
-
-.task-meta-separator {
-  flex: 0 0 auto;
-  color: var(--status-muted);
-  font-size: 12px;
 }
 
 .task-action-error {

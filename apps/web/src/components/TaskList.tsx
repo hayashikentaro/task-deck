@@ -274,14 +274,11 @@ export function TaskList({
                     <span className="task-title">{taskDisplayName(task)}</span>
                   </span>
                   <span className="task-badge-row">
-                    <span className="task-badge" data-kind="agent-profile" title={agentBadgeTitle(task)}>
-                      {agentBadgeLabel(task)}
-                    </span>
-                    <span className="task-badge" data-kind={stateBadge.kind} title={stateBadge.title}>
-                      {stateBadge.label}
-                    </span>
-                    <span className="task-badge" data-kind={`supervision-${bucket}`} title={supervisionTitle(task)}>
+                    <span className="task-human-signal" data-kind={`supervision-${bucket}`} title={supervisionTitle(task)}>
                       {supervisionBucketLabel(bucket)}
+                    </span>
+                    <span className="task-detail-state" data-kind={stateBadge.kind} title={stateBadge.title}>
+                      {stateBadge.label}
                     </span>
                     {task.isManager ? (
                       <span className="task-badge" data-kind="manager-session" title="TaskDeck manager session">
@@ -311,10 +308,6 @@ export function TaskList({
                   <span className="task-card-meta">
                     <span className="task-cwd" title={task.cwd}>
                       {workspaceLabel(task.cwd)}
-                    </span>
-                    <span className="task-meta-separator">·</span>
-                    <span className="task-command" title={task.command}>
-                      {task.agentLabel || agentOrCommandLabel(task.command)}
                     </span>
                     <span className="task-meta-spacer" />
                     <span className="task-updated">{formatTime(task.updatedAt)}</span>
@@ -581,35 +574,12 @@ function childReportedStatusTitle(task: Task) {
   return `Reported ${state}${summary}`;
 }
 
-function agentBadgeLabel(task: Task) {
-  const profileId = String(task.agentProfileId || "").trim();
-  if (profileId === "codex-app-server") return "App Server";
-  if (profileId === "zsh-host") return "zsh host";
-  return task.agentLabel || agentOrCommandLabel(task.command);
-}
-
-function agentBadgeTitle(task: Task) {
-  const profileId = String(task.agentProfileId || "").trim();
-  const label = task.agentLabel || agentOrCommandLabel(task.command);
-  return profileId ? `${label} (${profileId})` : label;
-}
-
 function taskDisplayName(task: Task) {
   return displayTaskTitle(task.sessionLabel || task.title);
 }
 
 function displayTaskTitle(title: string | undefined) {
   return String(title || "").trim().replace(/^(?:Resume saved:\s*)+/i, "") || "Untitled task";
-}
-
-function agentOrCommandLabel(command: string) {
-  const lowered = command.toLowerCase();
-  if (/\bcodex\b/.test(lowered)) return "Codex";
-  return shortCommand(command);
-}
-
-function shortCommand(command: string) {
-  return command.length > 54 ? `${command.slice(0, 51)}...` : command;
 }
 
 function workspaceLabel(cwd: string) {
