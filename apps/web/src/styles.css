@@ -1315,6 +1315,11 @@ dd {
   color: var(--status-focus);
 }
 
+.task-badge[data-kind="decision-pending"] {
+  border-color: color-mix(in srgb, var(--status-review-ready) 70%, var(--line));
+  color: var(--status-review-ready);
+}
+
 .task-badge[data-kind="risk-medium"] {
   border-color: var(--status-risk-medium);
   color: var(--status-risk-medium);
@@ -2367,6 +2372,11 @@ dd {
 }
 
 .task-decision-received {
+  display: grid;
+  gap: 5px;
+}
+
+.task-decision-pending {
   display: grid;
   gap: 5px;
 }

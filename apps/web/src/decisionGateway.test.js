@@ -3,8 +3,12 @@ import {
   buildTaskDeckDecisionRequest,
   boundedDecisionGatewayContextField,
   boundedDecisionGatewayRecentOutput,
+  createDecisionGatewayDecisionLease,
+  isDecisionGatewayDecisionLeaseExpired,
+  markDecisionGatewayDecisionLeaseReceived,
   normalizeDecisionGatewayMailboxItem,
   normalizeDecisionGatewayUrl,
+  validateDecisionGatewayMailboxItemAgainstLease,
 } from "@taskdeck/core/decision-gateway";
 
 describe("Decision Gateway connector helpers", () => {
@@ -136,5 +140,103 @@ describe("Decision Gateway connector helpers", () => {
         },
       }),
     ).toBeNull();
+  });
+
+  it("creates a pending Decision Gateway decision lease", () => {
+    const lease = createDecisionGatewayDecisionLease({
+      leaseId: "lease_123",
+      decisionGatewayDecisionId: "decision_123",
+      decisionGatewayUrl: "http://localhost:3000/decisions/decision_123",
+      requestId: "request_123",
+      taskId: "task_123",
+      sessionId: "session_123",
+      taskdeckInstanceId: "taskdeck_123",
+      createdAt: "2026-06-24T00:00:00.000Z",
+      ttlMs: 30 * 60 * 1000,
+    });
+
+    expect(lease).toMatchObject({
+      leaseId: "lease_123",
+      decisionGatewayDecisionId: "decision_123",
+      decisionGatewayUrl: "http://localhost:3000/decisions/decision_123",
+      requestId: "request_123",
+      taskId: "task_123",
+      sessionId: "session_123",
+      taskdeckInstanceId: "taskdeck_123",
+      status: "pending",
+      createdAt: "2026-06-24T00:00:00.000Z",
+      expiresAt: "2026-06-24T00:30:00.000Z",
+    });
+  });
+
+  it("classifies a mailbox item matching a pending lease as valid", () => {
+    const lease = createDecisionGatewayDecisionLease({
+      leaseId: "lease_123",
+      requestId: "request_123",
+      taskId: "task_123",
+      sessionId: "session_123",
+      taskdeckInstanceId: "taskdeck_123",
+      createdAt: "2026-06-24T00:00:00.000Z",
+    });
+    const validation = validateDecisionGatewayMailboxItemAgainstLease(
+      { requestId: "request_123", taskId: "task_123", sessionId: "session_123" },
+      lease,
+      {
+        now: "2026-06-24T00:05:00.000Z",
+        taskExists: true,
+        taskSessionId: "session_123",
+      },
+    );
+
+    expect(validation.validationStatus).toBe("valid");
+  });
+
+  it("classifies a mailbox item without a lease as unmatched", () => {
+    const validation = validateDecisionGatewayMailboxItemAgainstLease(
+      { requestId: "request_missing", taskId: "task_123" },
+      null,
+    );
+
+    expect(validation.validationStatus).toBe("unmatched");
+  });
+
+  it("classifies an expired lease as stale", () => {
+    const lease = createDecisionGatewayDecisionLease({
+      leaseId: "lease_123",
+      requestId: "request_123",
+      taskId: "task_123",
+      taskdeckInstanceId: "taskdeck_123",
+      createdAt: "2026-06-24T00:00:00.000Z",
+      ttlMs: 1000,
+    });
+
+    expect(isDecisionGatewayDecisionLeaseExpired(lease, "2026-06-24T00:00:02.000Z")).toBe(true);
+    expect(
+      validateDecisionGatewayMailboxItemAgainstLease({ requestId: "request_123", taskId: "task_123" }, lease, {
+        now: "2026-06-24T00:00:02.000Z",
+      }).validationStatus,
+    ).toBe("stale");
+  });
+
+  it("does not mutate received lease state for duplicate mailbox items", () => {
+    const lease = createDecisionGatewayDecisionLease({
+      leaseId: "lease_123",
+      requestId: "request_123",
+      taskId: "task_123",
+      taskdeckInstanceId: "taskdeck_123",
+      createdAt: "2026-06-24T00:00:00.000Z",
+    });
+    const receivedLease = markDecisionGatewayDecisionLeaseReceived(lease, {
+      receivedAt: "2026-06-24T00:10:00.000Z",
+      mailboxItemId: "mail_123",
+      actionType: "accept",
+    });
+    const duplicateResult = markDecisionGatewayDecisionLeaseReceived(receivedLease, {
+      receivedAt: "2026-06-24T00:20:00.000Z",
+      mailboxItemId: "mail_456",
+      actionType: "reject",
+    });
+
+    expect(duplicateResult).toEqual(receivedLease);
   });
 });

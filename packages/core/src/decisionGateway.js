@@ -1,6 +1,20 @@
 export const DECISION_GATEWAY_RECENT_OUTPUT_LIMIT = 4000;
 export const DECISION_GATEWAY_CONTEXT_FIELD_LIMIT = 2000;
 export const DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT = 2000;
+export const DEFAULT_DECISION_GATEWAY_DECISION_LEASE_TTL_MS = 30 * 60 * 1000;
+
+export const DecisionGatewayDecisionLeaseStatus = Object.freeze({
+  PENDING: "pending",
+  RECEIVED: "received",
+  EXPIRED: "expired",
+  CANCELLED: "cancelled",
+});
+
+export const DecisionGatewayMailboxValidationStatus = Object.freeze({
+  VALID: "valid",
+  UNMATCHED: "unmatched",
+  STALE: "stale",
+});
 
 const redactionPatterns = [
   {
@@ -182,6 +196,184 @@ export function normalizeDecisionGatewayMailboxItem(value, { receivedAt = new Da
   };
 }
 
+export function createDecisionGatewayDecisionLease({
+  leaseId,
+  decisionGatewayDecisionId = "",
+  decisionGatewayUrl = "",
+  requestId,
+  taskId,
+  sessionId = "",
+  taskdeckInstanceId,
+  createdAt = new Date().toISOString(),
+  ttlMs = DEFAULT_DECISION_GATEWAY_DECISION_LEASE_TTL_MS,
+}) {
+  const normalizedLeaseId = normalizedString(leaseId);
+  const normalizedRequestId = normalizedString(requestId);
+  const normalizedTaskId = normalizedString(taskId);
+  const normalizedTaskdeckInstanceId = normalizedString(taskdeckInstanceId);
+  const rawCreatedAt = normalizedString(createdAt);
+  const createdAtTimestamp = Date.parse(rawCreatedAt);
+  const normalizedCreatedAt = Number.isFinite(createdAtTimestamp) ? rawCreatedAt : new Date().toISOString();
+  const normalizedTtlMs = normalizePositiveDurationMs(ttlMs, DEFAULT_DECISION_GATEWAY_DECISION_LEASE_TTL_MS);
+
+  if (!normalizedLeaseId || !normalizedRequestId || !normalizedTaskId || !normalizedTaskdeckInstanceId) {
+    return null;
+  }
+
+  return {
+    leaseId: normalizedLeaseId,
+    decisionGatewayDecisionId: normalizedString(decisionGatewayDecisionId),
+    decisionGatewayUrl: normalizedString(decisionGatewayUrl),
+    requestId: normalizedRequestId,
+    taskId: normalizedTaskId,
+    sessionId: normalizedString(sessionId),
+    taskdeckInstanceId: normalizedTaskdeckInstanceId,
+    status: DecisionGatewayDecisionLeaseStatus.PENDING,
+    createdAt: normalizedCreatedAt,
+    expiresAt: new Date(Date.parse(normalizedCreatedAt) + normalizedTtlMs).toISOString(),
+    receivedAt: "",
+    mailboxItemId: "",
+    actionType: "",
+  };
+}
+
+export function normalizeDecisionGatewayDecisionLease(value) {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+
+  const leaseId = normalizedString(value.leaseId);
+  const requestId = normalizedString(value.requestId);
+  const taskId = normalizedString(value.taskId);
+  const taskdeckInstanceId = normalizedString(value.taskdeckInstanceId);
+  if (!leaseId || !requestId || !taskId || !taskdeckInstanceId) {
+    return null;
+  }
+
+  const status = Object.values(DecisionGatewayDecisionLeaseStatus).includes(value.status)
+    ? value.status
+    : DecisionGatewayDecisionLeaseStatus.PENDING;
+
+  return {
+    leaseId,
+    decisionGatewayDecisionId: normalizedString(value.decisionGatewayDecisionId || value.decisionRequestId),
+    decisionGatewayUrl: normalizedString(value.decisionGatewayUrl),
+    requestId,
+    taskId,
+    sessionId: normalizedString(value.sessionId),
+    taskdeckInstanceId,
+    status,
+    createdAt: normalizedString(value.createdAt || value.sentAt),
+    expiresAt: normalizedString(value.expiresAt),
+    receivedAt: normalizedString(value.receivedAt),
+    mailboxItemId: normalizedString(value.mailboxItemId || value.receivedMailboxItemId),
+    actionType: normalizedString(value.actionType),
+  };
+}
+
+export function validateDecisionGatewayMailboxItemAgainstLease(
+  mailboxItem,
+  lease,
+  {
+    now = new Date().toISOString(),
+    taskExists = true,
+    taskSessionId = "",
+  } = {},
+) {
+  if (!lease) {
+    return {
+      validationStatus: DecisionGatewayMailboxValidationStatus.UNMATCHED,
+      validationReason: "Mailbox requestId does not match a local pending Decision Gateway lease.",
+    };
+  }
+
+  if (lease.status === DecisionGatewayDecisionLeaseStatus.EXPIRED || isDecisionGatewayDecisionLeaseExpired(lease, now)) {
+    return {
+      validationStatus: DecisionGatewayMailboxValidationStatus.STALE,
+      validationReason: "The local Decision Gateway decision lease is expired.",
+    };
+  }
+
+  if (lease.status === DecisionGatewayDecisionLeaseStatus.CANCELLED) {
+    return {
+      validationStatus: DecisionGatewayMailboxValidationStatus.STALE,
+      validationReason: "The local Decision Gateway decision lease was cancelled.",
+    };
+  }
+
+  if (lease.status !== DecisionGatewayDecisionLeaseStatus.PENDING) {
+    return {
+      validationStatus: DecisionGatewayMailboxValidationStatus.STALE,
+      validationReason: "The local Decision Gateway decision lease was already resolved.",
+    };
+  }
+
+  if (!taskExists) {
+    return {
+      validationStatus: DecisionGatewayMailboxValidationStatus.UNMATCHED,
+      validationReason: "Mailbox taskId does not match a local TaskDeck task.",
+    };
+  }
+
+  const mailboxTaskId = normalizedString(mailboxItem?.taskId);
+  if (mailboxTaskId && lease.taskId && mailboxTaskId !== lease.taskId) {
+    return {
+      validationStatus: DecisionGatewayMailboxValidationStatus.UNMATCHED,
+      validationReason: "Mailbox taskId does not match the local Decision Gateway decision lease.",
+    };
+  }
+
+  const mailboxSessionId = normalizedString(mailboxItem?.sessionId);
+  const expectedSessionId = normalizedString(lease.sessionId);
+  const currentTaskSessionId = normalizedString(taskSessionId);
+
+  if (mailboxSessionId && expectedSessionId && mailboxSessionId !== expectedSessionId) {
+    return {
+      validationStatus: DecisionGatewayMailboxValidationStatus.UNMATCHED,
+      validationReason: "Mailbox sessionId does not match the local Decision Gateway decision lease.",
+    };
+  }
+
+  if (mailboxSessionId && currentTaskSessionId && mailboxSessionId !== currentTaskSessionId) {
+    return {
+      validationStatus: DecisionGatewayMailboxValidationStatus.UNMATCHED,
+      validationReason: "Mailbox sessionId does not match the local TaskDeck task session.",
+    };
+  }
+
+  if (expectedSessionId && currentTaskSessionId && expectedSessionId !== currentTaskSessionId) {
+    return {
+      validationStatus: DecisionGatewayMailboxValidationStatus.UNMATCHED,
+      validationReason: "Decision lease sessionId does not match the local TaskDeck task session.",
+    };
+  }
+
+  return {
+    validationStatus: DecisionGatewayMailboxValidationStatus.VALID,
+    validationReason: "Mailbox item matches a pending local Decision Gateway decision lease.",
+  };
+}
+
+export function markDecisionGatewayDecisionLeaseReceived(lease, { receivedAt, mailboxItemId, actionType }) {
+  if (!lease || lease.status !== DecisionGatewayDecisionLeaseStatus.PENDING) {
+    return lease;
+  }
+
+  return {
+    ...lease,
+    status: DecisionGatewayDecisionLeaseStatus.RECEIVED,
+    receivedAt: normalizedString(receivedAt) || new Date().toISOString(),
+    mailboxItemId: normalizedString(mailboxItemId),
+    actionType: normalizedString(actionType),
+  };
+}
+
+export function isDecisionGatewayDecisionLeaseExpired(lease, now = new Date().toISOString()) {
+  const expiresAt = Date.parse(String(lease?.expiresAt || ""));
+  const nowTimestamp = Date.parse(String(now || ""));
+  return Number.isFinite(expiresAt) && Number.isFinite(nowTimestamp) && expiresAt <= nowTimestamp;
+}
+
 function decisionQuestionForTask(task) {
   const title = boundedDecisionGatewayContextField(String(task?.sessionLabel || task?.title || "").trim(), 500);
   if (title) {
@@ -197,4 +389,12 @@ function normalizedString(value) {
 
 function isPlainObject(value) {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function normalizePositiveDurationMs(value, fallback) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    return fallback;
+  }
+  return Math.floor(numericValue);
 }

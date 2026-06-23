@@ -1,6 +1,6 @@
 import { FormEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { taskIdentityCssProperties } from "../taskIdentity";
-import type { AttentionState, DecisionGatewayMailboxItem, Task } from "../types";
+import type { AttentionState, DecisionGatewayDecisionLease, DecisionGatewayMailboxItem, Task } from "../types";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
 
@@ -216,6 +216,10 @@ export function TaskList({
           const isNativeSubagent = isNativeSubagentTask(task);
           const decisionRequestState = decisionRequestByTaskId[task.id] ?? null;
           const latestDecisionResult = latestDecisionResultForTask(task);
+          const latestDecisionLease = latestDecisionLeaseForTask(task);
+          const hasPendingDecisionLease = latestDecisionLease?.status === "pending" && !latestDecisionResult;
+          const hasLocalDecisionUrl =
+            decisionRequestState?.status === "sent" && Boolean(decisionRequestState.decisionUrl);
           const inputLockLabel = isNativeSubagent
             ? "Native subagent input is read-only"
             : isInputLocked
@@ -359,6 +363,11 @@ export function TaskList({
                         Decision received
                       </span>
                     ) : null}
+                    {hasPendingDecisionLease ? (
+                      <span className="task-badge" data-kind="decision-pending" title={decisionLeaseTitle(latestDecisionLease)}>
+                        Decision pending
+                      </span>
+                    ) : null}
                   </span>
                   <span className="task-card-meta">
                     <span className="task-cwd" title={task.cwd}>
@@ -396,13 +405,13 @@ export function TaskList({
                   </span>
                 </div>
               )}
-              {decisionRequestState?.status === "sent" && decisionRequestState.decisionUrl ? (
+              {hasLocalDecisionUrl ? (
                 <div
                   className="task-action-status task-decision-gateway-result"
                   data-kind="success"
                   onClick={(event) => event.stopPropagation()}
                 >
-                  <span>Decision request sent</span>
+                  <span>Decision pending</span>
                   <a
                     className="task-decision-gateway-url"
                     href={decisionRequestState.decisionUrl}
@@ -432,6 +441,14 @@ export function TaskList({
                   <span className="task-decision-received-detail">
                     {decisionActionLabel(latestDecisionResult.actionType)}
                     <span>{formatDecisionDateTime(latestDecisionResult.decidedAt || latestDecisionResult.receivedAt)}</span>
+                  </span>
+                </div>
+              ) : null}
+              {hasPendingDecisionLease && !hasLocalDecisionUrl ? (
+                <div className="task-action-status task-decision-pending" data-kind="decision">
+                  <span>Decision pending</span>
+                  <span className="task-decision-received-detail">
+                    Expires {formatDecisionDateTime(latestDecisionLease?.expiresAt)}
                   </span>
                 </div>
               ) : null}
@@ -599,11 +616,25 @@ function childReportedStatusTitle(task: Task) {
 
 function latestDecisionResultForTask(task: Task) {
   const results = Array.isArray(task.decisionResults) ? task.decisionResults : [];
-  return results.find((item) => item.validationStatus !== "unmatched") ?? null;
+  return results.find((item) => item.validationStatus === "valid") ?? null;
+}
+
+function latestDecisionLeaseForTask(task: Task) {
+  const leases = Array.isArray(task.decisionLeases) ? task.decisionLeases : [];
+  return leases.find((item) => item.status === "pending" || item.status === "received") ?? leases[0] ?? null;
 }
 
 function decisionResultTitle(item: DecisionGatewayMailboxItem) {
   return [item.validationReason, item.condition, item.reason].filter(Boolean).join(" ");
+}
+
+function decisionLeaseTitle(item: DecisionGatewayDecisionLease | null) {
+  if (!item) {
+    return "Decision pending";
+  }
+  return ["Decision pending", item.requestId ? `request ${item.requestId}` : "", item.expiresAt ? `expires ${item.expiresAt}` : ""]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function decisionActionLabel(value: string | undefined) {

@@ -61,9 +61,17 @@ import {
   createManagerReadableEventsDocument,
 } from "@taskdeck/core/manager-readable";
 import {
+  DEFAULT_DECISION_GATEWAY_DECISION_LEASE_TTL_MS,
+  DecisionGatewayDecisionLeaseStatus,
+  DecisionGatewayMailboxValidationStatus,
   buildTaskDeckDecisionRequest,
+  createDecisionGatewayDecisionLease,
+  isDecisionGatewayDecisionLeaseExpired,
+  markDecisionGatewayDecisionLeaseReceived,
+  normalizeDecisionGatewayDecisionLease,
   normalizeDecisionGatewayMailboxItem,
   normalizeDecisionGatewayUrl,
+  validateDecisionGatewayMailboxItemAgainstLease,
 } from "@taskdeck/core/decision-gateway";
 
 const execFileAsync = promisify(execFile);
@@ -78,6 +86,7 @@ const presetStorePath = path.join(dataRoot, "presets.json");
 const sessionLabelStorePath = path.join(dataRoot, "session-labels.json");
 const taskdeckInstanceStorePath = path.join(dataRoot, "taskdeck-instance.json");
 const decisionGatewayMailboxStorePath = path.join(dataRoot, "decision-gateway-mailbox.json");
+const decisionGatewayLeaseStorePath = path.join(dataRoot, "decision-gateway-leases.json");
 const logRoot = path.join(dataRoot, "logs");
 const attachmentRoot = path.join(dataRoot, "attachments");
 const pendingAttachmentRoot = path.join(attachmentRoot, "pending");
@@ -115,7 +124,7 @@ const codexAppServerOnlyTaskError =
   "TaskDeck now only starts Codex App Server tasks while the App Server thread model is being rebuilt.";
 const decisionGatewayMailboxLimit = 20;
 const decisionGatewayMailboxValidationStatuses = new Set(["valid", "unmatched", "stale"]);
-const decisionGatewayRequestStatuses = new Set(["pending", "received"]);
+const decisionGatewayDecisionLeaseStatuses = new Set(["pending", "received", "expired", "cancelled"]);
 const defaultAgentProfiles = [
   {
     id: codexAppServerAgentProfileId,
@@ -140,6 +149,10 @@ const decisionGatewayMailboxPollIntervalMs = normalizePositiveInteger(
   process.env.DECISION_GATEWAY_MAILBOX_POLL_MS,
   30_000,
 );
+const decisionGatewayDecisionLeaseTtlMs = normalizePositiveInteger(
+  process.env.DECISION_GATEWAY_DECISION_LEASE_TTL_MS,
+  DEFAULT_DECISION_GATEWAY_DECISION_LEASE_TTL_MS,
+);
 
 const clients = new Set();
 const tasks = new Map();
@@ -148,7 +161,7 @@ const taskLogWriteQueues = new Map();
 const taskOutputSequences = new Map();
 const sessionLabels = new Map();
 const decisionGatewayMailboxItems = new Map();
-const decisionGatewayRequestRecords = new Map();
+const decisionGatewayDecisionLeases = new Map();
 let presets = [];
 let outputSequence = 0;
 const maxLogLength = 250_000;
@@ -173,6 +186,7 @@ let persistTasksQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
 let persistSessionLabelsQueue = Promise.resolve();
 let persistDecisionGatewayMailboxQueue = Promise.resolve();
+let persistDecisionGatewayLeasesQueue = Promise.resolve();
 let childStatusPollInFlight = false;
 let decisionGatewayMailboxPollInFlight = false;
 let decisionGatewayMailboxPollWarning = "";
@@ -215,6 +229,7 @@ app.get("/api/context", async (_request, response) => {
       url: decisionGatewayUrl,
       mailboxPollingEnabled: Boolean(decisionGatewayUrl),
       mailboxPollIntervalMs: decisionGatewayMailboxPollIntervalMs,
+      decisionLeaseTtlMs: decisionGatewayDecisionLeaseTtlMs,
     },
   });
 });
@@ -280,7 +295,8 @@ app.use("/api/attachments", (error, _request, response, next) => {
   next(error);
 });
 
-app.get("/api/tasks", (_request, response) => {
+app.get("/api/tasks", async (_request, response) => {
+  await expirePendingDecisionGatewayLeases();
   response.json({
     tasks: listTasks(),
     runningTaskId: getPrimaryRunningTaskId(),
@@ -524,13 +540,16 @@ app.post("/api/tasks/:taskId/decision-request", async (request, response) => {
     const decisionId = String(payload?.id || "");
     const requestId = String(payload?.requestId || "");
     if (requestId) {
-      await recordDecisionGatewayPendingRequest({
+      const taskdeckInstanceId = await readOrCreateTaskDeckInstanceId();
+      await recordDecisionGatewayPendingLease({
+        decisionGatewayDecisionId: decisionId,
+        decisionGatewayUrl: decisionUrl,
         requestId,
-        decisionRequestId: decisionId,
         taskId: task.id,
         sessionId: String(task.agentSessionId || "").trim(),
+        taskdeckInstanceId,
       }).catch((error) => {
-        console.warn(`TaskDeck could not record Decision Gateway request ${requestId}: ${error.message}`);
+        console.warn(`TaskDeck could not record Decision Gateway decision lease ${requestId}: ${error.message}`);
       });
     }
 
@@ -610,12 +629,23 @@ app.post("/api/decision-gateway/pairing-requests", async (_request, response) =>
   }
 });
 
-app.get("/api/decision-gateway/mailbox/local", (_request, response) => {
+app.get("/api/decision-gateway/mailbox/local", async (_request, response) => {
+  await expirePendingDecisionGatewayLeases();
   response.json({
     configured: Boolean(decisionGatewayUrl),
     mailboxPollingEnabled: Boolean(decisionGatewayUrl),
     mailboxPollIntervalMs: decisionGatewayMailboxPollIntervalMs,
     items: listDecisionGatewayMailboxItemsForClient(),
+  });
+});
+
+app.get("/api/decision-gateway/leases/local", async (_request, response) => {
+  await expirePendingDecisionGatewayLeases();
+  response.json({
+    configured: Boolean(decisionGatewayUrl),
+    leaseTtlMs: decisionGatewayDecisionLeaseTtlMs,
+    storePath: decisionGatewayLeaseStorePath,
+    leases: listDecisionGatewayLeasesForClient(),
   });
 });
 
@@ -4106,6 +4136,7 @@ async function pollDecisionGatewayMailbox() {
 
   decisionGatewayMailboxPollInFlight = true;
   try {
+    await expirePendingDecisionGatewayLeases();
     const taskdeckInstanceId = await readOrCreateTaskDeckInstanceId();
     const rawItems = await fetchDecisionGatewayMailboxItems(taskdeckInstanceId);
     let changed = false;
@@ -4243,13 +4274,13 @@ async function recordDecisionGatewayMailboxItem(rawItem) {
     return { ok: true, record: existingRecord, recorded: false, changed: false };
   }
 
-  const linkedRequestRecord = normalizedItem.requestId
-    ? decisionGatewayRequestRecords.get(normalizedItem.requestId)
+  const linkedLease = normalizedItem.requestId
+    ? decisionGatewayDecisionLeases.get(normalizedItem.requestId)
     : null;
   const recordBase = {
     ...normalizedItem,
-    taskId: normalizedItem.taskId || linkedRequestRecord?.taskId || "",
-    sessionId: normalizedItem.sessionId || linkedRequestRecord?.sessionId || "",
+    taskId: normalizedItem.taskId || linkedLease?.taskId || "",
+    sessionId: normalizedItem.sessionId || linkedLease?.sessionId || "",
   };
   const validation = validateDecisionGatewayMailboxRecord(recordBase);
   const record = {
@@ -4259,19 +4290,21 @@ async function recordDecisionGatewayMailboxItem(rawItem) {
     ackedAt: "",
     ackError: "",
   };
-  const previousRequestRecord = record.requestId ? decisionGatewayRequestRecords.get(record.requestId) : undefined;
+  const previousLease = record.requestId ? decisionGatewayDecisionLeases.get(record.requestId) : undefined;
 
   decisionGatewayMailboxItems.set(record.mailboxItemId, record);
-  markDecisionGatewayRequestReceived(record);
+  if (record.validationStatus === DecisionGatewayMailboxValidationStatus.VALID) {
+    markDecisionGatewayLeaseReceived(record);
+  }
   try {
-    await persistDecisionGatewayMailbox();
+    await Promise.all([persistDecisionGatewayMailbox(), persistDecisionGatewayLeases()]);
   } catch (error) {
     decisionGatewayMailboxItems.delete(record.mailboxItemId);
     if (record.requestId) {
-      if (previousRequestRecord) {
-        decisionGatewayRequestRecords.set(record.requestId, previousRequestRecord);
+      if (previousLease) {
+        decisionGatewayDecisionLeases.set(record.requestId, previousLease);
       } else {
-        decisionGatewayRequestRecords.delete(record.requestId);
+        decisionGatewayDecisionLeases.delete(record.requestId);
       }
     }
     throw error;
@@ -4283,120 +4316,95 @@ async function recordDecisionGatewayMailboxItem(rawItem) {
 function validateDecisionGatewayMailboxRecord(record) {
   const taskId = String(record.taskId || "").trim();
   const requestId = String(record.requestId || "").trim();
-  const sessionId = String(record.sessionId || "").trim();
-  const requestRecord = requestId ? decisionGatewayRequestRecords.get(requestId) : null;
+  const lease = requestId ? decisionGatewayDecisionLeases.get(requestId) : null;
 
-  if (taskId && !tasks.has(taskId)) {
+  if (!requestId || !lease) {
     return {
       validationStatus: "unmatched",
-      validationReason: "Mailbox taskId does not match a local TaskDeck task.",
+      validationReason: "Mailbox requestId does not match a local pending Decision Gateway lease.",
     };
   }
 
-  if (requestId && !requestRecord) {
-    return {
-      validationStatus: "unmatched",
-      validationReason: "Mailbox requestId does not match a recorded pending Decision Gateway request.",
-    };
-  }
-
-  const resolvedTaskId = taskId || requestRecord?.taskId || "";
+  const resolvedTaskId = taskId || lease.taskId || "";
   const task = resolvedTaskId ? tasks.get(resolvedTaskId) : null;
-  if (!task) {
-    return {
-      validationStatus: "unmatched",
-      validationReason: "Mailbox item does not identify a known local TaskDeck task.",
-    };
+  const validation = validateDecisionGatewayMailboxItemAgainstLease(record, lease, {
+    taskExists: Boolean(task),
+    taskSessionId: task?.agentSessionId || "",
+  });
+  if (validation.validationStatus !== DecisionGatewayMailboxValidationStatus.VALID) {
+    return validation;
   }
-
-  if (requestRecord?.taskId && requestRecord.taskId !== task.id) {
-    return {
-      validationStatus: "unmatched",
-      validationReason: "Mailbox requestId belongs to a different local TaskDeck task.",
-    };
-  }
-
-  if (sessionId) {
-    const taskSessionId = String(task.agentSessionId || "").trim();
-    if (!taskSessionId) {
-      return {
-        validationStatus: "unmatched",
-        validationReason: "Mailbox sessionId cannot be verified against local task metadata.",
-      };
-    }
-    if (taskSessionId !== sessionId) {
-      return {
-        validationStatus: "unmatched",
-        validationReason: "Mailbox sessionId does not match the local TaskDeck task session.",
-      };
-    }
-  }
-
-  if (requestRecord?.sessionId && sessionId && requestRecord.sessionId !== sessionId) {
-    return {
-      validationStatus: "unmatched",
-      validationReason: "Mailbox requestId belongs to a different local TaskDeck session.",
-    };
-  }
-
-  if (requestRecord?.status && requestRecord.status !== "pending") {
-    return {
-      validationStatus: "stale",
-      validationReason: "The local Decision Gateway request was already resolved.",
-    };
-  }
-
-  if (task.status !== TaskStatus.RUNNING) {
+  if (task?.status !== TaskStatus.RUNNING) {
     return {
       validationStatus: "stale",
       validationReason: "The local TaskDeck task is no longer running.",
     };
   }
-
-  return {
-    validationStatus: "valid",
-    validationReason: "Mailbox item matches local task/session metadata.",
-  };
+  return validation;
 }
 
-async function recordDecisionGatewayPendingRequest({ requestId, decisionRequestId = "", taskId = "", sessionId = "" }) {
+async function recordDecisionGatewayPendingLease({
+  decisionGatewayDecisionId = "",
+  decisionGatewayUrl = "",
+  requestId,
+  taskId = "",
+  sessionId = "",
+  taskdeckInstanceId = "",
+}) {
   const normalizedRequestId = String(requestId || "").trim();
   if (!normalizedRequestId) {
     return null;
   }
 
-  const existingRecord = decisionGatewayRequestRecords.get(normalizedRequestId);
+  const existingLease = decisionGatewayDecisionLeases.get(normalizedRequestId);
+  const lease =
+    existingLease ||
+    createDecisionGatewayDecisionLease({
+      leaseId: randomUUID(),
+      decisionGatewayDecisionId,
+      decisionGatewayUrl,
+      requestId: normalizedRequestId,
+      taskId,
+      sessionId,
+      taskdeckInstanceId,
+      ttlMs: decisionGatewayDecisionLeaseTtlMs,
+    });
+
+  if (!lease) {
+    return null;
+  }
+
   const record = {
-    requestId: normalizedRequestId,
-    decisionRequestId: String(decisionRequestId || existingRecord?.decisionRequestId || "").trim(),
-    taskId: String(taskId || existingRecord?.taskId || "").trim(),
-    sessionId: String(sessionId || existingRecord?.sessionId || "").trim(),
-    status: existingRecord?.status === "received" ? "received" : "pending",
-    sentAt: existingRecord?.sentAt || new Date().toISOString(),
-    receivedAt: existingRecord?.receivedAt || "",
-    receivedMailboxItemId: existingRecord?.receivedMailboxItemId || "",
+    ...lease,
+    decisionGatewayDecisionId: String(decisionGatewayDecisionId || lease.decisionGatewayDecisionId || "").trim(),
+    decisionGatewayUrl: String(decisionGatewayUrl || lease.decisionGatewayUrl || "").trim(),
+    taskId: String(taskId || lease.taskId || "").trim(),
+    sessionId: String(sessionId || lease.sessionId || "").trim(),
+    taskdeckInstanceId: String(taskdeckInstanceId || lease.taskdeckInstanceId || "").trim(),
   };
 
-  decisionGatewayRequestRecords.set(record.requestId, record);
-  await persistDecisionGatewayMailbox();
+  decisionGatewayDecisionLeases.set(record.requestId, record);
+  await persistDecisionGatewayLeases();
+  broadcastTasks();
   return record;
 }
 
-function markDecisionGatewayRequestReceived(record) {
+function markDecisionGatewayLeaseReceived(record) {
   if (!record.requestId) {
     return;
   }
-  const requestRecord = decisionGatewayRequestRecords.get(record.requestId);
-  if (!requestRecord || requestRecord.status === "received") {
+  const lease = decisionGatewayDecisionLeases.get(record.requestId);
+  if (!lease || lease.status !== DecisionGatewayDecisionLeaseStatus.PENDING) {
     return;
   }
 
-  decisionGatewayRequestRecords.set(record.requestId, {
-    ...requestRecord,
-    status: "received",
-    receivedAt: record.receivedAt,
-    receivedMailboxItemId: record.mailboxItemId,
-    decisionRequestId: requestRecord.decisionRequestId || record.decisionRequestId,
+  decisionGatewayDecisionLeases.set(record.requestId, {
+    ...markDecisionGatewayDecisionLeaseReceived(lease, {
+      receivedAt: record.receivedAt,
+      mailboxItemId: record.mailboxItemId,
+      actionType: record.actionType,
+    }),
+    decisionGatewayDecisionId: lease.decisionGatewayDecisionId || record.decisionRequestId,
   });
 }
 
@@ -5157,6 +5165,11 @@ function setTask(task) {
 }
 
 function listTasks() {
+  if (markExpiredDecisionGatewayLeases()) {
+    persistDecisionGatewayLeases().catch((error) => {
+      console.warn(`TaskDeck could not persist expired Decision Gateway decision leases: ${error.message}`);
+    });
+  }
   return Array.from(tasks.values()).filter(isTaskVisibleInNormalList).map(serializeTaskForClient).reverse();
 }
 
@@ -5166,6 +5179,25 @@ function listDecisionGatewayMailboxItemsForClient() {
     .map(serializeDecisionGatewayMailboxRecordForClient);
 }
 
+function listDecisionGatewayLeasesForClient() {
+  return Array.from(decisionGatewayDecisionLeases.values())
+    .sort(compareDecisionGatewayLeaseRecordsNewestFirst)
+    .map(serializeDecisionGatewayLeaseForClient);
+}
+
+function decisionGatewayLeasesForTask(taskId) {
+  const normalizedTaskId = String(taskId || "").trim();
+  if (!normalizedTaskId) {
+    return [];
+  }
+
+  return Array.from(decisionGatewayDecisionLeases.values())
+    .filter((record) => record.taskId === normalizedTaskId)
+    .sort(compareDecisionGatewayLeaseRecordsNewestFirst)
+    .slice(0, 3)
+    .map(serializeDecisionGatewayLeaseForClient);
+}
+
 function decisionGatewayMailboxItemsForTask(taskId) {
   const normalizedTaskId = String(taskId || "").trim();
   if (!normalizedTaskId) {
@@ -5173,7 +5205,7 @@ function decisionGatewayMailboxItemsForTask(taskId) {
   }
 
   return Array.from(decisionGatewayMailboxItems.values())
-    .filter((record) => record.taskId === normalizedTaskId && record.validationStatus !== "unmatched")
+    .filter((record) => record.taskId === normalizedTaskId && record.validationStatus === "valid")
     .sort(compareDecisionGatewayMailboxRecordsNewestFirst)
     .slice(0, 3)
     .map(serializeDecisionGatewayMailboxRecordForClient);
@@ -5203,6 +5235,24 @@ function serializeDecisionGatewayMailboxRecordForClient(record) {
   };
 }
 
+function serializeDecisionGatewayLeaseForClient(record) {
+  return {
+    leaseId: record.leaseId,
+    decisionGatewayDecisionId: record.decisionGatewayDecisionId || "",
+    decisionGatewayUrl: record.decisionGatewayUrl || "",
+    requestId: record.requestId || "",
+    taskId: record.taskId || "",
+    sessionId: record.sessionId || "",
+    taskdeckInstanceId: record.taskdeckInstanceId || "",
+    status: decisionGatewayDecisionLeaseStatuses.has(record.status) ? record.status : "pending",
+    createdAt: record.createdAt || "",
+    expiresAt: record.expiresAt || "",
+    receivedAt: record.receivedAt || "",
+    mailboxItemId: record.mailboxItemId || "",
+    actionType: record.actionType || "",
+  };
+}
+
 function compareDecisionGatewayMailboxRecordsNewestFirst(left, right) {
   const leftTimestamp = timestampForDecisionGatewayMailboxRecord(left);
   const rightTimestamp = timestampForDecisionGatewayMailboxRecord(right);
@@ -5217,6 +5267,20 @@ function timestampForDecisionGatewayMailboxRecord(record) {
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
+function compareDecisionGatewayLeaseRecordsNewestFirst(left, right) {
+  const leftTimestamp = timestampForDecisionGatewayLeaseRecord(left);
+  const rightTimestamp = timestampForDecisionGatewayLeaseRecord(right);
+  if (leftTimestamp !== rightTimestamp) {
+    return rightTimestamp - leftTimestamp;
+  }
+  return String(right.leaseId || "").localeCompare(String(left.leaseId || ""));
+}
+
+function timestampForDecisionGatewayLeaseRecord(record) {
+  const timestamp = Date.parse(record.receivedAt || record.createdAt || "");
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
 function serializeTaskForClient(task) {
   if (!task) {
     return null;
@@ -5227,6 +5291,7 @@ function serializeTaskForClient(task) {
     ...serializedTask,
     sessionLabel: taskSessionLabel(task),
     decisionResults: decisionGatewayMailboxItemsForTask(task.id),
+    decisionLeases: decisionGatewayLeasesForTask(task.id),
     codexAppServerRequest: codexAppServerRequestForClient(task.id),
     codexAppServerTurnActive: Boolean(activeAppServer?.turnActive && activeAppServer?.activeTurnId),
   };
@@ -5638,11 +5703,12 @@ async function initializePersistence() {
   await fs.mkdir(logRoot, { recursive: true });
   await fs.mkdir(pendingAttachmentRoot, { recursive: true });
 
-  const [storedTasks, storedPresets, storedSessionLabels, storedDecisionGatewayMailbox] = await Promise.all([
+  const [storedTasks, storedPresets, storedSessionLabels, storedDecisionGatewayMailbox, storedDecisionGatewayLeases] = await Promise.all([
     readJsonArray(taskStorePath, "tasks"),
     readJsonArray(presetStorePath, "presets"),
     readJsonObject(sessionLabelStorePath, "session labels"),
     readJsonObject(decisionGatewayMailboxStorePath, "Decision Gateway mailbox"),
+    readJsonObject(decisionGatewayLeaseStorePath, "Decision Gateway decision leases"),
   ]);
 
   for (const [key, value] of Object.entries(storedSessionLabels)) {
@@ -5661,6 +5727,7 @@ async function initializePersistence() {
   }
 
   const mailboxChanged = loadDecisionGatewayMailboxStore(storedDecisionGatewayMailbox);
+  const leasesChanged = loadDecisionGatewayLeaseStore(storedDecisionGatewayLeases, storedDecisionGatewayMailbox);
 
   let changed = false;
   for (const storedTask of storedTasks) {
@@ -5688,11 +5755,15 @@ async function initializePersistence() {
       console.warn(`TaskDeck could not persist normalized Decision Gateway mailbox store: ${error.message}`);
     });
   }
+  if (leasesChanged) {
+    persistDecisionGatewayLeases().catch((error) => {
+      console.warn(`TaskDeck could not persist normalized Decision Gateway decision lease store: ${error.message}`);
+    });
+  }
 }
 
 function loadDecisionGatewayMailboxStore(storedStore) {
   const storedItems = Array.isArray(storedStore?.items) ? storedStore.items : [];
-  const storedRequests = Array.isArray(storedStore?.sentRequests) ? storedStore.sentRequests : [];
   let changed = false;
 
   for (const storedItem of storedItems) {
@@ -5704,16 +5775,34 @@ function loadDecisionGatewayMailboxStore(storedStore) {
     decisionGatewayMailboxItems.set(record.mailboxItemId, record);
   }
 
-  for (const storedRequest of storedRequests) {
-    const record = normalizeStoredDecisionGatewayRequestRecord(storedRequest);
+  return changed || decisionGatewayMailboxItems.size !== storedItems.length || Array.isArray(storedStore?.sentRequests);
+}
+
+function loadDecisionGatewayLeaseStore(storedStore, legacyMailboxStore = {}) {
+  const storedLeases = Array.isArray(storedStore?.leases) ? storedStore.leases : [];
+  const legacySentRequests = Array.isArray(legacyMailboxStore?.sentRequests) ? legacyMailboxStore.sentRequests : [];
+  let changed = false;
+
+  for (const storedLease of storedLeases) {
+    const record = normalizeStoredDecisionGatewayLeaseRecord(storedLease);
     if (!record) {
       changed = true;
       continue;
     }
-    decisionGatewayRequestRecords.set(record.requestId, record);
+    decisionGatewayDecisionLeases.set(record.requestId, record);
   }
 
-  return changed || decisionGatewayMailboxItems.size !== storedItems.length || decisionGatewayRequestRecords.size !== storedRequests.length;
+  for (const legacyRequest of legacySentRequests) {
+    const record = normalizeLegacyDecisionGatewayLeaseRecord(legacyRequest);
+    if (!record || decisionGatewayDecisionLeases.has(record.requestId)) {
+      changed = true;
+      continue;
+    }
+    decisionGatewayDecisionLeases.set(record.requestId, record);
+    changed = true;
+  }
+
+  return changed || decisionGatewayDecisionLeases.size !== storedLeases.length;
 }
 
 function normalizeStoredDecisionGatewayMailboxRecord(value) {
@@ -5756,27 +5845,54 @@ function normalizeStoredDecisionGatewayMailboxRecord(value) {
   };
 }
 
-function normalizeStoredDecisionGatewayRequestRecord(value) {
+function normalizeStoredDecisionGatewayLeaseRecord(value) {
+  const record = normalizeDecisionGatewayDecisionLease(value);
+  if (!record) {
+    return null;
+  }
+
+  return {
+    ...record,
+    status: decisionGatewayDecisionLeaseStatuses.has(record.status) ? record.status : "pending",
+    expiresAt: record.expiresAt || defaultDecisionGatewayLeaseExpiresAt(record.createdAt),
+  };
+}
+
+function normalizeLegacyDecisionGatewayLeaseRecord(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
 
   const requestId = String(value.requestId || "").trim();
-  if (!requestId) {
+  const taskId = String(value.taskId || "").trim();
+  if (!requestId || !taskId) {
     return null;
   }
 
-  const status = decisionGatewayRequestStatuses.has(value.status) ? value.status : "pending";
+  const sentAt = String(value.sentAt || value.createdAt || new Date().toISOString()).trim();
+  const receivedAt = String(value.receivedAt || "").trim();
+  const status = value.status === "received" ? "received" : "pending";
   return {
+    leaseId: String(value.leaseId || `legacy-${requestId}`).trim(),
+    decisionGatewayDecisionId: String(value.decisionGatewayDecisionId || value.decisionRequestId || "").trim(),
+    decisionGatewayUrl: String(value.decisionGatewayUrl || "").trim(),
     requestId,
-    decisionRequestId: String(value.decisionRequestId || "").trim(),
-    taskId: String(value.taskId || "").trim(),
+    taskId,
     sessionId: String(value.sessionId || "").trim(),
+    taskdeckInstanceId: String(value.taskdeckInstanceId || "legacy").trim(),
     status,
-    sentAt: String(value.sentAt || "").trim(),
-    receivedAt: String(value.receivedAt || "").trim(),
-    receivedMailboxItemId: String(value.receivedMailboxItemId || "").trim(),
+    createdAt: sentAt,
+    expiresAt: String(value.expiresAt || defaultDecisionGatewayLeaseExpiresAt(sentAt)).trim(),
+    receivedAt,
+    mailboxItemId: String(value.mailboxItemId || value.receivedMailboxItemId || "").trim(),
+    actionType: String(value.actionType || "").trim(),
   };
+}
+
+function defaultDecisionGatewayLeaseExpiresAt(createdAt) {
+  const createdAtTimestamp = Date.parse(String(createdAt || ""));
+  const baseTimestamp = Number.isFinite(createdAtTimestamp) ? createdAtTimestamp : Date.now();
+  return new Date(baseTimestamp + decisionGatewayDecisionLeaseTtlMs).toISOString();
 }
 
 async function readJsonArray(filePath, label) {
@@ -6264,7 +6380,6 @@ function persistDecisionGatewayMailbox() {
     version: 1,
     updatedAt,
     items: Array.from(decisionGatewayMailboxItems.values()).sort(compareDecisionGatewayMailboxRecordsNewestFirst),
-    sentRequests: Array.from(decisionGatewayRequestRecords.values()).sort(compareDecisionGatewayRequestRecordsNewestFirst),
   };
 
   const writePromise = persistDecisionGatewayMailboxQueue.then(async () => {
@@ -6281,18 +6396,55 @@ function persistDecisionGatewayMailbox() {
   return writePromise;
 }
 
-function compareDecisionGatewayRequestRecordsNewestFirst(left, right) {
-  const leftTimestamp = timestampForDecisionGatewayRequestRecord(left);
-  const rightTimestamp = timestampForDecisionGatewayRequestRecord(right);
-  if (leftTimestamp !== rightTimestamp) {
-    return rightTimestamp - leftTimestamp;
-  }
-  return String(right.requestId || "").localeCompare(String(left.requestId || ""));
+function persistDecisionGatewayLeases() {
+  const updatedAt = new Date().toISOString();
+  const store = {
+    kind: "taskDeckDecisionGatewayLeaseStore",
+    version: 1,
+    updatedAt,
+    leases: Array.from(decisionGatewayDecisionLeases.values()).sort(compareDecisionGatewayLeaseRecordsNewestFirst),
+  };
+
+  const writePromise = persistDecisionGatewayLeasesQueue.then(async () => {
+    await fs.mkdir(dataRoot, { recursive: true });
+    const tempPath = `${decisionGatewayLeaseStorePath}.tmp`;
+    await fs.writeFile(tempPath, `${JSON.stringify(store, null, 2)}\n`);
+    await fs.rename(tempPath, decisionGatewayLeaseStorePath);
+  });
+
+  persistDecisionGatewayLeasesQueue = writePromise.catch((error) => {
+    console.error(`TaskDeck could not persist Decision Gateway decision leases: ${error.message}`);
+  });
+
+  return writePromise;
 }
 
-function timestampForDecisionGatewayRequestRecord(record) {
-  const timestamp = Date.parse(record.receivedAt || record.sentAt || "");
-  return Number.isFinite(timestamp) ? timestamp : 0;
+async function expirePendingDecisionGatewayLeases(now = new Date().toISOString()) {
+  const changed = markExpiredDecisionGatewayLeases(now);
+  if (changed) {
+    await persistDecisionGatewayLeases();
+  }
+
+  return changed;
+}
+
+function markExpiredDecisionGatewayLeases(now = new Date().toISOString()) {
+  let changed = false;
+  for (const [requestId, lease] of decisionGatewayDecisionLeases.entries()) {
+    if (lease.status !== DecisionGatewayDecisionLeaseStatus.PENDING) {
+      continue;
+    }
+    if (!isDecisionGatewayDecisionLeaseExpired(lease, now)) {
+      continue;
+    }
+    decisionGatewayDecisionLeases.set(requestId, {
+      ...lease,
+      status: DecisionGatewayDecisionLeaseStatus.EXPIRED,
+    });
+    changed = true;
+  }
+
+  return changed;
 }
 
 function savePreset(taskSpec) {

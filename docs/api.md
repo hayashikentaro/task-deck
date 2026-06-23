@@ -12,6 +12,7 @@ POST /api/validate-cwd
 POST /api/attachments
 POST /api/decision-gateway/pairing-requests
 GET /api/decision-gateway/mailbox/local
+GET /api/decision-gateway/leases/local
 GET /api/tasks
 DELETE /api/tasks
 GET /api/tasks/:taskId
@@ -59,7 +60,11 @@ When `DECISION_GATEWAY_URL` is configured, TaskDeck polls outward to `GET <DECIS
 
 Received `decision_result` mailbox items are persisted under `.taskdeck/decision-gateway-mailbox.json` before TaskDeck posts `POST <DECISION_GATEWAY_URL>/api/taskdeck/mailbox/:id/ack` with `{ "taskdeckInstanceId": "..." }`. Malformed mailbox payloads and records that fail local persistence are not acknowledged.
 
-`GET /api/decision-gateway/mailbox/local` returns locally recorded mailbox items for UI rendering. Records carry `validationStatus` as `valid`, `unmatched`, or `stale`. TaskDeck may acknowledge both valid and unmatched records after local persistence because this step only surfaces decisions to the user.
+Outbound Ask decision requests are persisted as local leases under `.taskdeck/decision-gateway-leases.json`. A lease records `leaseId`, `decisionGatewayDecisionId`, `decisionGatewayUrl`, `requestId`, `taskId`, optional `sessionId`, `taskdeckInstanceId`, `status`, `createdAt`, `expiresAt`, and received mailbox metadata when available. `DECISION_GATEWAY_DECISION_LEASE_TTL_MS` optionally overrides the default 1800000 ms TTL.
+
+`GET /api/decision-gateway/mailbox/local` returns locally recorded mailbox items for UI rendering. Records carry `validationStatus` as `valid`, `unmatched`, or `stale`. TaskDeck may acknowledge valid, unmatched, and stale records after local persistence because this step only surfaces decisions to the user.
+
+`GET /api/decision-gateway/leases/local` returns locally recorded decision leases with `status` as `pending`, `received`, `expired`, or `cancelled`. Pending leases are marked `expired` lazily during mailbox polling or when rendered through local APIs.
 
 ## Tasks
 
@@ -75,7 +80,7 @@ The server still recognizes the legacy `taskdeck-manager` agent profile id on st
 
 The WebSocket composer sends `{ "type": "codex-app-server-interrupt-turn", "taskId": "..." }` to stop the selected task's active Codex App Server turn. The server translates this into `turn/interrupt` with the task's current App Server `threadId` and active `turnId`; it does not close the TaskDeck task or kill the shared runtime.
 
-`POST /api/tasks/:taskId/decision-request` sends a manual one-way decision request to Decision Gateway when `DECISION_GATEWAY_URL` is configured. TaskDeck includes source context such as task id, session id when available, agent profile, cwd, attention state, and a bounded redacted recent-output snippet. The route returns `{ "ok": true, "decisionUrl": "...", "decisionId": "...", "requestId": "..." }` and records the returned request id locally for later mailbox validation. It does not change TaskDeck task state, resume agents, deliver decisions back, or mark decisions as applied.
+`POST /api/tasks/:taskId/decision-request` sends a manual one-way decision request to Decision Gateway when `DECISION_GATEWAY_URL` is configured. TaskDeck includes source context such as task id, session id when available, agent profile, cwd, attention state, and a bounded redacted recent-output snippet. The route returns `{ "ok": true, "decisionUrl": "...", "decisionId": "...", "requestId": "..." }` and records a local pending lease for later mailbox validation. It does not change TaskDeck task state, resume agents, deliver decisions back, or mark decisions as applied.
 
 `DELETE /api/tasks` bulk-clears tasks and their logs. `DELETE /api/tasks/:taskId` clears a single task; clearing an individual running task stops its active App Server runtime and removes that task.
 
