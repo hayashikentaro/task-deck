@@ -108,6 +108,8 @@ The `PORT=3001` example keeps TaskDeck from colliding with a local Decision Gate
 
 Mailbox polling uses the same stable local `taskdeckInstanceId` as the Pair phone flow. Set `DECISION_GATEWAY_MAILBOX_POLL_MS` to override the default 30000 ms interval. If `DECISION_GATEWAY_URL` is missing, mailbox polling is disabled quietly.
 
+For deployed or production Decision Gateway instances that protect TaskDeck-facing endpoints, set `TASKDECK_DECISION_GATEWAY_API_TOKEN`. When this token is set, TaskDeck sends `Authorization: Bearer <token>` to Decision Gateway for decision requests, pairing requests, mailbox polling, and mailbox acknowledgements. When unset, TaskDeck sends no Authorization header, preserving local development behavior.
+
 Use **Pair phone** in the right rail to create a pairing request. TaskDeck calls `POST /api/pairing-requests` on Decision Gateway with the stable local `taskdeckInstanceId` and a simple local label, then displays the returned `pairingUrl` as a QR code with its expiry time and a copyable URL fallback. The phone scans the QR and completes pairing on Decision Gateway. Decision Gateway owns mobile browser sessions.
 
 When configured, use **Ask for decision** on a task card. TaskDeck sends source context and a bounded redacted recent-output snippet to `POST /api/decision-requests` on Decision Gateway, shows the returned Decision Workspace URL, and persists a pending local decision lease under `.taskdeck/decision-gateway-leases.json`. The lease records the returned Decision Gateway decision id, request id, workspace URL, local task id, session id when available, local `taskdeckInstanceId`, status, creation time, and expiry. `DECISION_GATEWAY_DECISION_LEASE_TTL_MS` overrides the default 1800000 ms lease TTL.

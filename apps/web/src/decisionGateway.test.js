@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildDecisionGatewayTaskDeckHeaders,
   buildTaskDeckDecisionRequest,
   boundedDecisionGatewayContextField,
   boundedDecisionGatewayRecentOutput,
   createDecisionGatewayDecisionLease,
+  decisionGatewayTaskDeckErrorMessage,
   isDecisionGatewayDecisionLeaseExpired,
   markDecisionGatewayDecisionLeaseReceived,
+  normalizeDecisionGatewayTaskDeckApiToken,
   normalizeDecisionGatewayMailboxItem,
   normalizeDecisionGatewayUrl,
   validateDecisionGatewayMailboxItemAgainstLease,
@@ -84,6 +87,44 @@ describe("Decision Gateway connector helpers", () => {
   it("normalizes configured Decision Gateway URLs", () => {
     expect(normalizeDecisionGatewayUrl(" http://localhost:3000/ ")).toBe("http://localhost:3000");
     expect(normalizeDecisionGatewayUrl("")).toBe("");
+  });
+
+  it("builds Decision Gateway TaskDeck headers without Authorization when no token is configured", () => {
+    expect(normalizeDecisionGatewayTaskDeckApiToken("")).toBe("");
+    expect(buildDecisionGatewayTaskDeckHeaders()).toEqual({});
+    expect(buildDecisionGatewayTaskDeckHeaders({ contentType: "application/json" })).toEqual({
+      "content-type": "application/json",
+    });
+  });
+
+  it("builds Decision Gateway TaskDeck Bearer Authorization only when token is configured", () => {
+    expect(normalizeDecisionGatewayTaskDeckApiToken(" example-token ")).toBe("example-token");
+    expect(
+      buildDecisionGatewayTaskDeckHeaders({
+        apiToken: " example-token ",
+        contentType: "application/json",
+      }),
+    ).toEqual({
+      "content-type": "application/json",
+      Authorization: "Bearer example-token",
+    });
+  });
+
+  it("uses a fixed Decision Gateway authentication failure message for 401 responses", () => {
+    expect(
+      decisionGatewayTaskDeckErrorMessage({
+        status: 401,
+        payloadError: "upstream detail should not be shown",
+        fallback: "fallback",
+      }),
+    ).toBe("Decision Gateway authentication failed.");
+    expect(
+      decisionGatewayTaskDeckErrorMessage({
+        status: 500,
+        payloadError: "Gateway unavailable",
+        fallback: "fallback",
+      }),
+    ).toBe("Gateway unavailable");
   });
 
   it("normalizes Decision Gateway mailbox decision results", () => {

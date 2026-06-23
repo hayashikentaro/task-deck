@@ -48,6 +48,36 @@ export function normalizeDecisionGatewayUrl(value) {
   return trimmed.replace(/\/+$/, "");
 }
 
+export function normalizeDecisionGatewayTaskDeckApiToken(value) {
+  return normalizedString(value);
+}
+
+export function buildDecisionGatewayTaskDeckHeaders({ apiToken = "", contentType = "" } = {}) {
+  const headers = {};
+  const normalizedContentType = normalizedString(contentType);
+  const normalizedApiToken = normalizeDecisionGatewayTaskDeckApiToken(apiToken);
+
+  if (normalizedContentType) {
+    headers["content-type"] = normalizedContentType;
+  }
+  if (normalizedApiToken) {
+    headers.Authorization = `Bearer ${normalizedApiToken}`;
+  }
+
+  return headers;
+}
+
+export function decisionGatewayTaskDeckErrorMessage({
+  status,
+  payloadError = "",
+  fallback = "Decision Gateway request failed.",
+} = {}) {
+  if (Number(status) === 401) {
+    return "Decision Gateway authentication failed.";
+  }
+  return normalizedString(payloadError) || fallback;
+}
+
 export function redactDecisionGatewayText(value) {
   let redacted = String(value || "");
   for (const { pattern, replacement } of redactionPatterns) {

@@ -64,11 +64,14 @@ import {
   DEFAULT_DECISION_GATEWAY_DECISION_LEASE_TTL_MS,
   DecisionGatewayDecisionLeaseStatus,
   DecisionGatewayMailboxValidationStatus,
+  buildDecisionGatewayTaskDeckHeaders,
   buildTaskDeckDecisionRequest,
   createDecisionGatewayDecisionLease,
+  decisionGatewayTaskDeckErrorMessage,
   isDecisionGatewayDecisionLeaseExpired,
   markDecisionGatewayDecisionLeaseReceived,
   normalizeDecisionGatewayDecisionLease,
+  normalizeDecisionGatewayTaskDeckApiToken,
   normalizeDecisionGatewayMailboxItem,
   normalizeDecisionGatewayUrl,
   validateDecisionGatewayMailboxItemAgainstLease,
@@ -144,6 +147,9 @@ const shell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe"
 const inputDebugEnabled = process.env.TASKDECK_INPUT_DEBUG === "1";
 const codexAppServerDebugEnabled = process.env.TASKDECK_CODEX_APP_SERVER_DEBUG === "1";
 const decisionGatewayUrl = normalizeDecisionGatewayUrl(process.env.DECISION_GATEWAY_URL);
+const decisionGatewayTaskDeckApiToken = normalizeDecisionGatewayTaskDeckApiToken(
+  process.env.TASKDECK_DECISION_GATEWAY_API_TOKEN,
+);
 const decisionGatewayRequestTimeoutMs = 10_000;
 const decisionGatewayMailboxPollIntervalMs = normalizePositiveInteger(
   process.env.DECISION_GATEWAY_MAILBOX_POLL_MS,
@@ -518,9 +524,7 @@ app.post("/api/tasks/:taskId/decision-request", async (request, response) => {
     try {
       gatewayResponse = await fetch(`${decisionGatewayUrl}/api/decision-requests`, {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
+        headers: decisionGatewayTaskDeckHeaders({ json: true }),
         body: JSON.stringify(decisionRequest),
         signal: abortController.signal,
       });
@@ -531,7 +535,11 @@ app.post("/api/tasks/:taskId/decision-request", async (request, response) => {
 
     if (!gatewayResponse.ok) {
       response.status(502).json({
-        error: payload?.error || `Decision Gateway request failed with status ${gatewayResponse.status}.`,
+        error: decisionGatewayErrorMessage(
+          gatewayResponse,
+          payload,
+          `Decision Gateway request failed with status ${gatewayResponse.status}.`,
+        ),
       });
       return;
     }
@@ -585,9 +593,7 @@ app.post("/api/decision-gateway/pairing-requests", async (_request, response) =>
     try {
       gatewayResponse = await fetch(`${decisionGatewayUrl}/api/pairing-requests`, {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
+        headers: decisionGatewayTaskDeckHeaders({ json: true }),
         body: JSON.stringify({
           taskdeckInstanceId,
           taskdeckLabel: taskDeckPairingLabel(),
@@ -601,7 +607,11 @@ app.post("/api/decision-gateway/pairing-requests", async (_request, response) =>
     const payload = await gatewayResponse.json().catch(() => ({}));
     if (!gatewayResponse.ok) {
       response.status(502).json({
-        error: payload?.error || `Decision Gateway pairing request failed with status ${gatewayResponse.status}.`,
+        error: decisionGatewayErrorMessage(
+          gatewayResponse,
+          payload,
+          `Decision Gateway pairing request failed with status ${gatewayResponse.status}.`,
+        ),
       });
       return;
     }
@@ -668,6 +678,29 @@ function normalizePositiveInteger(value, fallback) {
     return fallback;
   }
   return Math.floor(numericValue);
+}
+
+function decisionGatewayTaskDeckHeaders({ json = false } = {}) {
+  return buildDecisionGatewayTaskDeckHeaders({
+    apiToken: decisionGatewayTaskDeckApiToken,
+    contentType: json ? "application/json" : "",
+  });
+}
+
+function decisionGatewayErrorMessage(gatewayResponse, payload, fallback) {
+  const message = decisionGatewayTaskDeckErrorMessage({
+    status: gatewayResponse?.status,
+    payloadError: payload?.error,
+    fallback,
+  });
+  if (Number(gatewayResponse?.status) === 401) {
+    warnDecisionGatewayAuthenticationFailure();
+  }
+  return message;
+}
+
+function warnDecisionGatewayAuthenticationFailure() {
+  console.warn("TaskDeck Decision Gateway authentication failed for outbound request.");
 }
 
 function normalizeBoolean(value) {
@@ -4188,6 +4221,7 @@ async function fetchDecisionGatewayMailboxItems(taskdeckInstanceId) {
   try {
     gatewayResponse = await fetch(url, {
       method: "GET",
+      headers: decisionGatewayTaskDeckHeaders(),
       signal: abortController.signal,
     });
   } finally {
@@ -4196,7 +4230,13 @@ async function fetchDecisionGatewayMailboxItems(taskdeckInstanceId) {
 
   const payload = await gatewayResponse.json().catch(() => ({}));
   if (!gatewayResponse.ok) {
-    throw new Error(payload?.error || `Decision Gateway mailbox request failed with status ${gatewayResponse.status}.`);
+    throw new Error(
+      decisionGatewayErrorMessage(
+        gatewayResponse,
+        payload,
+        `Decision Gateway mailbox request failed with status ${gatewayResponse.status}.`,
+      ),
+    );
   }
   if (!Array.isArray(payload?.items)) {
     throw new Error("Decision Gateway returned a malformed mailbox response.");
@@ -4214,9 +4254,7 @@ async function acknowledgeDecisionGatewayMailboxItem(mailboxItemId, taskdeckInst
       `${decisionGatewayUrl}/api/taskdeck/mailbox/${encodeURIComponent(mailboxItemId)}/ack`,
       {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
+        headers: decisionGatewayTaskDeckHeaders({ json: true }),
         body: JSON.stringify({ taskdeckInstanceId }),
         signal: abortController.signal,
       },
@@ -4227,7 +4265,13 @@ async function acknowledgeDecisionGatewayMailboxItem(mailboxItemId, taskdeckInst
 
   const payload = await gatewayResponse.json().catch(() => ({}));
   if (!gatewayResponse.ok) {
-    throw new Error(payload?.error || `Decision Gateway mailbox ack failed with status ${gatewayResponse.status}.`);
+    throw new Error(
+      decisionGatewayErrorMessage(
+        gatewayResponse,
+        payload,
+        `Decision Gateway mailbox ack failed with status ${gatewayResponse.status}.`,
+      ),
+    );
   }
 }
 

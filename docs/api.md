@@ -56,6 +56,8 @@ It returns whether the cwd resolves to an existing directory, its absolute path,
 
 `POST /api/decision-gateway/pairing-requests` creates a phone pairing request when `DECISION_GATEWAY_URL` is configured. The server reads or generates the stable local TaskDeck instance id stored under `.taskdeck/taskdeck-instance.json`, sends `{ "taskdeckInstanceId": "...", "taskdeckLabel": "..." }` to `POST <DECISION_GATEWAY_URL>/api/pairing-requests`, and returns `{ "pairingUrl": "...", "expiresAt": "..." }` to the web UI. TaskDeck does not log the returned pairing URL or store mobile browser sessions.
 
+When `TASKDECK_DECISION_GATEWAY_API_TOKEN` is configured, TaskDeck adds `Authorization: Bearer <token>` to every outbound Decision Gateway TaskDeck API request: decision requests, pairing requests, mailbox polling, and mailbox acknowledgements. When the token is unset, TaskDeck sends no Authorization header. Authentication failures are reported as `Decision Gateway authentication failed.` without logging or returning the token value.
+
 When `DECISION_GATEWAY_URL` is configured, TaskDeck polls outward to `GET <DECISION_GATEWAY_URL>/api/taskdeck/mailbox?taskdeckInstanceId=<id>&limit=20` using the same stable local `taskdeckInstanceId`. `DECISION_GATEWAY_MAILBOX_POLL_MS` optionally overrides the default 30000 ms interval. Mailbox polling is disabled quietly when `DECISION_GATEWAY_URL` is missing.
 
 Received `decision_result` mailbox items are persisted under `.taskdeck/decision-gateway-mailbox.json` before TaskDeck posts `POST <DECISION_GATEWAY_URL>/api/taskdeck/mailbox/:id/ack` with `{ "taskdeckInstanceId": "..." }`. Malformed mailbox payloads and records that fail local persistence are not acknowledged.
