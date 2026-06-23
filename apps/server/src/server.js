@@ -1978,10 +1978,12 @@ function handleCodexAppServerLoginCompleted(activeAppServer, params) {
     return;
   }
 
-  appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server login completed; resuming.\n");
-  activeRuntime.accountReady = true;
+  appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server login completed; verifying account.\n");
+  activeRuntime.accountReady = false;
   activeRuntime.loginCompletedAt = Date.now();
-  resumeCodexAppServerAfterLogin(activeAppServer);
+  activeRuntime.modelListRequested = false;
+  activeRuntime.forcedAccountRefreshAttempted = true;
+  sendCodexAppServerAccountRead(activeAppServer, { refreshToken: true });
 }
 
 function codexAppServerLoginKind(loginMethod) {
@@ -1991,6 +1993,10 @@ function codexAppServerLoginKind(loginMethod) {
 function handleCodexAppServerAccountUpdated(activeAppServer) {
   const activeRuntime = codexRuntimeStateForThreadSession(activeAppServer);
   if (activeRuntime.authFailureDetected) {
+    return;
+  }
+  if (activeRuntime.loginCompletedAt && activeRuntime.accountReadInFlight) {
+    appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server account updated; waiting for account verification.\n");
     return;
   }
   if (activeRuntime.accountReady && !codexRuntimeHasPendingAuthRetry(activeRuntime)) {
