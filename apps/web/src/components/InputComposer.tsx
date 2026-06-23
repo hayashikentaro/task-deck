@@ -176,13 +176,6 @@ export function InputComposer({
     });
   };
 
-  const openCodexAppServerLogin = () => {
-    if (!codexAppServerLogin?.url) {
-      return;
-    }
-    window.open(codexAppServerLogin.url, "_blank", "noopener,noreferrer");
-  };
-
   const copyCodexAppServerLoginCode = async () => {
     if (!codexAppServerLogin?.userCode) {
       return;
@@ -260,7 +253,7 @@ export function InputComposer({
                 Copy code
               </Button>
             ) : null}
-            <Button onClick={openCodexAppServerLogin} size="sm" type="button" variant="panel">
+            <Button href={codexAppServerLogin.url} rel="noreferrer" size="sm" target="_blank" variant="panel">
               Open login
             </Button>
           </div>
