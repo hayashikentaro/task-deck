@@ -63,11 +63,16 @@ Then edit `taskdeck.local.json`:
 ```json
 {
   "projectRoot": "/Users/you/Projects",
-  "defaultModel": "gpt-5.5"
+  "defaultModel": "gpt-5.5",
+  "codexAppServer": {
+    "loginMethod": "deviceCode"
+  }
 }
 ```
 
 `projectRoot` is a parent directory whose immediate child directories become Project choices. `defaultModel` is optional; when set, TaskDeck passes it to Codex App Server for each new thread. Without it, Codex uses its own configured default. Once App Server is initialized, TaskDeck loads the available model catalog for the composer selector. `taskdeck.local.json` is ignored by Git and is the right place for machine-local paths and model defaults.
+
+`codexAppServer.loginMethod` controls how TaskDeck asks Codex App Server to start ChatGPT login when no valid cached session is available. The default is `deviceCode`, which preserves the existing verification URL plus user-code flow. Set it to `browserRedirect` to have App Server return a ChatGPT login URL that you open directly in a browser. The resulting Codex login is still cached in the same environment that runs the `codex-app-server` profile command.
 
 ## Configure Agent Profiles
 

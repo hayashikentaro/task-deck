@@ -2,7 +2,7 @@
 
 This note records the manual smoke path for TaskDeck's primary Codex App Server route.
 
-Do this smoke once after batching App Server auth, logging, and UI-state changes. Avoid repeated ChatGPT device-code login attempts during development because repeated login flows can cause device-code exchange failures.
+Do this smoke once after batching App Server auth, logging, and UI-state changes. Avoid repeated ChatGPT login attempts during development because repeated login flows can cause exchange failures.
 
 ## Scope
 
@@ -24,11 +24,21 @@ TaskDeck launches the shared App Server runtime through the configured `codex-ap
 
 If a machine needs TaskDeck to launch App Server somewhere other than the TaskDeck server environment, override the profile in `taskdeck.local.json`. The Codex login must exist in the same environment that runs the `codex-app-server` profile command.
 
+By default TaskDeck uses the device-code login path. To smoke the browser redirect path, set this in `taskdeck.local.json` or another `TASKDECK_CONFIG` file before starting TaskDeck:
+
+```json
+{
+  "codexAppServer": {
+    "loginMethod": "browserRedirect"
+  }
+}
+```
+
 ## Manual Smoke
 
 1. Start TaskDeck normally.
 2. Create one task with the default `Codex App Server` profile.
-3. If ChatGPT device login is required, complete it once using the verification URL and user code shown in the task log.
+3. If ChatGPT login is required, complete it once using the task log. For `deviceCode`, use the verification URL and user code. For `browserRedirect`, open the login URL.
 4. Wait for the task log to show that the App Server adapter is ready.
 5. Send one short prompt from the composer.
 6. Confirm the task enters an active/running state while the turn is in progress.
@@ -38,12 +48,12 @@ If a machine needs TaskDeck to launch App Server somewhere other than the TaskDe
 
 ## Successful Smoke Expectations
 
-- One device login is requested at most when no valid ChatGPT session is already available.
+- One ChatGPT login is requested at most when no valid ChatGPT session is already available.
 - The first turn is accepted after login or account readiness.
 - Command start events are visible when Codex starts a command.
 - Command output remains visible under the `Codex App Server command output:` labeled block.
 - The turn completes with `Codex App Server turn completed; ready for next input.`
-- A second turn on the same task completes without another device login.
+- A second turn on the same task completes without another login.
 
 ## Expected Logs
 
@@ -51,7 +61,7 @@ Normal task logs should be human-readable and should not show raw JSON-RPC. Expe
 
 - App Server initialized and account check started.
 - One account refresh attempt only if an auth error occurs.
-- Device login URL, user code, and login id only if login is required.
+- Device login URL and user code, or browser login URL, only if login is required.
 - Login completed or failed.
 - If an invalid or revoked token appears after login, TaskDeck should mark the task as needing input and should not report the adapter as ready.
 - Thread ready.
@@ -60,6 +70,6 @@ Normal task logs should be human-readable and should not show raw JSON-RPC. Expe
 - Aggregated command output.
 - Turn completed and ready for next input.
 
-If device-code login fails, TaskDeck should not automatically request another code. Restart the task to request a fresh code.
+If login fails, TaskDeck should not automatically request another login. Restart the task to request a fresh login.
 
-If device-code login completes but the App Server later reports `token_revoked`, `refresh_token_invalidated`, or `401 Unauthorized`, TaskDeck should keep the task in a user-attention auth-failed state and ignore later stale App Server success messages such as thread-ready or MCP startup updates. Fix Codex login in the environment that launches the `codex-app-server` profile, or point that profile at the host environment with the valid login, then restart the task.
+If login completes but the App Server later reports `token_revoked`, `refresh_token_invalidated`, or `401 Unauthorized`, TaskDeck should keep the task in a user-attention auth-failed state and ignore later stale App Server success messages such as thread-ready or MCP startup updates. Fix Codex login in the environment that launches the `codex-app-server` profile, or point that profile at the host environment with the valid login, then restart the task.

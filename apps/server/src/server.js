@@ -101,6 +101,13 @@ const codexAppServerThreadSessionSource = "codex_app_server_thread";
 const codexAppServerNativeSubagentSessionSource = "codex_app_server_native_subagent";
 const codexAppServerSharedRuntimeId = "codex-app-server-shared-runtime";
 const codexAppServerCommand = "codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://";
+const codexAppServerLoginMethodDeviceCode = "deviceCode";
+const codexAppServerLoginMethodBrowserRedirect = "browserRedirect";
+const codexAppServerDefaultLoginMethod = codexAppServerLoginMethodDeviceCode;
+const codexAppServerLoginMethods = new Set([
+  codexAppServerLoginMethodDeviceCode,
+  codexAppServerLoginMethodBrowserRedirect,
+]);
 const codexAppServerOnlyTaskError =
   "TaskDeck now only starts Codex App Server tasks while the App Server thread model is being rebuilt.";
 const defaultAgentProfiles = [
@@ -983,6 +990,7 @@ function createActiveCodexRuntime({ runtimeId, runtimeProcess, launchCommand, de
     authFailureDetected: false,
     loginInProgress: false,
     loginId: "",
+    loginMethod: codexAppServerDefaultLoginMethod,
     loginCompletedAt: 0,
     forcedAccountRefreshAttempted: false,
     modelListRequested: false,
@@ -1326,7 +1334,7 @@ function sendCodexAppServerModelList(activeAppServer, cursor = "") {
   }
 }
 
-function sendCodexAppServerLoginStart(activeAppServer) {
+async function sendCodexAppServerLoginStart(activeAppServer, loginMethod = codexAppServerDefaultLoginMethod) {
   const activeRuntime = codexRuntimeForThreadSession(activeAppServer);
   if (!activeRuntime) {
     appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server runtime is not available.\n");
@@ -1336,12 +1344,22 @@ function sendCodexAppServerLoginStart(activeAppServer) {
     return;
   }
   activeRuntime.loginInProgress = true;
-  const requestId = sendCodexAppServerRequest(activeAppServer, "account/login/start", {
-    type: "chatgptDeviceCode",
-  });
+  activeRuntime.loginMethod = normalizeCodexAppServerLoginMethod(loginMethod) || codexAppServerDefaultLoginMethod;
+  const requestId = sendCodexAppServerRequest(
+    activeAppServer,
+    "account/login/start",
+    codexAppServerLoginStartParams(activeRuntime.loginMethod),
+  );
   if (requestId === null) {
     activeRuntime.loginInProgress = false;
   }
+}
+
+function codexAppServerLoginStartParams(loginMethod) {
+  if (loginMethod === codexAppServerLoginMethodBrowserRedirect) {
+    return { type: "chatgpt" };
+  }
+  return { type: "chatgptDeviceCode" };
 }
 
 function sendCodexAppServerThreadStart(activeAppServer) {
@@ -1687,7 +1705,7 @@ function handleCodexAppServerResponse(activeAppServer, message, pendingRequest =
       if (activeRuntime.loginCompletedAt && activeRuntime.forcedAccountRefreshAttempted) {
         handleCodexAppServerAuthFailureDiagnostic(
           activeAppServer,
-          `Codex App Server ${method || "request"} still returned an auth error after device login and account refresh.`
+          `Codex App Server ${method || "request"} still returned an auth error after ChatGPT login and account refresh.`
         );
         return;
       }
@@ -1697,8 +1715,8 @@ function handleCodexAppServerResponse(activeAppServer, message, pendingRequest =
         sendCodexAppServerAccountRead(activeAppServer, { refreshToken: true });
         return;
       }
-      appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server authentication refresh failed; ChatGPT device login is required.\n");
-      handleCodexAppServerAuthRequired(activeAppServer, pendingRequest);
+      appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server authentication refresh failed; ChatGPT login is required.\n");
+      void handleCodexAppServerAuthRequired(activeAppServer, pendingRequest);
       return;
     }
     if (method === "model/list") {
@@ -1747,12 +1765,12 @@ function handleCodexAppServerResponse(activeAppServer, message, pendingRequest =
       if (activeRuntime.loginCompletedAt) {
         handleCodexAppServerAuthFailureDiagnostic(
           activeAppServer,
-          "Codex App Server account still requires OpenAI authentication after device login completed."
+          "Codex App Server account still requires OpenAI authentication after ChatGPT login completed."
         );
         return;
       }
       appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server account requires ChatGPT login.\n");
-      handleCodexAppServerAuthRequired(activeAppServer, { method: "thread/start" });
+      void handleCodexAppServerAuthRequired(activeAppServer, { method: "thread/start" });
       return;
     }
     activeRuntime.accountReady = true;
@@ -1813,30 +1831,46 @@ function handleCodexAppServerResponse(activeAppServer, message, pendingRequest =
   }
 }
 
-function handleCodexAppServerAuthRequired(activeAppServer, pendingRequest) {
+async function handleCodexAppServerAuthRequired(activeAppServer, pendingRequest) {
   const activeRuntime = codexRuntimeStateForThreadSession(activeAppServer);
   if (activeRuntime.loginCompletedAt) {
     handleCodexAppServerAuthFailureDiagnostic(
       activeAppServer,
-      "Codex App Server requested ChatGPT login again after a device login had already completed."
+      "Codex App Server requested ChatGPT login again after a login had already completed."
     );
     return;
   }
+  const loginMethod = await loadCodexAppServerLoginMethod();
+  activeRuntime.loginMethod = loginMethod;
   activeRuntime.accountReady = false;
   preserveCodexAppServerPendingAuthRetry(activeAppServer, pendingRequest);
+  const loginState = codexAppServerLoginRequiredState(loginMethod);
   const threadSessions = codexThreadSessionsForRuntime(activeRuntime);
   for (const threadSession of threadSessions.length > 0 ? threadSessions : [activeAppServer]) {
     updateAgentStateFromTaskDeckEvent(threadSession.taskId, AgentState.WAITING_INPUT, {
-      reason: "Codex App Server needs ChatGPT device login.",
+      reason: loginState.reason,
       source: AgentStateSource.PROCESS,
       confidence: AgentStateConfidence.HIGH,
       attentionState: AttentionState.NEEDS_INPUT,
-      attentionReason: "Open the ChatGPT device login URL and enter the user code shown in the task log.",
+      attentionReason: loginState.attentionReason,
       attentionSource: AgentStateSource.PROCESS,
       attentionConfidence: AgentStateConfidence.HIGH,
     });
   }
-  sendCodexAppServerLoginStart(activeAppServer);
+  await sendCodexAppServerLoginStart(activeAppServer, loginMethod);
+}
+
+function codexAppServerLoginRequiredState(loginMethod) {
+  if (loginMethod === codexAppServerLoginMethodBrowserRedirect) {
+    return {
+      reason: "Codex App Server needs ChatGPT browser login.",
+      attentionReason: "Open the ChatGPT login URL shown in the task log.",
+    };
+  }
+  return {
+    reason: "Codex App Server needs ChatGPT device login.",
+    attentionReason: "Open the ChatGPT device login URL and enter the user code shown in the task log.",
+  };
 }
 
 function preserveCodexAppServerPendingAuthRetry(activeAppServer, pendingRequest) {
@@ -1851,16 +1885,24 @@ function preserveCodexAppServerPendingAuthRetry(activeAppServer, pendingRequest)
 }
 
 function handleCodexAppServerLoginStartResponse(activeAppServer, result) {
-  const activeRuntime = codexRuntimeStateForThreadSession(activeAppServer);
-  if (result?.type !== "chatgptDeviceCode") {
-    appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server login started: ${JSON.stringify(result)}\n`);
+  if (result?.type === "chatgpt") {
+    handleCodexAppServerBrowserLoginStartResponse(activeAppServer, result);
     return;
   }
+  if (result?.type === "chatgptDeviceCode") {
+    handleCodexAppServerDeviceCodeLoginStartResponse(activeAppServer, result);
+    return;
+  }
+  appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server login started: ${JSON.stringify(result)}\n`);
+}
 
+function handleCodexAppServerDeviceCodeLoginStartResponse(activeAppServer, result) {
+  const activeRuntime = codexRuntimeStateForThreadSession(activeAppServer);
   const verificationUrl = String(result.verificationUrl || "").trim();
   const userCode = String(result.userCode || "").trim();
   const loginId = String(result.loginId || "").trim();
   activeRuntime.loginId = loginId;
+  activeRuntime.loginMethod = codexAppServerLoginMethodDeviceCode;
   const loginMessage = [
     "[TaskDeck] ChatGPT device login required.",
     verificationUrl ? `[TaskDeck] Verification URL: ${verificationUrl}` : "",
@@ -1881,6 +1923,31 @@ function handleCodexAppServerLoginStartResponse(activeAppServer, result) {
   }
 }
 
+function handleCodexAppServerBrowserLoginStartResponse(activeAppServer, result) {
+  const activeRuntime = codexRuntimeStateForThreadSession(activeAppServer);
+  const authUrl = String(result.authUrl || "").trim();
+  const loginId = String(result.loginId || "").trim();
+  activeRuntime.loginId = loginId;
+  activeRuntime.loginMethod = codexAppServerLoginMethodBrowserRedirect;
+  const loginMessage = [
+    "[TaskDeck] ChatGPT browser login required.",
+    authUrl ? `[TaskDeck] Login URL: ${authUrl}` : "",
+  ].filter(Boolean).join("\n") + "\n";
+  const threadSessions = codexThreadSessionsForRuntime(activeRuntime);
+  for (const threadSession of threadSessions.length > 0 ? threadSessions : [activeAppServer]) {
+    appendCodexAppServerStatus(threadSession, loginMessage);
+    updateAgentStateFromTaskDeckEvent(threadSession.taskId, AgentState.WAITING_INPUT, {
+      reason: "Codex App Server is waiting for ChatGPT browser login.",
+      source: AgentStateSource.PROCESS,
+      confidence: AgentStateConfidence.HIGH,
+      attentionState: AttentionState.NEEDS_INPUT,
+      attentionReason: "Open the ChatGPT login URL shown in the task log.",
+      attentionSource: AgentStateSource.PROCESS,
+      attentionConfidence: AgentStateConfidence.HIGH,
+    });
+  }
+}
+
 function handleCodexAppServerLoginCompleted(activeAppServer, params) {
   const activeRuntime = codexRuntimeStateForThreadSession(activeAppServer);
   const success = Boolean(params?.success);
@@ -1889,10 +1956,11 @@ function handleCodexAppServerLoginCompleted(activeAppServer, params) {
   activeRuntime.loginId = "";
   if (!success) {
     activeRuntime.accountReady = false;
-    const failureReason = error || "ChatGPT device login failed.";
+    const loginKind = codexAppServerLoginKind(activeRuntime.loginMethod);
+    const failureReason = error || `ChatGPT ${loginKind} login failed.`;
     const failureMessage = [
       `[TaskDeck] Codex App Server login failed: ${failureReason}`,
-      "[TaskDeck] TaskDeck will not start another device-code login automatically. Restart this task to request a fresh code.",
+      `[TaskDeck] TaskDeck will not start another ${loginKind} login automatically. Restart this task to request a fresh login.`,
     ].join("\n") + "\n";
     const threadSessions = codexThreadSessionsForRuntime(activeRuntime);
     for (const threadSession of threadSessions.length > 0 ? threadSessions : [activeAppServer]) {
@@ -1902,7 +1970,7 @@ function handleCodexAppServerLoginCompleted(activeAppServer, params) {
         source: AgentStateSource.PROCESS,
         confidence: AgentStateConfidence.HIGH,
         attentionState: AttentionState.NEEDS_INPUT,
-        attentionReason: `${failureReason} TaskDeck will not start another device-code login automatically; restart this task to request a fresh code.`,
+        attentionReason: `${failureReason} TaskDeck will not start another ${loginKind} login automatically; restart this task to request a fresh login.`,
         attentionSource: AgentStateSource.PROCESS,
         attentionConfidence: AgentStateConfidence.HIGH,
       });
@@ -1914,6 +1982,10 @@ function handleCodexAppServerLoginCompleted(activeAppServer, params) {
   activeRuntime.accountReady = true;
   activeRuntime.loginCompletedAt = Date.now();
   resumeCodexAppServerAfterLogin(activeAppServer);
+}
+
+function codexAppServerLoginKind(loginMethod) {
+  return loginMethod === codexAppServerLoginMethodBrowserRedirect ? "browser" : "device-code";
 }
 
 function handleCodexAppServerAccountUpdated(activeAppServer) {
@@ -5226,6 +5298,63 @@ async function loadDefaultModel() {
   }
 
   return defaultModel;
+}
+
+async function loadCodexAppServerLoginMethod() {
+  let loginMethod = codexAppServerDefaultLoginMethod;
+
+  for (const configCandidate of getAgentProfileConfigCandidates()) {
+    try {
+      const rawContents = await fs.readFile(configCandidate.path, "utf8");
+      const parsed = JSON.parse(rawContents);
+      const configuredLoginMethod = normalizeCodexAppServerLoginMethodFromConfig(parsed, configCandidate.path);
+      if (configuredLoginMethod) {
+        loginMethod = configuredLoginMethod;
+      }
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        console.warn(`TaskDeck could not read ${configCandidate.path}: ${error.message}`);
+      }
+    }
+  }
+
+  return loginMethod;
+}
+
+function normalizeCodexAppServerLoginMethodFromConfig(config, filePath) {
+  if (!Object.prototype.hasOwnProperty.call(config || {}, "codexAppServer")) {
+    return "";
+  }
+  if (!config.codexAppServer || typeof config.codexAppServer !== "object" || Array.isArray(config.codexAppServer)) {
+    console.warn(`TaskDeck ignored codexAppServer in ${filePath} because it was not an object.`);
+    return "";
+  }
+  if (!Object.prototype.hasOwnProperty.call(config.codexAppServer, "loginMethod")) {
+    return "";
+  }
+  return normalizeCodexAppServerLoginMethod(config.codexAppServer.loginMethod, filePath);
+}
+
+function normalizeCodexAppServerLoginMethod(value, filePath = "") {
+  if (typeof value !== "string") {
+    if (filePath) {
+      console.warn(`TaskDeck ignored codexAppServer.loginMethod in ${filePath} because it was not a string.`);
+    }
+    return "";
+  }
+  const loginMethod = value.trim();
+  if (!loginMethod) {
+    return "";
+  }
+  if (codexAppServerLoginMethods.has(loginMethod)) {
+    return loginMethod;
+  }
+  if (filePath) {
+    console.warn(
+      `TaskDeck ignored codexAppServer.loginMethod in ${filePath} because it was not one of: ${Array.from(codexAppServerLoginMethods).join(", ")}.`,
+    );
+  }
+  return "";
 }
 
 function sanitizeAgentProfiles(rawProfiles) {
