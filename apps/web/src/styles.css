@@ -1583,6 +1583,7 @@ dd {
 }
 
 .codex-app-server-login-bar,
+.codex-app-server-auth-failed-bar,
 .codex-app-server-request-bar {
   min-width: 0;
   display: grid;
@@ -1598,6 +1599,12 @@ dd {
 .codex-app-server-login-bar {
   border-color: color-mix(in srgb, var(--accent) 44%, var(--line));
   background: color-mix(in srgb, var(--surface-input) 88%, var(--accent));
+}
+
+.codex-app-server-auth-failed-bar {
+  grid-template-columns: minmax(0, 1fr);
+  border-color: color-mix(in srgb, var(--status-failed) 50%, var(--line));
+  background: color-mix(in srgb, var(--surface-input) 84%, var(--status-failed));
 }
 
 .codex-app-server-request-copy {
@@ -1978,6 +1985,7 @@ dd {
   }
 
   .codex-app-server-login-bar,
+  .codex-app-server-auth-failed-bar,
   .codex-app-server-request-bar {
     grid-template-columns: 1fr;
   }

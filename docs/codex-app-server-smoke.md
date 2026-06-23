@@ -61,7 +61,7 @@ Normal task logs should be human-readable and should not show raw JSON-RPC. Expe
 
 - App Server initialized and account check started.
 - One account refresh attempt only if an auth error occurs.
-- Device login URL and user code, or browser login URL, only if login is required.
+- Device login URL and user code, or browser login URL, only if login is required; the composer should also expose a direct login action while login is pending.
 - Login completed or failed.
 - If an invalid or revoked token appears after login, TaskDeck should mark the task as needing input and should not report the adapter as ready.
 - Thread ready.
@@ -70,6 +70,6 @@ Normal task logs should be human-readable and should not show raw JSON-RPC. Expe
 - Aggregated command output.
 - Turn completed and ready for next input.
 
-If login fails, TaskDeck should not automatically request another login. Restart the task to request a fresh login.
+If login fails, TaskDeck should not automatically request another login. The failed task should not present normal prompt input as available. Start a new Codex session to request a fresh login.
 
-If login completes but the App Server later reports `token_revoked`, `refresh_token_invalidated`, or `401 Unauthorized`, TaskDeck should keep the task in a user-attention auth-failed state and ignore later stale App Server success messages such as thread-ready or MCP startup updates. Fix Codex login in the environment that launches the `codex-app-server` profile, or point that profile at the host environment with the valid login, then restart the task.
+If login completes but the App Server later reports `token_revoked`, `refresh_token_invalidated`, or `401 Unauthorized`, TaskDeck should keep the task in a user-attention auth-failed state, lock normal composer prompt input for that failed task, and ignore later stale App Server success messages such as thread-ready or MCP startup updates. Fix Codex login in the environment that launches the `codex-app-server` profile, or point that profile at the host environment with the valid login, then start a new Codex session. Starting a new Codex session after a latched auth failure should replace the failed shared App Server runtime instead of reusing it.

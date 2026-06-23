@@ -112,6 +112,7 @@ export type Task = {
   signal: number | string | null;
   initialInstruction?: string;
   attachments?: TaskAttachment[];
+  codexAppServerAuthFailed?: boolean;
   codexAppServerLogin?: CodexAppServerLogin | null;
   codexAppServerRequest?: CodexAppServerRequest | null;
   codexAppServerTurnActive?: boolean;
