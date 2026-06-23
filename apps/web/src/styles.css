@@ -1480,16 +1480,6 @@ dd {
   word-break: normal;
 }
 
-.output-surface a {
-  color: var(--status-focus);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.output-surface a:hover {
-  color: var(--text);
-}
-
 .output-surface [data-output-tone="assistant"] {
   color: var(--output-tone-assistant);
 }

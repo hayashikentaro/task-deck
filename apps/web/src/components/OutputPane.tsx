@@ -26,7 +26,6 @@ const outputFontSizeStorageKey = "taskdeck.outputFontSize";
 const outputDefaultFontSize = 16;
 const outputFontSizes = [11, 12, 13, 14, 15, 16, 18];
 const outputBottomScrollTolerancePx = 16;
-const outputUrlPattern = /https?:\/\/[^\s<>"'`]+/g;
 
 type OutputSegmentTone =
   | "assistant"
@@ -287,7 +286,7 @@ export function OutputPane({
           <pre className="output-surface" style={{ fontSize: outputFontSize }}>
             {outputSegments.map((segment, index) => (
               <span key={index} data-output-tone={segment.tone}>
-                {renderOutputTextWithLinks(segment.text)}
+                {segment.text}
               </span>
             ))}
           </pre>
@@ -306,41 +305,6 @@ export function OutputPane({
       />
     </section>
   );
-}
-
-function renderOutputTextWithLinks(text: string) {
-  const parts: Array<string | JSX.Element> = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  outputUrlPattern.lastIndex = 0;
-  while ((match = outputUrlPattern.exec(text))) {
-    const [rawUrl] = match;
-    const url = trimTrailingUrlPunctuation(rawUrl);
-    const startIndex = match.index;
-    const endIndex = startIndex + url.length;
-    if (startIndex > lastIndex) {
-      parts.push(text.slice(lastIndex, startIndex));
-    }
-    parts.push(
-      <a href={url} key={`${startIndex}-${url}`} rel="noreferrer" target="_blank">
-        {url}
-      </a>,
-    );
-    lastIndex = endIndex;
-  }
-
-  if (lastIndex === 0) {
-    return text;
-  }
-  if (lastIndex < text.length) {
-    parts.push(text.slice(lastIndex));
-  }
-  return parts;
-}
-
-function trimTrailingUrlPunctuation(value: string) {
-  return value.replace(/[),.;:!?]+$/g, "");
 }
 
 function countMatches(value: string, searchTerm: string) {
