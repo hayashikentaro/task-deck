@@ -1059,9 +1059,11 @@ dd {
 
 .task-badge-row {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 5px;
   align-items: center;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .task-human-signal,
@@ -1073,7 +1075,12 @@ dd {
   font-weight: 700;
   line-height: 1.2;
   text-transform: uppercase;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.task-human-signal {
+  flex: 0 0 auto;
 }
 
 .task-human-signal[data-kind="supervision-needs_you"] {
@@ -1089,6 +1096,8 @@ dd {
 }
 
 .task-detail-state {
+  min-width: 0;
+  overflow: hidden;
   border-color: color-mix(in srgb, var(--status-muted) 42%, var(--line));
   color: color-mix(in srgb, var(--status-muted) 72%, var(--text-secondary));
 }
