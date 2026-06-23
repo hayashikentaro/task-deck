@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getComposerInputState, getComposerMode } from "./components/InputComposer";
+import { getComposerInputPlaceholder, getComposerInputState, getComposerMode } from "./components/InputComposer";
 import type { Task } from "./types";
 
 describe("InputComposer state", () => {
@@ -39,6 +39,39 @@ describe("InputComposer state", () => {
         isCodexAppServerTurnActive: false,
       }),
     ).toBe("readonly");
+  });
+
+  it("uses Read-only log as the displayed placeholder for a selected native subagent with lock metadata", () => {
+    const task = taskFixture({
+      id: "task-subagent",
+      status: "running",
+      agentSessionSource: "codex_app_server_native_subagent",
+      inputLockedAt: "2026-06-24T00:00:00.000Z",
+    });
+    const modeText = getComposerMode(task, true);
+
+    expect(modeText).toBe("Read-only log");
+    expect(
+      getComposerInputPlaceholder({
+        canSend: false,
+        isCodexAppServerTask: true,
+        isCodexAppServerTurnActive: false,
+        modeText,
+      }),
+    ).toBe("Read-only log");
+  });
+
+  it("treats legacy native subagent projections without source metadata as read-only", () => {
+    const task = taskFixture({
+      id: "task-subagent",
+      status: "running",
+      agentSessionSource: "",
+      sessionMode: "subagent",
+      command: "Codex App Server native subagent thread_123",
+      inputLockedAt: "2026-06-24T00:00:00.000Z",
+    });
+
+    expect(getComposerMode(task, true)).toBe("Read-only log");
   });
 
   it("returns ready for an idle running App Server thread after a turn completes", () => {

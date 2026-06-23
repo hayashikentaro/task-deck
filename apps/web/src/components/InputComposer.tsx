@@ -40,26 +40,28 @@ export function InputComposer({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const isInputLocked = Boolean(task?.inputLockedAt);
+  const isReadOnlyProjection = Boolean(task && isNativeSubagentTask(task));
   const isCodexAppServerTask = task?.agentProfileId === "codex-app-server";
   const codexAppServerRequest = task?.codexAppServerRequest ?? null;
   const isCodexAppServerTurnActive = Boolean(isCodexAppServerTask && task?.codexAppServerTurnActive);
   const canInteractWithRunningTask = Boolean(task && task.status === "running" && isConnected);
-  const canStopCodexAppServerTurn = Boolean(canInteractWithRunningTask && isCodexAppServerTurnActive && !isStopRequested);
-  const canSend = canInteractWithRunningTask && !isInputLocked && !isCodexAppServerTurnActive;
+  const canStopCodexAppServerTurn = Boolean(
+    canInteractWithRunningTask && !isReadOnlyProjection && isCodexAppServerTurnActive && !isStopRequested,
+  );
+  const canSend = canInteractWithRunningTask && !isReadOnlyProjection && !isInputLocked && !isCodexAppServerTurnActive;
   const hasComposerContent = Boolean(value || selectedImages.length);
   const canSubmit = canSend && hasComposerContent && !isUploadingAttachments;
-  const canResolveCodexAppServerRequest = Boolean(canInteractWithRunningTask && codexAppServerRequest);
+  const canResolveCodexAppServerRequest = Boolean(canInteractWithRunningTask && !isReadOnlyProjection && codexAppServerRequest);
   const actionLabel = isCodexAppServerTurnActive
     ? "Stop active Codex turn"
     : "Send input to running task";
   const modeText = getComposerMode(task, isConnected, { isCodexAppServerTurnActive });
-  const inputPlaceholder = canSend
-    ? isCodexAppServerTask
-      ? "Send input to Codex App Server task"
-      : "Input to running task"
-    : isCodexAppServerTurnActive
-      ? ""
-      : modeText;
+  const inputPlaceholder = getComposerInputPlaceholder({
+    canSend,
+    isCodexAppServerTask,
+    isCodexAppServerTurnActive,
+    modeText,
+  });
   const inputState = getComposerInputState({ task, isConnected, isUploadingAttachments, isCodexAppServerTurnActive });
   const modelOptions = useMemo(
     () => ensureSelectedModelOption(codexModels, selectedModel || task?.agentModel || ""),
@@ -70,7 +72,9 @@ export function InputComposer({
     () => getReasoningEffortOptions(selectedModelOption, selectedReasoningEffort),
     [selectedModelOption, selectedReasoningEffort],
   );
-  const canConfigureTurn = Boolean(isCodexAppServerTask && canInteractWithRunningTask && !isInputLocked && !isCodexAppServerTurnActive);
+  const canConfigureTurn = Boolean(
+    isCodexAppServerTask && canInteractWithRunningTask && !isReadOnlyProjection && !isInputLocked && !isCodexAppServerTurnActive,
+  );
 
   useEffect(() => {
     setSelectedModel(String(task?.agentModel || "").trim());
@@ -553,6 +557,26 @@ export function getComposerMode(
   return "Interactive task";
 }
 
+export function getComposerInputPlaceholder({
+  canSend,
+  isCodexAppServerTask,
+  isCodexAppServerTurnActive,
+  modeText,
+}: {
+  canSend: boolean;
+  isCodexAppServerTask: boolean;
+  isCodexAppServerTurnActive: boolean;
+  modeText: string;
+}) {
+  if (canSend) {
+    return isCodexAppServerTask ? "Send input to Codex App Server task" : "Input to running task";
+  }
+  if (isCodexAppServerTurnActive) {
+    return "";
+  }
+  return modeText;
+}
+
 export function getComposerInputState({
   task,
   isConnected,
@@ -583,5 +607,12 @@ export function getComposerInputState({
 }
 
 function isNativeSubagentTask(task: Task) {
-  return task.agentSessionSource === "codex_app_server_native_subagent";
+  if (task.agentSessionSource === "codex_app_server_native_subagent") {
+    return true;
+  }
+  return (
+    task.agentProfileId === "codex-app-server" &&
+    task.sessionMode === "subagent" &&
+    String(task.command || "").startsWith("Codex App Server native subagent ")
+  );
 }
