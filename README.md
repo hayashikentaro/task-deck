@@ -98,7 +98,7 @@ Agent profiles merge by `id`: built-in defaults load first, then committed confi
 
 ## Decision Gateway
 
-TaskDeck can send a manual one-way decision request to Decision Gateway from a task card. Configure the gateway URL before starting TaskDeck:
+TaskDeck can pair a phone through Decision Gateway and send a manual one-way decision request to Decision Gateway from a task card. Configure the gateway URL before starting TaskDeck:
 
 ```bash
 PORT=3001 DECISION_GATEWAY_URL=http://localhost:3000 npm run dev
@@ -106,9 +106,13 @@ PORT=3001 DECISION_GATEWAY_URL=http://localhost:3000 npm run dev
 
 The `PORT=3001` example keeps TaskDeck from colliding with a local Decision Gateway dev server running on `localhost:3000`. If Decision Gateway is running elsewhere, set `DECISION_GATEWAY_URL` to that base URL.
 
+Use **Pair phone** in the right rail to create a pairing request. TaskDeck calls `POST /api/pairing-requests` on Decision Gateway with a stable local `taskdeckInstanceId` and a simple local label, then displays the returned `pairingUrl` as a QR code with its expiry time and a copyable URL fallback. The phone scans the QR and completes pairing on Decision Gateway. TaskDeck does not store mobile browser sessions, poll for decision results, apply decisions back to agents, resume AI work, or execute remote commands.
+
 When configured, use **Ask for decision** on a task card. TaskDeck sends source context and a bounded redacted recent-output snippet to `POST /api/decision-requests` on Decision Gateway, then shows the returned Decision Workspace URL.
 
-This is only a source connector. TaskDeck does not generate the Decision Workspace UI, poll for results, resume agents, or deliver decisions back.
+For local testing, run Decision Gateway locally first, then start TaskDeck with `PORT=3001 DECISION_GATEWAY_URL=http://localhost:3000 npm run dev`. If Supabase is not configured yet, the local Decision Gateway may use its file-store fallback for first verification. For deployed Decision Gateway use, Supabase is required for reliable deployed workspace loading. Decision Gateway owns mobile browser sessions; TaskDeck only initiates pairing and displays the QR. Slack remains notification-only.
+
+Decision Gateway integration is only a source connector and pairing launcher. TaskDeck does not generate the Decision Workspace UI, poll for results, resume agents, or deliver decisions back.
 
 ## Branch Worktree Lifecycle
 

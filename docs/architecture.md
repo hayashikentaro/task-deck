@@ -59,6 +59,7 @@ The server persists local runtime state under `.taskdeck/`, which is intentional
 .taskdeck/
   tasks.json
   session-labels.json
+  taskdeck-instance.json
   presets.json
   attachments/
     <taskId>/
@@ -67,7 +68,7 @@ The server persists local runtime state under `.taskdeck/`, which is intentional
     <taskId>.log
 ```
 
-`.taskdeck/` may contain sensitive task metadata, logs, session labels, attachments, and agent output. Do not commit or share it.
+`.taskdeck/` may contain sensitive task metadata, logs, session labels, attachments, and agent output. Do not commit or share it. `taskdeck-instance.json` stores the stable local `taskdeckInstanceId` used when TaskDeck initiates Decision Gateway phone pairing; Decision Gateway owns the paired mobile browser session.
 
 For running Codex App Server work, server memory keeps App Server runtime handles separate from App Server thread-session handles. The committed App Server runtime is shared for parent Codex tasks, while each TaskDeck task owns a thread-session handle. Routing goes through task/thread maps such as task id -> thread session and App Server thread id -> TaskDeck task id so one runtime can host multiple project threads without changing task semantics. App Server messages that include a thread id are routed through that map before they update task state, request state, or logs.
 

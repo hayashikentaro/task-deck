@@ -75,6 +75,7 @@ const dataRoot = path.join(repoRoot, ".taskdeck");
 const taskStorePath = path.join(dataRoot, "tasks.json");
 const presetStorePath = path.join(dataRoot, "presets.json");
 const sessionLabelStorePath = path.join(dataRoot, "session-labels.json");
+const taskdeckInstanceStorePath = path.join(dataRoot, "taskdeck-instance.json");
 const logRoot = path.join(dataRoot, "logs");
 const attachmentRoot = path.join(dataRoot, "attachments");
 const pendingAttachmentRoot = path.join(attachmentRoot, "pending");
@@ -162,6 +163,7 @@ let persistPresetsQueue = Promise.resolve();
 let persistSessionLabelsQueue = Promise.resolve();
 let childStatusPollInFlight = false;
 let codexModels = [];
+let taskdeckInstanceIdPromise = null;
 
 const managerActionTypes = new Set(["ack", "review", "close"]);
 
@@ -513,6 +515,66 @@ app.post("/api/tasks/:taskId/decision-request", async (request, response) => {
       error: timedOut
         ? `Decision Gateway request timed out after ${decisionGatewayRequestTimeoutMs / 1000} seconds.`
         : `Unable to send decision request: ${error.message}`,
+    });
+  }
+});
+
+app.post("/api/decision-gateway/pairing-requests", async (_request, response) => {
+  if (!decisionGatewayUrl) {
+    response.status(400).json({
+      error: "Decision Gateway is not configured. Set DECISION_GATEWAY_URL to enable phone pairing.",
+    });
+    return;
+  }
+
+  try {
+    const taskdeckInstanceId = await readOrCreateTaskDeckInstanceId();
+    const abortController = new AbortController();
+    const timeout = setTimeout(() => abortController.abort(), decisionGatewayRequestTimeoutMs);
+    let gatewayResponse;
+    try {
+      gatewayResponse = await fetch(`${decisionGatewayUrl}/api/pairing-requests`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          taskdeckInstanceId,
+          taskdeckLabel: taskDeckPairingLabel(),
+        }),
+        signal: abortController.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    const payload = await gatewayResponse.json().catch(() => ({}));
+    if (!gatewayResponse.ok) {
+      response.status(502).json({
+        error: payload?.error || `Decision Gateway pairing request failed with status ${gatewayResponse.status}.`,
+      });
+      return;
+    }
+
+    const pairingUrl = String(payload?.pairingUrl || "").trim();
+    const expiresAt = String(payload?.expiresAt || "").trim();
+    if (!pairingUrl || !expiresAt || !isValidUrl(pairingUrl)) {
+      response.status(502).json({
+        error: "Decision Gateway returned a malformed pairing response.",
+      });
+      return;
+    }
+
+    response.json({
+      pairingUrl,
+      expiresAt,
+    });
+  } catch (error) {
+    const timedOut = error?.name === "AbortError";
+    response.status(timedOut ? 504 : 502).json({
+      error: timedOut
+        ? `Decision Gateway pairing request timed out after ${decisionGatewayRequestTimeoutMs / 1000} seconds.`
+        : `Unable to create Decision Gateway pairing request: ${error.message}`,
     });
   }
 });
@@ -3974,6 +4036,49 @@ function isManagerTask(task) {
 
 function isManagerAgentProfileId(agentProfileId) {
   return String(agentProfileId || "").trim() === managerAgentProfileId;
+}
+
+async function readOrCreateTaskDeckInstanceId() {
+  if (!taskdeckInstanceIdPromise) {
+    taskdeckInstanceIdPromise = readOrCreateTaskDeckInstanceIdFromStore().catch((error) => {
+      taskdeckInstanceIdPromise = null;
+      throw error;
+    });
+  }
+  return taskdeckInstanceIdPromise;
+}
+
+async function readOrCreateTaskDeckInstanceIdFromStore() {
+  const storedInstance = await readJsonObject(taskdeckInstanceStorePath, "TaskDeck instance");
+  const storedInstanceId = String(storedInstance.taskdeckInstanceId || "").trim();
+  if (isTaskDeckInstanceId(storedInstanceId)) {
+    return storedInstanceId;
+  }
+
+  const taskdeckInstanceId = `tdi_${randomUUID().replace(/-/g, "")}`;
+  await fs.mkdir(dataRoot, { recursive: true });
+  await writeJsonAtomic(taskdeckInstanceStorePath, {
+    taskdeckInstanceId,
+    createdAt: new Date().toISOString(),
+  });
+  return taskdeckInstanceId;
+}
+
+function isTaskDeckInstanceId(value) {
+  return /^tdi_[A-Za-z0-9_-]{12,}$/.test(String(value || "").trim());
+}
+
+function taskDeckPairingLabel() {
+  return String(os.hostname() || "").trim() || "TaskDeck local";
+}
+
+function isValidUrl(value) {
+  try {
+    new URL(value);
+    return true;
+  } catch (_error) {
+    return false;
+  }
 }
 
 function isCodexAppServerAgentProfileId(agentProfileId) {

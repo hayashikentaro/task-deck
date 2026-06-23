@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TaskCreateForm } from "./components/TaskCreateForm";
 import { TaskList } from "./components/TaskList";
 import { OutputPane } from "./components/OutputPane";
+import { PhonePairingPanel } from "./components/PhonePairingPanel";
 import type { CodexModel, CreateTaskInput, OutputEvent, Task, TaskDeckContext } from "./types";
 import type { SelectedImageAttachment } from "./components/InputComposer";
 import { appendOutputEventToQueue } from "./outputReplay";
@@ -363,6 +364,7 @@ export function App() {
             disabled={connectionState !== "connected"}
             onCreateTask={createTask}
           />
+          <PhonePairingPanel decisionGatewayConfigured={Boolean(taskDeckContext?.decisionGateway?.configured)} />
         </aside>
       </section>
     </main>

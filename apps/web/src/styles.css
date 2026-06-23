@@ -2065,6 +2065,93 @@ dd {
   width: 100%;
 }
 
+.phone-pairing-panel {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 14px;
+}
+
+.phone-pairing-heading {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.phone-pairing-heading h2 {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phone-pairing-message,
+.phone-pairing-error,
+.phone-pairing-expiry {
+  margin: 0;
+  color: var(--status-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.phone-pairing-error,
+.phone-pairing-expiry[data-expired="true"] {
+  color: var(--status-failed);
+}
+
+.phone-pairing-result {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.phone-pairing-qr {
+  width: 184px;
+  max-width: 100%;
+  display: grid;
+  place-items: center;
+  justify-self: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  padding: 10px;
+}
+
+.phone-pairing-qr svg {
+  width: min(164px, 100%);
+  height: auto;
+}
+
+.phone-pairing-url {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.phone-pairing-url span {
+  color: var(--status-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.phone-pairing-url input {
+  min-width: 0;
+  width: 100%;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-input);
+  padding: 0 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
 .task-card-actions {
   display: flex;
   flex-wrap: nowrap;

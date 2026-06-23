@@ -10,6 +10,7 @@ GET /api/diagnostics
 POST /api/diagnostics/containers/:containerName/start
 POST /api/validate-cwd
 POST /api/attachments
+POST /api/decision-gateway/pairing-requests
 GET /api/tasks
 DELETE /api/tasks
 GET /api/tasks/:taskId
@@ -48,6 +49,10 @@ It returns whether the cwd resolves to an existing directory, its absolute path,
 ## Attachments
 
 `POST /api/attachments` accepts raw `image/png`, `image/jpeg`, or `image/webp` bodies with `X-TaskDeck-Filename` and returns a pending image attachment. The task composer uses this for its `+` image button. Uploaded image paths are appended to task input as attachment context.
+
+## Decision Gateway
+
+`POST /api/decision-gateway/pairing-requests` creates a phone pairing request when `DECISION_GATEWAY_URL` is configured. The server reads or generates the stable local TaskDeck instance id stored under `.taskdeck/taskdeck-instance.json`, sends `{ "taskdeckInstanceId": "...", "taskdeckLabel": "..." }` to `POST <DECISION_GATEWAY_URL>/api/pairing-requests`, and returns `{ "pairingUrl": "...", "expiresAt": "..." }` to the web UI. TaskDeck does not log the returned pairing URL, store mobile browser sessions, poll for decisions, or apply mobile decisions back to agents.
 
 ## Tasks
 
