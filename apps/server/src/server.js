@@ -1347,6 +1347,7 @@ async function sendCodexAppServerLoginStart(activeAppServer, loginMethod = codex
   }
   activeRuntime.loginInProgress = true;
   activeRuntime.loginMethod = normalizeCodexAppServerLoginMethod(loginMethod) || codexAppServerDefaultLoginMethod;
+  clearCodexAppServerLoginAction(activeRuntime);
   const requestId = sendCodexAppServerRequest(
     activeAppServer,
     "account/login/start",
@@ -1777,6 +1778,7 @@ function handleCodexAppServerResponse(activeAppServer, message, pendingRequest =
     }
     activeRuntime.accountReady = true;
     activeRuntime.loginInProgress = false;
+    clearCodexAppServerLoginAction(activeRuntime);
     sendCodexAppServerModelList(activeAppServer);
     appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server account is ready; starting thread.\n");
     resumeCodexAppServerRuntimeThreadStarts(activeRuntime, activeAppServer);
@@ -1925,6 +1927,7 @@ function handleCodexAppServerDeviceCodeLoginStartResponse(activeAppServer, resul
       attentionConfidence: AgentStateConfidence.HIGH,
     });
   }
+  broadcastTasks();
 }
 
 function handleCodexAppServerBrowserLoginStartResponse(activeAppServer, result) {
@@ -1952,6 +1955,7 @@ function handleCodexAppServerBrowserLoginStartResponse(activeAppServer, result) 
       attentionConfidence: AgentStateConfidence.HIGH,
     });
   }
+  broadcastTasks();
 }
 
 function handleCodexAppServerLoginCompleted(activeAppServer, params) {
@@ -1960,8 +1964,6 @@ function handleCodexAppServerLoginCompleted(activeAppServer, params) {
   const error = String(params?.error || "").trim();
   activeRuntime.loginInProgress = false;
   activeRuntime.loginId = "";
-  activeRuntime.loginUrl = "";
-  activeRuntime.loginUserCode = "";
   if (!success) {
     activeRuntime.accountReady = false;
     const loginKind = codexAppServerLoginKind(activeRuntime.loginMethod);
@@ -1983,6 +1985,7 @@ function handleCodexAppServerLoginCompleted(activeAppServer, params) {
         attentionConfidence: AgentStateConfidence.HIGH,
       });
     }
+    broadcastTasks();
     return;
   }
 
@@ -1992,6 +1995,7 @@ function handleCodexAppServerLoginCompleted(activeAppServer, params) {
   activeRuntime.modelListRequested = false;
   activeRuntime.forcedAccountRefreshAttempted = true;
   sendCodexAppServerAccountRead(activeAppServer, { refreshToken: true });
+  broadcastTasks();
 }
 
 function codexAppServerLoginKind(loginMethod) {
@@ -2014,6 +2018,7 @@ function handleCodexAppServerAccountUpdated(activeAppServer) {
   appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server account updated; resuming.\n");
   activeRuntime.loginInProgress = false;
   activeRuntime.accountReady = true;
+  clearCodexAppServerLoginAction(activeRuntime);
   resumeCodexAppServerAfterLogin(activeAppServer);
 }
 
@@ -2114,8 +2119,6 @@ function handleCodexAppServerAuthFailureDiagnostic(activeAppServer, _detail) {
   activeRuntime.accountReady = false;
   activeRuntime.loginInProgress = false;
   activeRuntime.loginId = "";
-  activeRuntime.loginUrl = "";
-  activeRuntime.loginUserCode = "";
   activeRuntime.pendingRequests?.clear();
   activeRuntime.pendingThreadStartTaskIds?.clear();
 
@@ -4720,16 +4723,29 @@ function serializeTaskForClient(task) {
 function codexAppServerLoginForClient(taskId) {
   const activeAppServer = activeCodexThreadSessions.get(taskId);
   const activeRuntime = activeAppServer ? codexRuntimeStateForThreadSession(activeAppServer) : null;
-  if (!activeRuntime?.loginInProgress || !activeRuntime.loginUrl) {
+  if (!activeRuntime?.loginUrl || (!activeRuntime.loginInProgress && !activeRuntime.authFailureDetected)) {
     return null;
   }
   const loginMethod = normalizeCodexAppServerLoginMethod(activeRuntime.loginMethod) || codexAppServerDefaultLoginMethod;
   return {
     method: loginMethod,
-    title: loginMethod === codexAppServerLoginMethodBrowserRedirect ? "ChatGPT browser login required" : "ChatGPT device login required",
+    title: codexAppServerLoginTitleForClient(activeRuntime, loginMethod),
     url: activeRuntime.loginUrl,
     userCode: activeRuntime.loginUserCode || "",
   };
+}
+
+function codexAppServerLoginTitleForClient(activeRuntime, loginMethod) {
+  if (activeRuntime.authFailureDetected) {
+    return "ChatGPT login needs repair";
+  }
+  return loginMethod === codexAppServerLoginMethodBrowserRedirect ? "ChatGPT browser login required" : "ChatGPT device login required";
+}
+
+function clearCodexAppServerLoginAction(activeRuntime) {
+  activeRuntime.loginId = "";
+  activeRuntime.loginUrl = "";
+  activeRuntime.loginUserCode = "";
 }
 
 function codexAppServerRequestForClient(taskId) {

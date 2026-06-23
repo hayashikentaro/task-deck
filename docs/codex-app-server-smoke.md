@@ -63,7 +63,7 @@ Normal task logs should be human-readable and should not show raw JSON-RPC. Expe
 - One account refresh attempt only if an auth error occurs.
 - Device login URL and user code, or browser login URL, only if login is required; the composer should also expose a direct login action while login is pending.
 - Login completed or failed.
-- If an invalid or revoked token appears after login, TaskDeck should mark the task as needing input and should not report the adapter as ready.
+- If an invalid or revoked token appears after login, TaskDeck should mark the task as needing input, keep the direct login action available when a login URL is known, and should not report the adapter as ready.
 - Thread ready.
 - Turn accepted.
 - Assistant message text.
