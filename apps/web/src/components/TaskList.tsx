@@ -526,6 +526,7 @@ function attentionState(task: Task): AttentionState {
 
 function supervisionBucket(task: Task) {
   if (task.status !== "running") return "not_now";
+  if (task.agentState === "ready") return "needs_you";
   return task.attentionState === "none" || !task.attentionState ? "not_now" : "needs_you";
 }
 
@@ -535,6 +536,9 @@ function supervisionBucketLabel(bucket: ReturnType<typeof supervisionBucket>) {
 
 function supervisionTitle(task: Task) {
   if (supervisionBucket(task) === "needs_you") {
+    if (task.agentState === "ready" && attentionState(task) === "none") {
+      return task.agentStateReason || "This task is ready for input.";
+    }
     return task.attentionStateReason || "This running task may need human attention.";
   }
   return task.status === "running" ? "Task is running." : "Task is not running.";
