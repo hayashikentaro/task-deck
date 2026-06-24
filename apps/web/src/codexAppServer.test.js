@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   TASKDECK_DYNAMIC_DECISION_TOOL_NAME,
   TASKDECK_DYNAMIC_DECISION_TOOL_NAMESPACE,
+  buildCodexAppServerDynamicToolCallResponse,
   buildCodexAppServerThreadStartParams,
   buildCodexAppServerTurnInterruptParams,
   buildCodexAppServerTurnStartParams,
@@ -163,6 +164,30 @@ describe("Codex App Server helper contracts", () => {
     expect(getOrCreateCodexAppServerDynamicToolCallEntry(cache, "thread_123:turn_123:call_123", createEntry).created).toBe(true);
     expect(getOrCreateCodexAppServerDynamicToolCallEntry(cache, "thread_123:turn_123:call_123", createEntry).created).toBe(false);
     expect(createCount).toBe(1);
+  });
+
+  it("builds App Server dynamic tool responses with inputText content items", () => {
+    const payload = {
+      status: "pending",
+      decisionUrl: "https://decision.example/request/123",
+      message: "Human decision requested. Continue only after TaskDeck reports a decision.",
+    };
+
+    const response = buildCodexAppServerDynamicToolCallResponse(payload, true);
+
+    expect(response.success).toBe(true);
+    expect(response.contentItems[0].type).toBe("inputText");
+    expect(response.contentItems[0].text).toBe(JSON.stringify(payload));
+
+    const errorPayload = {
+      status: "error",
+      message: "Decision Gateway unavailable.",
+    };
+    const errorResponse = buildCodexAppServerDynamicToolCallResponse(errorPayload, false);
+
+    expect(errorResponse.success).toBe(false);
+    expect(errorResponse.contentItems[0].type).toBe("inputText");
+    expect(errorResponse.contentItems[0].text).toBe(JSON.stringify(errorPayload));
   });
 
   it("applies model and reasoning effort to the next turn", () => {

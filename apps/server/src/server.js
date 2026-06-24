@@ -42,6 +42,7 @@ import {
   buildCodexAppServerThreadStartParams,
   buildCodexAppServerTurnInterruptParams,
   buildCodexAppServerTurnStartParams,
+  buildCodexAppServerDynamicToolCallResponse,
   codexAppServerDynamicToolCallDedupeKey,
   codexAppServerThreadIdFromMessage,
   getOrCreateCodexAppServerDynamicToolCallEntry,
@@ -2572,15 +2573,7 @@ function resolveCodexAppServerDynamicDecisionToolIdentity(activeAppServer, param
 }
 
 function codexDynamicDecisionToolResponse(payload, success) {
-  return {
-    success,
-    contentItems: [
-      {
-        type: "text",
-        text: JSON.stringify(payload),
-      },
-    ],
-  };
+  return buildCodexAppServerDynamicToolCallResponse(payload, success);
 }
 
 function safeCodexDynamicDecisionToolErrorMessage(error) {

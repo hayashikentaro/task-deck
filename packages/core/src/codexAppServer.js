@@ -147,6 +147,18 @@ export function getOrCreateCodexAppServerDynamicToolCallEntry(cache, key, create
   return { created: true, entry };
 }
 
+export function buildCodexAppServerDynamicToolCallResponse(payload, success) {
+  return {
+    success,
+    contentItems: [
+      {
+        type: "inputText",
+        text: JSON.stringify(payload),
+      },
+    ],
+  };
+}
+
 export function buildCodexAppServerThreadStartParams({
   cwd,
   model = "",
