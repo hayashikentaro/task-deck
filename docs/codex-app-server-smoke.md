@@ -63,11 +63,11 @@ Then:
 1. Start a new Codex App Server task.
 2. Ask the session to call `taskdeck.request_decision`.
 3. Confirm the Slack/mobile notification arrives.
-4. Approve, reject, conditionally accept, or suspend on mobile.
+4. Choose `proceed`, `revise_plan`, or `need_more_information` on mobile.
 5. Do not touch the PC.
 6. Confirm TaskDeck receives the mailbox item.
 7. Confirm the originating App Server session receives a new turn with the human decision.
-8. Confirm the session continues or stops according to the decision.
+8. Confirm the session continues, revises its plan, or gathers missing information according to the decision.
 9. Confirm the TaskDeck card shows **Decision delivered**, or **Decision delivery failed** for blocked exceptional states.
 10. Confirm another mailbox poll does not create a duplicate turn.
 

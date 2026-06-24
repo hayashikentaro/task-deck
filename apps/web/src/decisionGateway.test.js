@@ -250,9 +250,8 @@ describe("Decision Gateway connector helpers", () => {
           taskId: "task_123",
           sessionId: "session_123",
           action: {
-            type: "accept",
-            condition: "Proceed with the smaller scope.",
-            reason: "It is enough for this release.",
+            action: "proceed",
+            note: "Proceed with the smaller scope.",
             decidedAt: "2026-06-24T00:00:00.000Z",
           },
           goal: "Choose implementation scope",
@@ -273,9 +272,9 @@ describe("Decision Gateway connector helpers", () => {
       taskdeckInstanceId: "taskdeck_123",
       taskId: "task_123",
       sessionId: "session_123",
-      actionType: "accept",
-      condition: "Proceed with the smaller scope.",
-      reason: "It is enough for this release.",
+      actionType: "proceed",
+      condition: "",
+      reason: "Proceed with the smaller scope.",
       decidedAt: "2026-06-24T00:00:00.000Z",
       receivedAt: "2026-06-24T00:00:02.000Z",
     });
@@ -454,12 +453,12 @@ describe("Decision Gateway connector helpers", () => {
     const receivedLease = markDecisionGatewayDecisionLeaseReceived(lease, {
       receivedAt: "2026-06-24T00:10:00.000Z",
       mailboxItemId: "mail_123",
-      actionType: "accept",
+      actionType: "proceed",
     });
     const duplicateResult = markDecisionGatewayDecisionLeaseReceived(receivedLease, {
       receivedAt: "2026-06-24T00:20:00.000Z",
       mailboxItemId: "mail_456",
-      actionType: "reject",
+      actionType: "revise_plan",
     });
 
     expect(duplicateResult).toEqual(receivedLease);
@@ -543,7 +542,7 @@ describe("Decision Gateway connector helpers", () => {
         autoDeliverEnabled: true,
         lease: markDecisionGatewayDecisionLeaseReceived(lease, {
           mailboxItemId: "mail_123",
-          actionType: "accept",
+          actionType: "proceed",
         }),
         mailboxItem,
         validationStatus: "valid",
@@ -599,7 +598,7 @@ describe("Decision Gateway connector helpers", () => {
       }),
       {
         mailboxItemId: "mail_123",
-        actionType: "accept",
+        actionType: "proceed",
         reason: "Proceed.",
       },
     );
@@ -610,13 +609,13 @@ describe("Decision Gateway connector helpers", () => {
     expect(failed).toMatchObject({
       status: "delivery_failed",
       mailboxItemId: "mail_123",
-      actionType: "accept",
+      actionType: "proceed",
       reason: "Proceed.",
       deliveryError: "Codex App Server thread is not active.",
     });
   });
 
-  it("builds scoped delivery messages for reject, suspend, and conditional_accept", () => {
+  it("builds scoped delivery messages for proceed, revise_plan, and need_more_information", () => {
     const lease = createDecisionGatewayDecisionLease({
       leaseId: "lease_123",
       decisionGatewayUrl: "https://decision.example/decisions/decision_123",
@@ -626,19 +625,65 @@ describe("Decision Gateway connector helpers", () => {
       decisionQuestion: "Should the risky migration proceed?",
     });
 
-    const rejectMessage = buildDecisionGatewayDeliveryMessage({
+    const proceedMessage = buildDecisionGatewayDeliveryMessage({
       lease,
       mailboxItem: {
-        mailboxItemId: "mail_reject",
-        actionType: "reject",
-        reason: "Too risky.",
+        mailboxItemId: "mail_proceed",
+        actionType: "proceed",
       },
     });
-    const suspendMessage = buildDecisionGatewayDeliveryMessage({
+    const constrainedProceedMessage = buildDecisionGatewayDeliveryMessage({
       lease,
       mailboxItem: {
-        mailboxItemId: "mail_suspend",
-        actionType: "suspend",
+        mailboxItemId: "mail_proceed_note",
+        actionType: "proceed",
+        reason: "Only edit docs.",
+      },
+    });
+    const revisePlanMessage = buildDecisionGatewayDeliveryMessage({
+      lease,
+      mailboxItem: {
+        mailboxItemId: "mail_revise",
+        actionType: "revise_plan",
+        reason: "Avoid changing runtime startup.",
+      },
+    });
+    const needMoreInformationMessage = buildDecisionGatewayDeliveryMessage({
+      lease,
+      mailboxItem: {
+        mailboxItemId: "mail_info",
+        actionType: "need_more_information",
+        reason: "Summarize the current failing checks.",
+      },
+    });
+
+    expect(proceedMessage).toContain("Human decision: proceed.");
+    expect(proceedMessage).toContain("Continue with the recommended resume action.");
+    expect(constrainedProceedMessage).toContain("Human decision: proceed.");
+    expect(constrainedProceedMessage).toContain("Additional constraints/instructions:");
+    expect(constrainedProceedMessage).toContain("Only edit docs.");
+    expect(constrainedProceedMessage).toContain("Continue under these constraints.");
+    expect(revisePlanMessage).toContain("Human decision: revise_plan.");
+    expect(revisePlanMessage).toContain("Do not implement yet.");
+    expect(revisePlanMessage).toContain("Revise the plan according to this feedback:");
+    expect(revisePlanMessage).toContain("Ask again through Decision Gateway before implementing.");
+    expect(needMoreInformationMessage).toContain("Human decision: need_more_information.");
+    expect(needMoreInformationMessage).toContain("Provide the missing information/materials requested here:");
+    expect(needMoreInformationMessage).toContain("Ask again through Decision Gateway when the materials are ready.");
+  });
+
+  it("maps legacy delivery actions to the TaskDeck action model", () => {
+    const lease = createDecisionGatewayDecisionLease({
+      leaseId: "lease_123",
+      requestId: "request_123",
+      taskId: "task_123",
+      taskdeckInstanceId: "taskdeck_123",
+    });
+    const acceptMessage = buildDecisionGatewayDeliveryMessage({
+      lease,
+      mailboxItem: {
+        mailboxItemId: "mail_accept",
+        actionType: "accept",
       },
     });
     const conditionalMessage = buildDecisionGatewayDeliveryMessage({
@@ -649,15 +694,20 @@ describe("Decision Gateway connector helpers", () => {
         condition: "Only edit docs.",
       },
     });
+    const insufficientMaterialsMessage = buildDecisionGatewayDeliveryMessage({
+      lease,
+      mailboxItem: {
+        mailboxItemId: "mail_insufficient",
+        actionType: "insufficient_materials",
+        reason: "Attach the migration diff.",
+      },
+    });
 
-    expect(rejectMessage).toContain("Decision: reject");
-    expect(rejectMessage).toContain("do not proceed with the rejected path");
-    expect(suspendMessage).toContain("Decision: suspend");
-    expect(suspendMessage).toContain("stop work and report suspended state");
-    expect(conditionalMessage).toContain("Decision: conditional_accept");
+    expect(acceptMessage).toContain("Human decision: proceed.");
+    expect(conditionalMessage).toContain("Human decision: proceed.");
     expect(conditionalMessage).toContain("Only edit docs.");
-    expect(conditionalMessage).toContain("continue only within the listed conditions");
-    expect(conditionalMessage).toContain("Do not broaden this approval");
+    expect(insufficientMaterialsMessage).toContain("Human decision: need_more_information.");
+    expect(insufficientMaterialsMessage).toContain("Attach the migration diff.");
   });
 
   it("uses a stable decision delivery idempotency key", () => {

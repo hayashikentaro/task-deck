@@ -110,7 +110,7 @@ The tool response is a pending status and decision URL for model awareness.
 
 Mailbox polling automatically delivers valid matched decisions back to the originating Codex App Server thread by starting a new App Server turn. TaskDeck uses only host-owned lease data and current task/thread mappings for routing. The mailbox item may be rejected as `unmatched` or `stale`, and already delivered leases are not delivered again. Delivery failure marks the lease `delivery_failed`, preserves the mailbox result locally, and surfaces the error in task state/log output. `TASKDECK_DISABLE_DYNAMIC_DECISION_TOOL=1` and `TASKDECK_DISABLE_DECISION_AUTO_DELIVER=1` are development/emergency escape hatches; they are not normal setup.
 
-The delivered turn text is scoped to the lease and original question. It includes the decision action, rationale, conditions, and decision URL, and instructs Codex not to broaden the approval into unrelated implementation permission. Decision delivery never uses PTY/stdin injection, direct Decision Gateway-to-agent communication, file inboxes, stdout markers, remote command execution, or a broad automatic apply path.
+The delivered turn text is scoped to the lease and original question. It prefers the normalized mailbox payload fields `action.action` and `action.note`, delivering the action as `proceed`, `revise_plan`, or `need_more_information` with any note as additional constraints, plan feedback, or requested missing materials. Decision delivery never uses PTY/stdin injection, direct Decision Gateway-to-agent communication, file inboxes, stdout markers, remote command execution, or a broad automatic apply path.
 
 ## Tasks
 

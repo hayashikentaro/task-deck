@@ -297,7 +297,7 @@ export function normalizeDecisionGatewayMailboxItem(value, { receivedAt = new Da
   }
 
   const action = isPlainObject(payload.action) ? payload.action : null;
-  const actionType = normalizedString(action?.type);
+  const actionType = normalizedString(action?.action || action?.type);
   if (!action || !actionType) {
     return null;
   }
@@ -318,7 +318,10 @@ export function normalizeDecisionGatewayMailboxItem(value, { receivedAt = new Da
       normalizedString(action.condition),
       DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT,
     ),
-    reason: boundedDecisionGatewayContextField(normalizedString(action.reason), DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT),
+    reason: boundedDecisionGatewayContextField(
+      normalizedString(action.note || action.reason),
+      DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT,
+    ),
     decidedAt: normalizedString(action.decidedAt),
     receivedAt: normalizedString(receivedAt) || new Date().toISOString(),
     createdAt: normalizedString(value.createdAt),
@@ -673,14 +676,13 @@ export function decisionGatewayDeliveryIdempotencyKey(lease, mailboxItem) {
 }
 
 export function buildDecisionGatewayDeliveryMessage({ lease, mailboxItem }) {
-  const actionType = normalizedString(mailboxItem?.actionType || lease?.actionType || "decision");
+  const actionType = normalizeDecisionGatewayDeliveryAction(mailboxItem?.actionType || lease?.actionType);
   const decisionQuestion = boundedDecisionGatewayContextField(
     lease?.decisionQuestion || mailboxItem?.goal || "The original decision question was not recorded.",
     DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT,
   );
-  const reason = boundedDecisionGatewayContextField(mailboxItem?.reason || lease?.reason, DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT);
-  const condition = boundedDecisionGatewayContextField(
-    mailboxItem?.condition || lease?.condition,
+  const note = boundedDecisionGatewayContextField(
+    decisionGatewayDeliveryNote({ mailboxItem, lease, actionType }),
     DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT,
   );
   const decisionUrl = normalizedString(lease?.decisionGatewayUrl);
@@ -689,34 +691,68 @@ export function buildDecisionGatewayDeliveryMessage({ lease, mailboxItem }) {
   return [
     "Human decision received from TaskDeck.",
     "",
-    `Decision: ${actionType}`,
+    `Human decision: ${actionType}.`,
     `Decision question: ${decisionQuestion}`,
-    `Rationale: ${reason}`,
-    `Conditions: ${condition}`,
     `Decision URL: ${decisionUrl}`,
     "",
     "Scope:",
     "- This decision only applies to the requested decision lease.",
-    "- Do not broaden this approval into unrelated implementation permission.",
     "- Continue from the blocked point according to the decision.",
     "- If a new product, UX, architecture, or risky implementation judgment appears, call taskdeck.request_decision again.",
     requestId ? `- Decision lease requestId: ${requestId}` : "",
     "",
-    decisionInstructionForAction(actionType),
+    decisionInstructionForAction(actionType, note),
   ].filter((line) => line !== "").join("\n");
 }
 
-function decisionInstructionForAction(actionType) {
-  if (actionType === "reject") {
-    return "If the decision is reject, do not proceed with the rejected path. Summarize what will not be done and ask for a new direction only if needed.";
+function normalizeDecisionGatewayDeliveryAction(value) {
+  const actionType = normalizedString(value);
+  if (actionType === "accept") return "proceed";
+  if (actionType === "conditional_accept") return "proceed";
+  if (actionType === "insufficient_materials") return "need_more_information";
+  return actionType || "decision";
+}
+
+function decisionGatewayDeliveryNote({ mailboxItem, lease, actionType }) {
+  const note = normalizedString(mailboxItem?.reason || lease?.reason);
+  if (note) return note;
+
+  const condition = normalizedString(mailboxItem?.condition || lease?.condition);
+  if (condition && actionType === "proceed") return condition;
+  return condition;
+}
+
+function decisionInstructionForAction(actionType, note) {
+  if (actionType === "proceed" && note) {
+    return [
+      "Additional constraints/instructions:",
+      note,
+      "",
+      "Continue under these constraints.",
+    ].join("\n");
   }
-  if (actionType === "suspend") {
-    return "If the decision is suspend, stop work and report suspended state.";
+  if (actionType === "proceed") {
+    return "Continue with the recommended resume action.";
   }
-  if (actionType === "conditional_accept") {
-    return "If the decision is conditional_accept, continue only within the listed conditions.";
+  if (actionType === "revise_plan") {
+    return [
+      "Do not implement yet.",
+      "Revise the plan according to this feedback:",
+      note,
+      "",
+      "Ask again through Decision Gateway before implementing.",
+    ].join("\n");
   }
-  return "Proceed only within the scope of this decision.";
+  if (actionType === "need_more_information") {
+    return [
+      "Do not implement yet.",
+      "Provide the missing information/materials requested here:",
+      note,
+      "",
+      "Ask again through Decision Gateway when the materials are ready.",
+    ].join("\n");
+  }
+  return "Continue only within the scope of this decision.";
 }
 
 export function isDecisionGatewayDecisionLeaseExpired(lease, now = new Date().toISOString()) {
