@@ -69,6 +69,45 @@ Outbound Ask decision requests are persisted as local leases under `.taskdeck/de
 
 `GET /api/decision-gateway/leases/local` returns locally recorded decision leases with `status` as `pending`, `received`, `expired`, or `cancelled`. Pending leases are marked `expired` lazily during mailbox polling or when rendered through local APIs.
 
+When `TASKDECK_CODEX_DYNAMIC_DECISION_TOOL=1`, TaskDeck registers a Codex App Server dynamic tool on thread start:
+
+```json
+{
+  "namespace": "taskdeck",
+  "name": "request_decision",
+  "inputSchema": {
+    "type": "object",
+    "required": ["decisionQuestion", "goal", "urgency", "semanticSummary", "materials"],
+    "properties": {
+      "decisionQuestion": { "type": "string" },
+      "goal": { "type": "string" },
+      "axis": { "type": "string" },
+      "urgency": { "type": "string", "enum": ["normal", "blocking"] },
+      "semanticSummary": { "type": "string" },
+      "materials": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["type", "text"],
+          "properties": {
+            "type": { "type": "string", "enum": ["text"] },
+            "label": { "type": "string" },
+            "text": { "type": "string" }
+          }
+        }
+      },
+      "recommendedDecision": { "type": ["string", "null"] },
+      "relevantFacts": { "type": "array", "items": { "type": "string" } },
+      "risks": { "type": "array", "items": { "type": "string" } }
+    }
+  }
+}
+```
+
+The dynamic tool is the preferred session-triggered path for human decisions when the flag is enabled. TaskDeck receives `item/tool/call`, resolves `threadId` to the active TaskDeck task/session from its own App Server runtime mapping, ignores any model-supplied routing fields, sends the request through the same Decision Gateway helper used by manual Ask, and records the same pending lease. Manual Ask from the task card remains the fallback when the tool is disabled or unavailable.
+
+The tool response is a pending status and decision URL for model awareness only. TaskDeck does not automatically apply decisions to the agent, resume the agent, write to PTY/stdin, or execute commands after a mailbox decision arrives.
+
 ## Tasks
 
 `GET /api/tasks` and `GET /api/tasks/:taskId` return persisted task metadata including the launch command, cwd, agent profile fields, input lock timestamp, App Server thread session identity when available, legacy session fields when present, parent/child metadata, child reported status, and `taskOrderIndex` when a manual card order is stored.

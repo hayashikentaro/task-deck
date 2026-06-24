@@ -53,14 +53,114 @@ export function resolveCodexAppServerTaskIdForThread({ threadId, defaultTaskId, 
   return taskIdByThreadId?.get?.(normalizedThreadId) || defaultTaskId;
 }
 
-export function buildCodexAppServerThreadStartParams({ cwd, model = "" }) {
+export const TASKDECK_DYNAMIC_DECISION_TOOL_NAMESPACE = "taskdeck";
+export const TASKDECK_DYNAMIC_DECISION_TOOL_NAME = "request_decision";
+
+export const taskDeckDynamicDecisionTool = Object.freeze({
+  namespace: TASKDECK_DYNAMIC_DECISION_TOOL_NAMESPACE,
+  name: TASKDECK_DYNAMIC_DECISION_TOOL_NAME,
+  description: [
+    "Request a human decision through TaskDeck when human approval, product or UX judgment,",
+    "or a project-direction choice is required before continuing.",
+    "Use only when the next action is blocked by human judgment, has multiple plausible paths,",
+    "or may be risky, irreversible, or broad in scope.",
+    "Do not use for routine progress updates, questions answerable by reading code/tests,",
+    "or ordinary implementation choices.",
+    "TaskDeck infers routing identity from the App Server session; do not include taskId, sessionId,",
+    "or taskdeckInstanceId in the arguments.",
+    "The tool returns pending status and a decisionUrl; continue only after TaskDeck reports a decision.",
+  ].join(" "),
+  inputSchema: {
+    type: "object",
+    required: [
+      "decisionQuestion",
+      "goal",
+      "urgency",
+      "semanticSummary",
+      "materials",
+    ],
+    properties: {
+      decisionQuestion: { type: "string" },
+      goal: { type: "string" },
+      axis: { type: "string" },
+      urgency: {
+        type: "string",
+        enum: ["normal", "blocking"],
+      },
+      semanticSummary: { type: "string" },
+      materials: {
+        type: "array",
+        items: {
+          type: "object",
+          required: ["type", "text"],
+          properties: {
+            type: { type: "string", enum: ["text"] },
+            label: { type: "string" },
+            text: { type: "string" },
+          },
+        },
+      },
+      recommendedDecision: { type: ["string", "null"] },
+      relevantFacts: {
+        type: "array",
+        items: { type: "string" },
+      },
+      risks: {
+        type: "array",
+        items: { type: "string" },
+      },
+    },
+  },
+});
+
+export function taskDeckDynamicDecisionTools({ enabled = false } = {}) {
+  return enabled ? [taskDeckDynamicDecisionTool] : [];
+}
+
+export function isTaskDeckDynamicDecisionToolCall(params) {
+  return (
+    String(params?.namespace || "").trim() === TASKDECK_DYNAMIC_DECISION_TOOL_NAMESPACE &&
+    String(params?.tool || "").trim() === TASKDECK_DYNAMIC_DECISION_TOOL_NAME
+  );
+}
+
+export function codexAppServerDynamicToolCallDedupeKey(params) {
+  const threadId = String(params?.threadId || "").trim();
+  const turnId = String(params?.turnId || "").trim();
+  const callId = String(params?.callId || "").trim();
+  if (!threadId || !turnId || !callId) {
+    return "";
+  }
+  return `${threadId}:${turnId}:${callId}`;
+}
+
+export function getOrCreateCodexAppServerDynamicToolCallEntry(cache, key, createEntry) {
+  if (!cache || typeof cache.get !== "function" || typeof cache.set !== "function" || !key) {
+    return { created: false, entry: null };
+  }
+  const existingEntry = cache.get(key);
+  if (existingEntry) {
+    return { created: false, entry: existingEntry };
+  }
+  const entry = createEntry();
+  cache.set(key, entry);
+  return { created: true, entry };
+}
+
+export function buildCodexAppServerThreadStartParams({
+  cwd,
+  model = "",
+  enableDynamicDecisionTool = false,
+} = {}) {
   const normalizedModel = String(model || "").trim();
+  const dynamicTools = taskDeckDynamicDecisionTools({ enabled: enableDynamicDecisionTool });
   return {
     cwd,
     ephemeral: true,
     sandbox: "danger-full-access",
     approvalPolicy: "never",
     ...(normalizedModel ? { model: normalizedModel } : {}),
+    ...(dynamicTools.length > 0 ? { dynamicTools } : {}),
   };
 }
 

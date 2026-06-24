@@ -1,6 +1,10 @@
 export const DECISION_GATEWAY_RECENT_OUTPUT_LIMIT = 4000;
 export const DECISION_GATEWAY_CONTEXT_FIELD_LIMIT = 2000;
 export const DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT = 2000;
+export const DECISION_GATEWAY_TOOL_FIELD_LIMIT = 2000;
+export const DECISION_GATEWAY_TOOL_SHORT_FIELD_LIMIT = 500;
+export const DECISION_GATEWAY_TOOL_LIST_LIMIT = 10;
+export const DECISION_GATEWAY_TOOL_MATERIAL_LIMIT = 6;
 export const DEFAULT_DECISION_GATEWAY_DECISION_LEASE_TTL_MS = 30 * 60 * 1000;
 
 export const DecisionGatewayDecisionLeaseStatus = Object.freeze({
@@ -104,7 +108,55 @@ export function boundedDecisionGatewayContextField(value, limit = DECISION_GATEW
   return `${redacted.slice(0, limit)}\n[TaskDeck truncated this field to ${limit} characters.]`;
 }
 
-export function buildTaskDeckDecisionRequest({ task, recentOutput = "", taskdeckInstanceId = "" }) {
+export function normalizeTaskDeckDecisionRequestInput(value) {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+
+  const decisionQuestion = boundedDecisionGatewayContextField(value.decisionQuestion, DECISION_GATEWAY_TOOL_FIELD_LIMIT);
+  const goal = boundedDecisionGatewayContextField(value.goal, DECISION_GATEWAY_TOOL_FIELD_LIMIT);
+  const semanticSummary = boundedDecisionGatewayContextField(value.semanticSummary, DECISION_GATEWAY_TOOL_FIELD_LIMIT);
+  const urgency = normalizedString(value.urgency);
+  const materials = normalizeTaskDeckDecisionMaterials(value.materials);
+
+  if (
+    !decisionQuestion ||
+    !goal ||
+    !semanticSummary ||
+    !["normal", "blocking"].includes(urgency) ||
+    materials.length === 0
+  ) {
+    return null;
+  }
+
+  const axis = boundedDecisionGatewayContextField(
+    value.axis || "implementation_strategy",
+    DECISION_GATEWAY_TOOL_SHORT_FIELD_LIMIT,
+  ) || "implementation_strategy";
+  const recommendedDecision = value.recommendedDecision === null || value.recommendedDecision === undefined
+    ? null
+    : boundedDecisionGatewayContextField(value.recommendedDecision, DECISION_GATEWAY_TOOL_FIELD_LIMIT);
+
+  return {
+    decisionQuestion,
+    goal,
+    axis,
+    urgency,
+    semanticSummary,
+    materials,
+    recommendedDecision,
+    relevantFacts: normalizeTaskDeckDecisionStringList(value.relevantFacts),
+    risks: normalizeTaskDeckDecisionStringList(value.risks),
+  };
+}
+
+export function buildTaskDeckDecisionRequest({
+  task,
+  recentOutput = "",
+  taskdeckInstanceId = "",
+  decisionInput = null,
+}) {
+  const normalizedDecisionInput = normalizeTaskDeckDecisionRequestInput(decisionInput);
   const normalizedTaskdeckInstanceId = normalizedString(taskdeckInstanceId);
   const taskId = String(task?.id || "").trim();
   const sessionId = String(task?.agentSessionId || "").trim();
@@ -114,7 +166,7 @@ export function buildTaskDeckDecisionRequest({ task, recentOutput = "", taskdeck
   const workingDirectory = boundedDecisionGatewayContextField(String(task?.cwd || "").trim(), 1000);
   const agentKind = boundedDecisionGatewayContextField(String(task?.agentLabel || task?.agentProfileId || "").trim(), 500);
   const agentProfileId = boundedDecisionGatewayContextField(String(task?.agentProfileId || "").trim(), 500);
-  const goal = title || initialInstruction || "Decide what this TaskDeck session should do next.";
+  const goal = normalizedDecisionInput?.goal || title || initialInstruction || "Decide what this TaskDeck session should do next.";
   const currentState = [
     task?.status ? `Process status: ${task.status}.` : "",
     task?.agentState ? `Agent state: ${task.agentState}.` : "",
@@ -135,22 +187,29 @@ export function buildTaskDeckDecisionRequest({ task, recentOutput = "", taskdeck
       label: "TaskDeck",
     },
     goal,
-    axis: "ambiguous_product_decision",
-    urgency: "blocking",
-    decisionQuestion: decisionQuestionForTask(task),
-    semanticSummary: currentState || "This TaskDeck session needs human judgment before the agent continues.",
-    relevantFacts: [
-      "TaskDeck sent this request manually from an existing task/session.",
-      task?.attentionState && task.attentionState !== "none"
-        ? "TaskDeck marked this session as needing attention."
-        : "TaskDeck did not infer a structured decision request from the agent.",
-      safeRecentOutput ? "A bounded, redacted recent output snippet is included as material." : "No recent output snippet was available.",
-    ],
-    risks: [
-      "The decision request may be generic until agents emit structured decision_request files.",
-      "Recent output is bounded and redacted, so the Decision Workspace may not include all context.",
-    ],
-    recommendedDecision: null,
+    axis: normalizedDecisionInput?.axis || "ambiguous_product_decision",
+    urgency: normalizedDecisionInput?.urgency || "blocking",
+    decisionQuestion: normalizedDecisionInput?.decisionQuestion || decisionQuestionForTask(task),
+    semanticSummary:
+      normalizedDecisionInput?.semanticSummary ||
+      currentState ||
+      "This TaskDeck session needs human judgment before the agent continues.",
+    relevantFacts: normalizedDecisionInput?.relevantFacts?.length
+      ? normalizedDecisionInput.relevantFacts
+      : [
+          "TaskDeck sent this request manually from an existing task/session.",
+          task?.attentionState && task.attentionState !== "none"
+            ? "TaskDeck marked this session as needing attention."
+            : "TaskDeck did not infer a structured decision request from the agent.",
+          safeRecentOutput ? "A bounded, redacted recent output snippet is included as material." : "No recent output snippet was available.",
+        ],
+    risks: normalizedDecisionInput?.risks?.length
+      ? normalizedDecisionInput.risks
+      : [
+          "The decision request may be generic until agents emit structured decision_request files.",
+          "Recent output is bounded and redacted, so the Decision Workspace may not include all context.",
+        ],
+    recommendedDecision: normalizedDecisionInput ? normalizedDecisionInput.recommendedDecision : null,
     materials: [
       {
         type: "text",
@@ -173,6 +232,7 @@ export function buildTaskDeckDecisionRequest({ task, recentOutput = "", taskdeck
           2,
         ),
       },
+      ...(normalizedDecisionInput?.materials || []),
       ...(safeRecentOutput
         ? [
             {
@@ -184,6 +244,41 @@ export function buildTaskDeckDecisionRequest({ task, recentOutput = "", taskdeck
         : []),
     ],
   };
+}
+
+function normalizeTaskDeckDecisionMaterials(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .slice(0, DECISION_GATEWAY_TOOL_MATERIAL_LIMIT)
+    .map((material, index) => {
+      if (!isPlainObject(material) || material.type !== "text") {
+        return null;
+      }
+      const text = boundedDecisionGatewayContextField(material.text, DECISION_GATEWAY_TOOL_FIELD_LIMIT);
+      if (!text) {
+        return null;
+      }
+      const label = boundedDecisionGatewayContextField(
+        material.label || `Decision material ${index + 1}`,
+        DECISION_GATEWAY_TOOL_SHORT_FIELD_LIMIT,
+      ) || `Decision material ${index + 1}`;
+      return { type: "text", label, text };
+    })
+    .filter(Boolean);
+}
+
+function normalizeTaskDeckDecisionStringList(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .slice(0, DECISION_GATEWAY_TOOL_LIST_LIMIT)
+    .map((item) => boundedDecisionGatewayContextField(item, DECISION_GATEWAY_TOOL_SHORT_FIELD_LIMIT))
+    .filter(Boolean);
 }
 
 export function normalizeDecisionGatewayMailboxItem(value, { receivedAt = new Date().toISOString() } = {}) {

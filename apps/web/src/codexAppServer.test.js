@@ -1,15 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
+  TASKDECK_DYNAMIC_DECISION_TOOL_NAME,
+  TASKDECK_DYNAMIC_DECISION_TOOL_NAMESPACE,
   buildCodexAppServerThreadStartParams,
   buildCodexAppServerTurnInterruptParams,
   buildCodexAppServerTurnStartParams,
+  codexAppServerDynamicToolCallDedupeKey,
   codexAppServerThreadIdFromMessage,
+  getOrCreateCodexAppServerDynamicToolCallEntry,
   isCodexAppServerAuthError,
+  isTaskDeckDynamicDecisionToolCall,
   isRoutineCodexAppServerNotification,
   normalizeCodexAppServerModels,
   resolveCodexAppServerTaskIdForThread,
   shouldIgnoreCodexAppServerMessageAfterAuthFailure,
   shouldSuppressCodexAppServerAuthErrorLine,
+  taskDeckDynamicDecisionTool,
 } from "@taskdeck/core/codex-app-server";
 
 describe("Codex App Server helper contracts", () => {
@@ -110,6 +116,53 @@ describe("Codex App Server helper contracts", () => {
       model: "gpt-5.5",
     });
     expect(buildCodexAppServerThreadStartParams({ cwd: "/workspace/project" })).not.toHaveProperty("model");
+    expect(buildCodexAppServerThreadStartParams({ cwd: "/workspace/project" })).not.toHaveProperty("dynamicTools");
+  });
+
+  it("registers the TaskDeck decision dynamic tool only when enabled", () => {
+    const params = buildCodexAppServerThreadStartParams({
+      cwd: "/workspace/project",
+      enableDynamicDecisionTool: true,
+    });
+
+    expect(params.dynamicTools).toEqual([taskDeckDynamicDecisionTool]);
+    expect(params.dynamicTools[0]).toMatchObject({
+      namespace: TASKDECK_DYNAMIC_DECISION_TOOL_NAMESPACE,
+      name: TASKDECK_DYNAMIC_DECISION_TOOL_NAME,
+    });
+    expect(params.dynamicTools[0].description).toContain("Request a human decision through TaskDeck");
+    expect(params.dynamicTools[0].inputSchema.required).toEqual([
+      "decisionQuestion",
+      "goal",
+      "urgency",
+      "semanticSummary",
+      "materials",
+    ]);
+    expect(params.dynamicTools[0].inputSchema.properties.urgency.enum).toEqual(["normal", "blocking"]);
+  });
+
+  it("recognizes and deduplicates TaskDeck decision dynamic tool calls", () => {
+    const params = {
+      threadId: "thread_123",
+      turnId: "turn_123",
+      callId: "call_123",
+      namespace: TASKDECK_DYNAMIC_DECISION_TOOL_NAMESPACE,
+      tool: TASKDECK_DYNAMIC_DECISION_TOOL_NAME,
+    };
+    const cache = new Map();
+    let createCount = 0;
+    const createEntry = () => {
+      createCount += 1;
+      return { result: { ok: true } };
+    };
+
+    expect(isTaskDeckDynamicDecisionToolCall(params)).toBe(true);
+    expect(isTaskDeckDynamicDecisionToolCall({ ...params, tool: "other" })).toBe(false);
+    expect(codexAppServerDynamicToolCallDedupeKey(params)).toBe("thread_123:turn_123:call_123");
+    expect(codexAppServerDynamicToolCallDedupeKey({ ...params, callId: "" })).toBe("");
+    expect(getOrCreateCodexAppServerDynamicToolCallEntry(cache, "thread_123:turn_123:call_123", createEntry).created).toBe(true);
+    expect(getOrCreateCodexAppServerDynamicToolCallEntry(cache, "thread_123:turn_123:call_123", createEntry).created).toBe(false);
+    expect(createCount).toBe(1);
   });
 
   it("applies model and reasoning effort to the next turn", () => {

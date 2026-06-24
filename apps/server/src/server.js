@@ -42,8 +42,11 @@ import {
   buildCodexAppServerThreadStartParams,
   buildCodexAppServerTurnInterruptParams,
   buildCodexAppServerTurnStartParams,
+  codexAppServerDynamicToolCallDedupeKey,
   codexAppServerThreadIdFromMessage,
+  getOrCreateCodexAppServerDynamicToolCallEntry,
   isCodexAppServerAuthError,
+  isTaskDeckDynamicDecisionToolCall,
   isRoutineCodexAppServerNotification,
   normalizeCodexAppServerModels,
   resolveCodexAppServerTaskIdForThread,
@@ -62,6 +65,7 @@ import {
 } from "@taskdeck/core/manager-readable";
 import {
   DEFAULT_DECISION_GATEWAY_DECISION_LEASE_TTL_MS,
+  DECISION_GATEWAY_RECENT_OUTPUT_LIMIT,
   DecisionGatewayDecisionLeaseStatus,
   DecisionGatewayMailboxValidationStatus,
   buildDecisionGatewayTaskDeckHeaders,
@@ -73,6 +77,7 @@ import {
   normalizeDecisionGatewayDecisionLease,
   normalizeDecisionGatewayTaskDeckApiToken,
   normalizeDecisionGatewayMailboxItem,
+  normalizeTaskDeckDecisionRequestInput,
   normalizeDecisionGatewayUrl,
   validateDecisionGatewayMailboxItemAgainstLease,
 } from "@taskdeck/core/decision-gateway";
@@ -117,6 +122,7 @@ const codexAppServerThreadSessionSource = "codex_app_server_thread";
 const codexAppServerNativeSubagentSessionSource = "codex_app_server_native_subagent";
 const codexAppServerSharedRuntimeId = "codex-app-server-shared-runtime";
 const codexAppServerCommand = "codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://";
+const codexDynamicDecisionToolCallCacheLimit = 100;
 const codexAppServerLoginMethodDeviceCode = "deviceCode";
 const codexAppServerLoginMethodBrowserRedirect = "browserRedirect";
 const codexAppServerDefaultLoginMethod = codexAppServerLoginMethodDeviceCode;
@@ -147,6 +153,7 @@ const host = process.env.HOST || "127.0.0.1";
 const shell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "bash");
 const inputDebugEnabled = process.env.TASKDECK_INPUT_DEBUG === "1";
 const codexAppServerDebugEnabled = process.env.TASKDECK_CODEX_APP_SERVER_DEBUG === "1";
+const codexDynamicDecisionToolEnabled = process.env.TASKDECK_CODEX_DYNAMIC_DECISION_TOOL === "1";
 const decisionGatewayUrl = normalizeDecisionGatewayUrl(process.env.DECISION_GATEWAY_URL);
 const decisionGatewayTaskDeckApiToken = normalizeDecisionGatewayTaskDeckApiToken(
   process.env.TASKDECK_DECISION_GATEWAY_API_TOKEN,
@@ -530,66 +537,8 @@ app.post("/api/tasks/:taskId/decision-request", async (request, response) => {
     return;
   }
 
-  if (!decisionGatewayUrl) {
-    response.status(400).json({
-      error: "Decision Gateway is not configured. Set DECISION_GATEWAY_URL to enable this action.",
-    });
-    return;
-  }
-
   try {
-    const taskdeckInstanceId = await readOrCreateTaskDeckInstanceId();
-    const recentOutput = await readTaskLogTail(task.id, 4000);
-    const decisionRequest = buildTaskDeckDecisionRequest({
-      task: {
-        ...task,
-        sessionLabel: taskSessionLabel(task),
-      },
-      recentOutput,
-      taskdeckInstanceId,
-    });
-    const abortController = new AbortController();
-    const timeout = setTimeout(() => abortController.abort(), decisionGatewayRequestTimeoutMs);
-    let gatewayResponse;
-    try {
-      gatewayResponse = await fetch(`${decisionGatewayUrl}/api/decision-requests`, {
-        method: "POST",
-        headers: decisionGatewayTaskDeckHeaders({ json: true }),
-        body: JSON.stringify(decisionRequest),
-        signal: abortController.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-    const payload = await gatewayResponse.json().catch(() => ({}));
-
-    if (!gatewayResponse.ok) {
-      response.status(502).json({
-        error: decisionGatewayErrorMessage(
-          gatewayResponse,
-          payload,
-          `Decision Gateway request failed with status ${gatewayResponse.status}.`,
-        ),
-      });
-      return;
-    }
-
-    const decisionUrl = String(payload?.url || "");
-    const decisionId = String(payload?.id || "");
-    const requestId = String(payload?.requestId || "");
-    if (requestId) {
-      await recordDecisionGatewayPendingLease({
-        decisionGatewayDecisionId: decisionId,
-        decisionGatewayUrl: decisionUrl,
-        requestId,
-        taskId: task.id,
-        sessionId: String(task.agentSessionId || "").trim(),
-        taskdeckInstanceId,
-      }).catch((error) => {
-        console.warn(`TaskDeck could not record Decision Gateway decision lease ${requestId}: ${error.message}`);
-      });
-    }
-
+    const { decisionUrl, decisionId, requestId } = await sendTaskDecisionRequestToGateway({ task });
     response.json({
       ok: true,
       decisionUrl,
@@ -597,11 +546,8 @@ app.post("/api/tasks/:taskId/decision-request", async (request, response) => {
       requestId,
     });
   } catch (error) {
-    const timedOut = error?.name === "AbortError";
-    response.status(timedOut ? 504 : 502).json({
-      error: timedOut
-        ? `Decision Gateway request timed out after ${decisionGatewayRequestTimeoutMs / 1000} seconds.`
-        : `Unable to send decision request: ${error.message}`,
+    response.status(decisionRequestErrorStatus(error)).json({
+      error: decisionRequestErrorMessage(error),
     });
   }
 });
@@ -730,6 +676,106 @@ function decisionGatewayErrorMessage(gatewayResponse, payload, fallback) {
 
 function warnDecisionGatewayAuthenticationFailure() {
   console.warn("TaskDeck Decision Gateway authentication failed for outbound request.");
+}
+
+class TaskDeckDecisionRequestError extends Error {
+  constructor(message, { statusCode = 502 } = {}) {
+    super(message);
+    this.name = "TaskDeckDecisionRequestError";
+    this.statusCode = statusCode;
+  }
+}
+
+async function sendTaskDecisionRequestToGateway({ task, decisionInput = null }) {
+  if (!task) {
+    throw new TaskDeckDecisionRequestError("Unknown task/session.", { statusCode: 404 });
+  }
+  if (!decisionGatewayUrl) {
+    throw new TaskDeckDecisionRequestError(
+      "Decision Gateway is not configured. Set DECISION_GATEWAY_URL to enable this action.",
+      { statusCode: 400 },
+    );
+  }
+
+  const normalizedDecisionInput = decisionInput === null
+    ? null
+    : normalizeTaskDeckDecisionRequestInput(decisionInput);
+  if (decisionInput !== null && !normalizedDecisionInput) {
+    throw new TaskDeckDecisionRequestError("Invalid taskdeck.request_decision arguments.", { statusCode: 400 });
+  }
+
+  const taskdeckInstanceId = await readOrCreateTaskDeckInstanceId();
+  const recentOutput = await readTaskLogTail(task.id, DECISION_GATEWAY_RECENT_OUTPUT_LIMIT);
+  const decisionRequest = buildTaskDeckDecisionRequest({
+    task: {
+      ...task,
+      sessionLabel: taskSessionLabel(task),
+    },
+    recentOutput,
+    taskdeckInstanceId,
+    decisionInput: normalizedDecisionInput,
+  });
+  const abortController = new AbortController();
+  const timeout = setTimeout(() => abortController.abort(), decisionGatewayRequestTimeoutMs);
+  let gatewayResponse;
+  try {
+    gatewayResponse = await fetch(`${decisionGatewayUrl}/api/decision-requests`, {
+      method: "POST",
+      headers: decisionGatewayTaskDeckHeaders({ json: true }),
+      body: JSON.stringify(decisionRequest),
+      signal: abortController.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+  const payload = await gatewayResponse.json().catch(() => ({}));
+
+  if (!gatewayResponse.ok) {
+    throw new TaskDeckDecisionRequestError(
+      decisionGatewayErrorMessage(
+        gatewayResponse,
+        payload,
+        `Decision Gateway request failed with status ${gatewayResponse.status}.`,
+      ),
+      { statusCode: gatewayResponse.status === 401 ? 401 : 502 },
+    );
+  }
+
+  const decisionUrl = String(payload?.url || "");
+  const decisionId = String(payload?.id || "");
+  const requestId = String(payload?.requestId || "");
+  if (requestId) {
+    await recordDecisionGatewayPendingLease({
+      decisionGatewayDecisionId: decisionId,
+      decisionGatewayUrl: decisionUrl,
+      requestId,
+      taskId: task.id,
+      sessionId: String(task.agentSessionId || "").trim(),
+      taskdeckInstanceId,
+    }).catch((error) => {
+      console.warn(`TaskDeck could not record Decision Gateway decision lease ${requestId}: ${error.message}`);
+    });
+  }
+
+  return { decisionUrl, decisionId, requestId };
+}
+
+function decisionRequestErrorStatus(error) {
+  if (error?.name === "AbortError") {
+    return 504;
+  }
+  const statusCode = Number(error?.statusCode);
+  if (Number.isInteger(statusCode) && statusCode >= 400 && statusCode < 600) {
+    return statusCode;
+  }
+  return 502;
+}
+
+function decisionRequestErrorMessage(error) {
+  if (error?.name === "AbortError") {
+    return `Decision Gateway request timed out after ${decisionGatewayRequestTimeoutMs / 1000} seconds.`;
+  }
+  return error?.message || "Unable to send decision request.";
 }
 
 function normalizeBoolean(value) {
@@ -1183,6 +1229,7 @@ function createActiveCodexRuntime({ runtimeId, runtimeProcess, launchCommand, de
     startedAt: Date.now(),
     nextRequestId: 1,
     pendingRequests: new Map(),
+    dynamicDecisionToolCalls: new Map(),
     pendingThreadStartTaskIds: new Set(),
     threadSessionTaskIds: new Set(),
     stdoutBuffer: "",
@@ -1229,6 +1276,7 @@ function finishCodexAppServerRuntime(activeRuntime, { exitCode, signal, statusMe
     ...threadSessions.map((threadSession) => threadSession.taskId),
   ]);
   activeRuntime.pendingRequests?.clear();
+  activeRuntime.dynamicDecisionToolCalls?.clear();
   activeRuntime.pendingThreadStartTaskIds?.clear();
 
   for (const threadSession of threadSessions) {
@@ -1599,7 +1647,11 @@ function sendCodexAppServerThreadStart(activeAppServer) {
       const requestId = sendCodexAppServerRequest(
         activeAppServer,
         "thread/start",
-        buildCodexAppServerThreadStartParams({ cwd, model: task.agentModel }),
+        buildCodexAppServerThreadStartParams({
+          cwd,
+          model: task.agentModel,
+          enableDynamicDecisionTool: codexDynamicDecisionToolEnabled,
+        }),
       );
       if (requestId === null) {
         activeAppServer.threadStartRequested = false;
@@ -2330,6 +2382,10 @@ function handleCodexAppServerAuthFailureDiagnostic(activeAppServer, _detail) {
 
 function handleCodexAppServerRequest(activeAppServer, message) {
   const method = String(message.method || "");
+  if (method === "item/tool/call") {
+    void handleCodexAppServerDynamicToolCallRequest(activeAppServer, message);
+    return;
+  }
   if (isCodexAppServerApprovalRequest(method)) {
     rememberCodexAppServerRequest(activeAppServer, message, "approval");
     updateAgentStateFromTaskDeckEvent(activeAppServer.taskId, AgentState.WAITING_APPROVAL, {
@@ -2362,6 +2418,196 @@ function handleCodexAppServerRequest(activeAppServer, message) {
     sendCodexAppServerRequestError(activeAppServer, message.id, `Unsupported Codex App Server request: ${method}`, -32601);
   }
   appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Unknown Codex App Server request: ${method}\n`);
+}
+
+async function handleCodexAppServerDynamicToolCallRequest(activeAppServer, message) {
+  const params = message.params || {};
+  if (!codexDynamicDecisionToolEnabled || !isTaskDeckDynamicDecisionToolCall(params)) {
+    sendCodexAppServerResponse(
+      activeAppServer,
+      message.id,
+      codexDynamicDecisionToolResponse({
+        status: "error",
+        message: "Unsupported TaskDeck dynamic tool.",
+      }, false),
+    );
+    appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Rejected unsupported Codex App Server dynamic tool call.\n");
+    return;
+  }
+
+  const dedupeKey = codexAppServerDynamicToolCallDedupeKey(params);
+  if (!dedupeKey) {
+    sendCodexAppServerResponse(
+      activeAppServer,
+      message.id,
+      codexDynamicDecisionToolResponse({
+        status: "error",
+        message: "Invalid taskdeck.request_decision arguments.",
+      }, false),
+    );
+    appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Rejected taskdeck.request_decision without a stable call id.\n");
+    return;
+  }
+
+  const activeRuntime = codexRuntimeForThreadSession(activeAppServer);
+  if (!activeRuntime) {
+    sendCodexAppServerResponse(
+      activeAppServer,
+      message.id,
+      codexDynamicDecisionToolResponse({
+        status: "error",
+        message: "Unknown task/session.",
+      }, false),
+    );
+    return;
+  }
+
+  const { entry } = getOrCreateCodexAppServerDynamicToolCallEntry(
+    activeRuntime.dynamicDecisionToolCalls,
+    dedupeKey,
+    () => ({
+      promise: resolveCodexAppServerDynamicDecisionToolCall(activeAppServer, params)
+        .then((payload) => codexDynamicDecisionToolResponse(payload, true))
+        .catch((error) => codexDynamicDecisionToolResponse({
+          status: "error",
+          message: safeCodexDynamicDecisionToolErrorMessage(error),
+        }, false)),
+      result: null,
+    }),
+  );
+
+  if (!entry) {
+    sendCodexAppServerResponse(
+      activeAppServer,
+      message.id,
+      codexDynamicDecisionToolResponse({
+        status: "error",
+        message: "Invalid taskdeck.request_decision arguments.",
+      }, false),
+    );
+    return;
+  }
+
+  const result = entry.result || await entry.promise;
+  entry.result = result;
+  pruneCodexDynamicDecisionToolCallCache(activeRuntime.dynamicDecisionToolCalls);
+  sendCodexAppServerResponse(activeAppServer, message.id, result);
+}
+
+async function resolveCodexAppServerDynamicDecisionToolCall(activeAppServer, params) {
+  const identity = resolveCodexAppServerDynamicDecisionToolIdentity(activeAppServer, params);
+  if (!identity.ok) {
+    throw new TaskDeckDecisionRequestError(identity.message, { statusCode: 400 });
+  }
+
+  const decisionInput = normalizeTaskDeckDecisionRequestInput(params.arguments);
+  if (!decisionInput) {
+    throw new TaskDeckDecisionRequestError("Invalid taskdeck.request_decision arguments.", { statusCode: 400 });
+  }
+
+  const result = await sendTaskDecisionRequestToGateway({
+    task: identity.task,
+    decisionInput,
+  });
+
+  appendCodexAppServerStatusForTask(
+    activeAppServer,
+    identity.task.id,
+    "[TaskDeck] Codex App Server requested a human decision through taskdeck.request_decision.\n",
+  );
+  updateAgentStateFromTaskDeckEvent(identity.task.id, AgentState.WAITING_INPUT, {
+    reason: "Codex App Server requested a human decision through TaskDeck.",
+    source: AgentStateSource.PROCESS,
+    confidence: AgentStateConfidence.HIGH,
+    attentionState: AttentionState.NEEDS_INPUT,
+    attentionReason: "Human decision requested through TaskDeck.",
+    attentionSource: AgentStateSource.PROCESS,
+    attentionConfidence: AgentStateConfidence.HIGH,
+  });
+
+  return {
+    status: "pending",
+    decisionUrl: result.decisionUrl,
+    message: "Human decision requested. Continue only after TaskDeck reports a decision.",
+  };
+}
+
+function resolveCodexAppServerDynamicDecisionToolIdentity(activeAppServer, params) {
+  const threadId = String(params?.threadId || "").trim();
+  if (!threadId) {
+    return { ok: false, message: "Unknown task/session." };
+  }
+
+  const taskId = taskIdByCodexThreadId.get(threadId);
+  if (!taskId) {
+    return { ok: false, message: "Unknown task/session." };
+  }
+
+  const task = tasks.get(taskId);
+  if (!task || task.status !== TaskStatus.RUNNING) {
+    return { ok: false, message: "Unknown task/session." };
+  }
+
+  const activeRuntime = codexRuntimeForThreadSession(activeAppServer);
+  const threadSession =
+    activeCodexThreadSessions.get(task.id) ||
+    activeCodexThreadSessions.get(task.parentSessionId) ||
+    null;
+  if (!activeRuntime || !threadSession || threadSession.runtimeId !== activeRuntime.id) {
+    return { ok: false, message: "Unknown task/session." };
+  }
+
+  const isPrimaryThread = task.id === threadSession.taskId && threadSession.threadId === threadId;
+  const isNativeSubagentThread = threadSession.nativeSubagentTaskIdsByThreadId?.get(threadId) === task.id;
+  if (!isPrimaryThread && !isNativeSubagentThread) {
+    return { ok: false, message: "Unknown task/session." };
+  }
+
+  const sessionId = String(task.agentSessionId || "").trim();
+  if (sessionId && sessionId !== threadId) {
+    return { ok: false, message: "Unknown task/session." };
+  }
+
+  return { ok: true, task, threadId };
+}
+
+function codexDynamicDecisionToolResponse(payload, success) {
+  return {
+    success,
+    contentItems: [
+      {
+        type: "text",
+        text: JSON.stringify(payload),
+      },
+    ],
+  };
+}
+
+function safeCodexDynamicDecisionToolErrorMessage(error) {
+  const message = decisionRequestErrorMessage(error);
+  if (message === "Invalid taskdeck.request_decision arguments.") {
+    return message;
+  }
+  if (message === "Unknown task/session.") {
+    return message;
+  }
+  if (message === "Decision Gateway authentication failed.") {
+    return message;
+  }
+  return "Decision Gateway unavailable.";
+}
+
+function pruneCodexDynamicDecisionToolCallCache(cache) {
+  if (!cache || cache.size <= codexDynamicDecisionToolCallCacheLimit) {
+    return;
+  }
+  while (cache.size > codexDynamicDecisionToolCallCacheLimit) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey === undefined) {
+      return;
+    }
+    cache.delete(oldestKey);
+  }
 }
 
 function rememberCodexAppServerRequest(activeAppServer, message, kind) {

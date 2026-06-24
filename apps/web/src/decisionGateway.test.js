@@ -10,6 +10,7 @@ import {
   markDecisionGatewayDecisionLeaseReceived,
   normalizeDecisionGatewayTaskDeckApiToken,
   normalizeDecisionGatewayMailboxItem,
+  normalizeTaskDeckDecisionRequestInput,
   normalizeDecisionGatewayUrl,
   validateDecisionGatewayMailboxItemAgainstLease,
 } from "@taskdeck/core/decision-gateway";
@@ -88,6 +89,102 @@ describe("Decision Gateway connector helpers", () => {
     expect(sourceMaterial?.text).toContain("TaskDeck truncated this field");
     expect(sourceMaterial?.text).not.toContain("hunter2");
     expect(sourceMaterial?.text).not.toContain("secret-token-value");
+  });
+
+  it("builds a tool-triggered Decision Gateway request with host-owned routing identity", () => {
+    const decisionInput = normalizeTaskDeckDecisionRequestInput({
+      taskId: "model_supplied_task",
+      taskdeckInstanceId: "model_supplied_instance",
+      sessionId: "model_supplied_session",
+      decisionQuestion: "Should this implementation stay minimal or include automatic apply?",
+      goal: "Choose the TaskDeck decision workflow scope.",
+      axis: "implementation_strategy",
+      urgency: "blocking",
+      semanticSummary: "The session is blocked on whether to keep the new decision path request-only.",
+      materials: [
+        {
+          type: "text",
+          label: "Options",
+          text: "A: request only. B: request and auto-apply.",
+        },
+      ],
+      recommendedDecision: null,
+      relevantFacts: ["TaskDeck owns routing identity."],
+      risks: ["Automatic apply would change the trust boundary."],
+    });
+
+    const request = buildTaskDeckDecisionRequest({
+      taskdeckInstanceId: "tdi_real_123456789",
+      task: {
+        id: "task_real",
+        title: "Dynamic decision tool",
+        cwd: "/workspace/project",
+        agentProfileId: "codex-app-server",
+        agentSessionId: "thread_real",
+        status: "running",
+      },
+      decisionInput,
+      recentOutput: "The model asked for a decision.",
+    });
+    const sourceMaterial = request.materials.find((material) => material.label === "TaskDeck source context");
+
+    expect(request.source).toMatchObject({
+      taskdeckInstanceId: "tdi_real_123456789",
+      taskId: "task_real",
+      sessionId: "thread_real",
+      agentProfileId: "codex-app-server",
+      label: "TaskDeck",
+    });
+    expect(request.goal).toBe("Choose the TaskDeck decision workflow scope.");
+    expect(request.axis).toBe("implementation_strategy");
+    expect(request.urgency).toBe("blocking");
+    expect(request.decisionQuestion).toContain("minimal");
+    expect(request.materials.some((material) => material.label === "Options")).toBe(true);
+    expect(sourceMaterial?.text).toContain('"taskdeckInstanceId": "tdi_real_123456789"');
+    expect(sourceMaterial?.text).toContain('"taskId": "task_real"');
+    expect(sourceMaterial?.text).not.toContain("model_supplied_task");
+    expect(sourceMaterial?.text).not.toContain("model_supplied_instance");
+    expect(sourceMaterial?.text).not.toContain("model_supplied_session");
+  });
+
+  it("rejects malformed dynamic decision tool arguments", () => {
+    expect(normalizeTaskDeckDecisionRequestInput(null)).toBeNull();
+    expect(normalizeTaskDeckDecisionRequestInput({
+      decisionQuestion: "Choose a path",
+      goal: "Pick one",
+      urgency: "later",
+      semanticSummary: "Bad urgency.",
+      materials: [{ type: "text", text: "Material" }],
+    })).toBeNull();
+    expect(normalizeTaskDeckDecisionRequestInput({
+      decisionQuestion: "Choose a path",
+      goal: "Pick one",
+      urgency: "normal",
+      semanticSummary: "Missing material text.",
+      materials: [{ type: "text", text: "" }],
+    })).toBeNull();
+  });
+
+  it("bounds dynamic decision tool materials and lists", () => {
+    const input = normalizeTaskDeckDecisionRequestInput({
+      decisionQuestion: "Choose a path",
+      goal: "Pick one",
+      urgency: "normal",
+      semanticSummary: "A bounded summary.",
+      materials: Array.from({ length: 8 }, (_, index) => ({
+        type: "text",
+        label: `Material ${index + 1}`,
+        text: `token=secret-${index}\n${"x".repeat(2400)}`,
+      })),
+      relevantFacts: Array.from({ length: 12 }, (_, index) => `Fact ${index + 1}`),
+      risks: Array.from({ length: 12 }, (_, index) => `Risk ${index + 1}`),
+    });
+
+    expect(input?.materials).toHaveLength(6);
+    expect(input?.materials[0].text).toContain("TaskDeck truncated this field");
+    expect(input?.materials[0].text).not.toContain("secret-0");
+    expect(input?.relevantFacts).toHaveLength(10);
+    expect(input?.risks).toHaveLength(10);
   });
 
   it("normalizes configured Decision Gateway URLs", () => {

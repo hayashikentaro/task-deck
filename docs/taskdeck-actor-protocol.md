@@ -37,6 +37,8 @@ TaskDeck Codex work tasks should be treated as App Server thread-session project
 
 TaskDeck may materialize Codex App Server native subagents as read-only supervision cards. Those cards are App Server thread projections. TaskDeck does not launch them as independent sessions and must not expose controls that imply the user or manager can command them separately from the parent App Server task.
 
+When `TASKDECK_CODEX_DYNAMIC_DECISION_TOOL=1`, TaskDeck may expose the host-provided Codex App Server dynamic tool `taskdeck.request_decision` to a running App Server thread. This is an App Server-native callback into TaskDeck server, not an agent-owned network credential or a file protocol. The session supplies only bounded decision content; TaskDeck server resolves `threadId` to its own task/session mapping, injects `taskdeckInstanceId`, `taskId`, `sessionId`, agent profile, and label, then sends the request to Decision Gateway through the same server-owned path used by manual Ask.
+
 Do not add stdout marker protocols, request-file writers, or request-directory environment variables as an App Server control path.
 
 ## Actor diagram
