@@ -10,6 +10,10 @@ export const DEFAULT_DECISION_GATEWAY_DECISION_LEASE_TTL_MS = 30 * 60 * 1000;
 export const DecisionGatewayDecisionLeaseStatus = Object.freeze({
   PENDING: "pending",
   RECEIVED: "received",
+  DELIVERED: "delivered",
+  DELIVERY_FAILED: "delivery_failed",
+  STALE: "stale",
+  UNMATCHED: "unmatched",
   EXPIRED: "expired",
   CANCELLED: "cancelled",
 });
@@ -306,6 +310,7 @@ export function normalizeDecisionGatewayMailboxItem(value, { receivedAt = new Da
     decisionRequestId: normalizedString(payload.decisionRequestId),
     decisionActionId: normalizedString(payload.decisionActionId),
     requestId: normalizedString(payload.requestId),
+    taskdeckInstanceId: normalizedString(payload.taskdeckInstanceId || source.taskdeckInstanceId),
     taskId: normalizedString(payload.taskId || source.taskId),
     sessionId: normalizedString(payload.sessionId || source.sessionId),
     actionType,
@@ -331,7 +336,14 @@ export function createDecisionGatewayDecisionLease({
   requestId,
   taskId,
   sessionId = "",
+  threadId = "",
+  turnId = "",
+  callId = "",
   taskdeckInstanceId,
+  decisionQuestion = "",
+  goal = "",
+  axis = "",
+  urgency = "",
   createdAt = new Date().toISOString(),
   ttlMs = DEFAULT_DECISION_GATEWAY_DECISION_LEASE_TTL_MS,
 }) {
@@ -355,13 +367,27 @@ export function createDecisionGatewayDecisionLease({
     requestId: normalizedRequestId,
     taskId: normalizedTaskId,
     sessionId: normalizedString(sessionId),
+    threadId: normalizedString(threadId || sessionId),
+    turnId: normalizedString(turnId),
+    callId: normalizedString(callId),
     taskdeckInstanceId: normalizedTaskdeckInstanceId,
+    decisionQuestion: boundedDecisionGatewayContextField(decisionQuestion, DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT),
+    goal: boundedDecisionGatewayContextField(goal, DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT),
+    axis: normalizedString(axis),
+    urgency: normalizedString(urgency),
     status: DecisionGatewayDecisionLeaseStatus.PENDING,
     createdAt: normalizedCreatedAt,
     expiresAt: new Date(Date.parse(normalizedCreatedAt) + normalizedTtlMs).toISOString(),
     receivedAt: "",
+    deliveredAt: "",
+    deliveryError: "",
+    deliveryIdempotencyKey: "",
     mailboxItemId: "",
     actionType: "",
+    condition: "",
+    reason: "",
+    decidedAt: "",
+    decisionPayload: null,
   };
 }
 
@@ -389,13 +415,27 @@ export function normalizeDecisionGatewayDecisionLease(value) {
     requestId,
     taskId,
     sessionId: normalizedString(value.sessionId),
+    threadId: normalizedString(value.threadId || value.sessionId),
+    turnId: normalizedString(value.turnId),
+    callId: normalizedString(value.callId),
     taskdeckInstanceId,
+    decisionQuestion: boundedDecisionGatewayContextField(value.decisionQuestion, DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT),
+    goal: boundedDecisionGatewayContextField(value.goal, DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT),
+    axis: normalizedString(value.axis),
+    urgency: normalizedString(value.urgency),
     status,
     createdAt: normalizedString(value.createdAt || value.sentAt),
     expiresAt: normalizedString(value.expiresAt),
     receivedAt: normalizedString(value.receivedAt),
+    deliveredAt: normalizedString(value.deliveredAt),
+    deliveryError: normalizedString(value.deliveryError),
+    deliveryIdempotencyKey: normalizedString(value.deliveryIdempotencyKey),
     mailboxItemId: normalizedString(value.mailboxItemId || value.receivedMailboxItemId),
     actionType: normalizedString(value.actionType),
+    condition: boundedDecisionGatewayContextField(value.condition, DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT),
+    reason: boundedDecisionGatewayContextField(value.reason, DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT),
+    decidedAt: normalizedString(value.decidedAt),
+    decisionPayload: isPlainObject(value.decisionPayload) ? value.decisionPayload : null,
   };
 }
 
@@ -415,7 +455,11 @@ export function validateDecisionGatewayMailboxItemAgainstLease(
     };
   }
 
-  if (lease.status === DecisionGatewayDecisionLeaseStatus.EXPIRED || isDecisionGatewayDecisionLeaseExpired(lease, now)) {
+  if (
+    lease.status === DecisionGatewayDecisionLeaseStatus.STALE ||
+    lease.status === DecisionGatewayDecisionLeaseStatus.EXPIRED ||
+    isDecisionGatewayDecisionLeaseExpired(lease, now)
+  ) {
     return {
       validationStatus: DecisionGatewayMailboxValidationStatus.STALE,
       validationReason: "The local Decision Gateway decision lease is expired.",
@@ -429,7 +473,10 @@ export function validateDecisionGatewayMailboxItemAgainstLease(
     };
   }
 
-  if (lease.status !== DecisionGatewayDecisionLeaseStatus.PENDING) {
+  if (
+    lease.status !== DecisionGatewayDecisionLeaseStatus.PENDING &&
+    lease.status !== DecisionGatewayDecisionLeaseStatus.RECEIVED
+  ) {
     return {
       validationStatus: DecisionGatewayMailboxValidationStatus.STALE,
       validationReason: "The local Decision Gateway decision lease was already resolved.",
@@ -448,6 +495,24 @@ export function validateDecisionGatewayMailboxItemAgainstLease(
     return {
       validationStatus: DecisionGatewayMailboxValidationStatus.UNMATCHED,
       validationReason: "Mailbox taskId does not match the local Decision Gateway decision lease.",
+    };
+  }
+
+  const mailboxTaskdeckInstanceId = normalizedString(mailboxItem?.taskdeckInstanceId);
+  const expectedTaskdeckInstanceId = normalizedString(lease.taskdeckInstanceId);
+  if (expectedTaskdeckInstanceId && mailboxTaskdeckInstanceId !== expectedTaskdeckInstanceId) {
+    return {
+      validationStatus: DecisionGatewayMailboxValidationStatus.UNMATCHED,
+      validationReason: "Mailbox taskdeckInstanceId does not match the local Decision Gateway decision lease.",
+    };
+  }
+
+  const mailboxDecisionRequestId = normalizedString(mailboxItem?.decisionRequestId);
+  const expectedDecisionRequestId = normalizedString(lease.decisionGatewayDecisionId);
+  if (mailboxDecisionRequestId && expectedDecisionRequestId && mailboxDecisionRequestId !== expectedDecisionRequestId) {
+    return {
+      validationStatus: DecisionGatewayMailboxValidationStatus.UNMATCHED,
+      validationReason: "Mailbox decision id does not match the local Decision Gateway decision lease.",
     };
   }
 
@@ -482,8 +547,24 @@ export function validateDecisionGatewayMailboxItemAgainstLease(
   };
 }
 
-export function markDecisionGatewayDecisionLeaseReceived(lease, { receivedAt, mailboxItemId, actionType }) {
-  if (!lease || lease.status !== DecisionGatewayDecisionLeaseStatus.PENDING) {
+export function markDecisionGatewayDecisionLeaseReceived(lease, {
+  receivedAt,
+  mailboxItemId,
+  actionType,
+  condition = "",
+  reason = "",
+  decidedAt = "",
+  decisionPayload = null,
+}) {
+  if (
+    !lease ||
+    (lease.status !== DecisionGatewayDecisionLeaseStatus.PENDING &&
+      lease.status !== DecisionGatewayDecisionLeaseStatus.RECEIVED)
+  ) {
+    return lease;
+  }
+
+  if (lease.status === DecisionGatewayDecisionLeaseStatus.RECEIVED && lease.mailboxItemId) {
     return lease;
   }
 
@@ -493,7 +574,145 @@ export function markDecisionGatewayDecisionLeaseReceived(lease, { receivedAt, ma
     receivedAt: normalizedString(receivedAt) || new Date().toISOString(),
     mailboxItemId: normalizedString(mailboxItemId),
     actionType: normalizedString(actionType),
+    condition: boundedDecisionGatewayContextField(condition, DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT),
+    reason: boundedDecisionGatewayContextField(reason, DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT),
+    decidedAt: normalizedString(decidedAt),
+    decisionPayload: isPlainObject(decisionPayload) ? decisionPayload : null,
   };
+}
+
+export function markDecisionGatewayDecisionLeaseDelivered(lease, {
+  deliveredAt = new Date().toISOString(),
+  deliveryIdempotencyKey = "",
+} = {}) {
+  if (
+    !lease ||
+    lease.status === DecisionGatewayDecisionLeaseStatus.DELIVERED ||
+    lease.status === DecisionGatewayDecisionLeaseStatus.STALE ||
+    lease.status === DecisionGatewayDecisionLeaseStatus.UNMATCHED ||
+    lease.status === DecisionGatewayDecisionLeaseStatus.EXPIRED ||
+    lease.status === DecisionGatewayDecisionLeaseStatus.CANCELLED
+  ) {
+    return lease;
+  }
+
+  return {
+    ...lease,
+    status: DecisionGatewayDecisionLeaseStatus.DELIVERED,
+    deliveredAt: normalizedString(deliveredAt) || new Date().toISOString(),
+    deliveryError: "",
+    deliveryIdempotencyKey: normalizedString(deliveryIdempotencyKey),
+  };
+}
+
+export function markDecisionGatewayDecisionLeaseDeliveryFailed(lease, {
+  deliveryError,
+  deliveredAt = "",
+  deliveryIdempotencyKey = "",
+} = {}) {
+  if (!lease || lease.status === DecisionGatewayDecisionLeaseStatus.DELIVERED) {
+    return lease;
+  }
+
+  return {
+    ...lease,
+    status: DecisionGatewayDecisionLeaseStatus.DELIVERY_FAILED,
+    deliveredAt: normalizedString(deliveredAt),
+    deliveryError: boundedDecisionGatewayContextField(deliveryError, DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT),
+    deliveryIdempotencyKey: normalizedString(deliveryIdempotencyKey),
+  };
+}
+
+export function shouldAutoDeliverDecisionGatewayDecision({
+  autoDeliverEnabled = false,
+  lease,
+  mailboxItem,
+  validationStatus = "",
+  taskExists = true,
+  sessionActive = true,
+  deliveryAllowed = true,
+} = {}) {
+  if (!autoDeliverEnabled) {
+    return { ok: false, reason: "auto-delivery-disabled" };
+  }
+  if (!lease || !mailboxItem) {
+    return { ok: false, reason: "missing-lease-or-mailbox-item" };
+  }
+  if (validationStatus !== DecisionGatewayMailboxValidationStatus.VALID) {
+    return { ok: false, reason: "mailbox-item-not-valid" };
+  }
+  if (
+    lease.status !== DecisionGatewayDecisionLeaseStatus.PENDING &&
+    lease.status !== DecisionGatewayDecisionLeaseStatus.RECEIVED
+  ) {
+    return { ok: false, reason: `lease-${lease.status || "not-deliverable"}` };
+  }
+  if (!taskExists) {
+    return { ok: false, reason: "originating-task-missing" };
+  }
+  if (!sessionActive) {
+    return { ok: false, reason: "originating-session-unavailable" };
+  }
+  if (!deliveryAllowed) {
+    return { ok: false, reason: "auto-delivery-policy-blocked" };
+  }
+  return { ok: true, reason: "deliver" };
+}
+
+export function decisionGatewayDeliveryIdempotencyKey(lease, mailboxItem) {
+  return [
+    "decision-delivery",
+    normalizedString(lease?.requestId),
+    normalizedString(mailboxItem?.mailboxItemId || lease?.mailboxItemId),
+    normalizedString(mailboxItem?.decisionActionId),
+  ].filter(Boolean).join(":");
+}
+
+export function buildDecisionGatewayDeliveryMessage({ lease, mailboxItem }) {
+  const actionType = normalizedString(mailboxItem?.actionType || lease?.actionType || "decision");
+  const decisionQuestion = boundedDecisionGatewayContextField(
+    lease?.decisionQuestion || mailboxItem?.goal || "The original decision question was not recorded.",
+    DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT,
+  );
+  const reason = boundedDecisionGatewayContextField(mailboxItem?.reason || lease?.reason, DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT);
+  const condition = boundedDecisionGatewayContextField(
+    mailboxItem?.condition || lease?.condition,
+    DECISION_GATEWAY_MAILBOX_TEXT_FIELD_LIMIT,
+  );
+  const decisionUrl = normalizedString(lease?.decisionGatewayUrl);
+  const requestId = normalizedString(lease?.requestId);
+
+  return [
+    "Human decision received from TaskDeck.",
+    "",
+    `Decision: ${actionType}`,
+    `Decision question: ${decisionQuestion}`,
+    `Rationale: ${reason}`,
+    `Conditions: ${condition}`,
+    `Decision URL: ${decisionUrl}`,
+    "",
+    "Scope:",
+    "- This decision only applies to the requested decision lease.",
+    "- Do not broaden this approval into unrelated implementation permission.",
+    "- Continue from the blocked point according to the decision.",
+    "- If a new product, UX, architecture, or risky implementation judgment appears, call taskdeck.request_decision again.",
+    requestId ? `- Decision lease requestId: ${requestId}` : "",
+    "",
+    decisionInstructionForAction(actionType),
+  ].filter((line) => line !== "").join("\n");
+}
+
+function decisionInstructionForAction(actionType) {
+  if (actionType === "reject") {
+    return "If the decision is reject, do not proceed with the rejected path. Summarize what will not be done and ask for a new direction only if needed.";
+  }
+  if (actionType === "suspend") {
+    return "If the decision is suspend, stop work and report suspended state.";
+  }
+  if (actionType === "conditional_accept") {
+    return "If the decision is conditional_accept, continue only within the listed conditions.";
+  }
+  return "Proceed only within the scope of this decision.";
 }
 
 export function isDecisionGatewayDecisionLeaseExpired(lease, now = new Date().toISOString()) {

@@ -12,8 +12,9 @@ GitHub Issues remain the source of truth for actionable work, open/closed state,
 4. Manager action discoverability and runtime action guide: implemented enough to support real manager sessions.
 5. Codex work sessions use the App Server-first route as the only committed task launch surface on this branch.
 6. App Server dynamic human-decision requests through `taskdeck.request_decision`: implemented behind `TASKDECK_CODEX_DYNAMIC_DECISION_TOOL=1`.
-7. Next phase: rebuild the manager-mediated main/sub-session loop only on App Server-native semantics; do not add stdout-marker or request-file shortcuts.
-8. Resume broader product work such as Electron packaging, non-Codex provider support, external configuration, and decision-application workflows only after the local implementation loop is stable.
+7. Mobile decision auto-delivery to originating App Server threads: implemented behind `TASKDECK_DECISION_AUTO_DELIVER=1`.
+8. Next phase: rebuild the manager-mediated main/sub-session loop only on App Server-native semantics; do not add stdout-marker or request-file shortcuts.
+9. Resume broader product work such as Electron packaging, non-Codex provider support, external configuration, and broader decision workflow policy only after the local implementation loop is stable.
 
 ## Completed read-only manager MVP
 
@@ -91,13 +92,15 @@ During this App Server-only migration slice, TaskDeck may render Codex native su
 
 When `TASKDECK_CODEX_DYNAMIC_DECISION_TOOL=1`, TaskDeck registers the `taskdeck.request_decision` dynamic tool for App Server threads. A running session can request a human decision by sending bounded decision content; TaskDeck resolves the session identity server-side and sends the request through Decision Gateway. The returned decision URL is for awareness while TaskDeck waits for a received decision result.
 
+When `TASKDECK_DECISION_AUTO_DELIVER=1`, a valid matched mobile decision is automatically delivered back to the originating App Server thread as a scoped new turn. The normal product flow is mobile approval, TaskDeck lease validation, then App Server turn delivery. PC action is reserved for unmatched, stale, duplicate, or blocked delivery states.
+
 Implementation priorities for this phase:
 
 1. Keep App Server as the only committed Codex work-session profile.
 2. Keep App Server as the only exposed task launch profile until the App Server thread/session model is stable.
 3. Keep App Server JSON hidden from normal task logs while rendering human-readable assistant text, command output, and request state.
 4. Route App Server user-input requests through TaskDeck UI controls rather than raw transcript prompts.
-5. Keep dynamic decision requests on the App Server-native tool path, not request files or manager action commands.
+5. Keep dynamic decision requests and decision delivery on App Server-native paths, not request files, PTY/stdin, stdout markers, or manager action commands.
 6. Make native subagent rendering and manager-loop flows App Server-compatible before broadening feature work.
 7. Do not add Codex TUI parsing or committed Codex CLI/TUI launch profiles on this branch.
 

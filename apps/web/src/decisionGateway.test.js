@@ -1,17 +1,22 @@
 import { describe, expect, it } from "vitest";
 import {
   buildDecisionGatewayTaskDeckHeaders,
+  buildDecisionGatewayDeliveryMessage,
   buildTaskDeckDecisionRequest,
   boundedDecisionGatewayContextField,
   boundedDecisionGatewayRecentOutput,
   createDecisionGatewayDecisionLease,
+  decisionGatewayDeliveryIdempotencyKey,
   decisionGatewayTaskDeckErrorMessage,
   isDecisionGatewayDecisionLeaseExpired,
+  markDecisionGatewayDecisionLeaseDelivered,
+  markDecisionGatewayDecisionLeaseDeliveryFailed,
   markDecisionGatewayDecisionLeaseReceived,
   normalizeDecisionGatewayTaskDeckApiToken,
   normalizeDecisionGatewayMailboxItem,
   normalizeTaskDeckDecisionRequestInput,
   normalizeDecisionGatewayUrl,
+  shouldAutoDeliverDecisionGatewayDecision,
   validateDecisionGatewayMailboxItemAgainstLease,
 } from "@taskdeck/core/decision-gateway";
 
@@ -240,6 +245,7 @@ describe("Decision Gateway connector helpers", () => {
           decisionRequestId: "decision_123",
           decisionActionId: "action_123",
           requestId: "request_123",
+          taskdeckInstanceId: "taskdeck_123",
           taskId: "task_123",
           sessionId: "session_123",
           action: {
@@ -263,6 +269,7 @@ describe("Decision Gateway connector helpers", () => {
       decisionRequestId: "decision_123",
       decisionActionId: "action_123",
       requestId: "request_123",
+      taskdeckInstanceId: "taskdeck_123",
       taskId: "task_123",
       sessionId: "session_123",
       actionType: "accept",
@@ -294,7 +301,11 @@ describe("Decision Gateway connector helpers", () => {
       requestId: "request_123",
       taskId: "task_123",
       sessionId: "session_123",
+      threadId: "session_123",
+      turnId: "turn_123",
+      callId: "call_123",
       taskdeckInstanceId: "taskdeck_123",
+      decisionQuestion: "Should TaskDeck continue?",
       createdAt: "2026-06-24T00:00:00.000Z",
       ttlMs: 30 * 60 * 1000,
     });
@@ -306,7 +317,11 @@ describe("Decision Gateway connector helpers", () => {
       requestId: "request_123",
       taskId: "task_123",
       sessionId: "session_123",
+      threadId: "session_123",
+      turnId: "turn_123",
+      callId: "call_123",
       taskdeckInstanceId: "taskdeck_123",
+      decisionQuestion: "Should TaskDeck continue?",
       status: "pending",
       createdAt: "2026-06-24T00:00:00.000Z",
       expiresAt: "2026-06-24T00:30:00.000Z",
@@ -323,7 +338,12 @@ describe("Decision Gateway connector helpers", () => {
       createdAt: "2026-06-24T00:00:00.000Z",
     });
     const validation = validateDecisionGatewayMailboxItemAgainstLease(
-      { requestId: "request_123", taskId: "task_123", sessionId: "session_123" },
+      {
+        requestId: "request_123",
+        taskdeckInstanceId: "taskdeck_123",
+        taskId: "task_123",
+        sessionId: "session_123",
+      },
       lease,
       {
         now: "2026-06-24T00:05:00.000Z",
@@ -333,6 +353,58 @@ describe("Decision Gateway connector helpers", () => {
     );
 
     expect(validation.validationStatus).toBe("valid");
+  });
+
+  it("rejects model or mailbox supplied routing fields that do not match the host-owned lease", () => {
+    const lease = createDecisionGatewayDecisionLease({
+      leaseId: "lease_123",
+      decisionGatewayDecisionId: "decision_123",
+      requestId: "request_123",
+      taskId: "task_real",
+      sessionId: "thread_real",
+      taskdeckInstanceId: "taskdeck_real",
+      createdAt: "2026-06-24T00:00:00.000Z",
+    });
+
+    expect(
+      validateDecisionGatewayMailboxItemAgainstLease(
+        {
+          requestId: "request_123",
+          decisionRequestId: "decision_123",
+          taskdeckInstanceId: "taskdeck_real",
+          taskId: "model_supplied_task",
+          sessionId: "thread_real",
+        },
+        lease,
+        { now: "2026-06-24T00:05:00.000Z", taskExists: true, taskSessionId: "thread_real" },
+      ).validationStatus,
+    ).toBe("unmatched");
+    expect(
+      validateDecisionGatewayMailboxItemAgainstLease(
+        {
+          requestId: "request_123",
+          decisionRequestId: "decision_wrong",
+          taskdeckInstanceId: "taskdeck_real",
+          taskId: "task_real",
+          sessionId: "thread_real",
+        },
+        lease,
+        { now: "2026-06-24T00:05:00.000Z", taskExists: true, taskSessionId: "thread_real" },
+      ).validationStatus,
+    ).toBe("unmatched");
+    expect(
+      validateDecisionGatewayMailboxItemAgainstLease(
+        {
+          requestId: "request_123",
+          decisionRequestId: "decision_123",
+          taskdeckInstanceId: "taskdeck_wrong",
+          taskId: "task_real",
+          sessionId: "thread_real",
+        },
+        lease,
+        { now: "2026-06-24T00:05:00.000Z", taskExists: true, taskSessionId: "thread_real" },
+      ).validationStatus,
+    ).toBe("unmatched");
   });
 
   it("classifies a mailbox item without a lease as unmatched", () => {
@@ -356,9 +428,17 @@ describe("Decision Gateway connector helpers", () => {
 
     expect(isDecisionGatewayDecisionLeaseExpired(lease, "2026-06-24T00:00:02.000Z")).toBe(true);
     expect(
-      validateDecisionGatewayMailboxItemAgainstLease({ requestId: "request_123", taskId: "task_123" }, lease, {
-        now: "2026-06-24T00:00:02.000Z",
-      }).validationStatus,
+      validateDecisionGatewayMailboxItemAgainstLease(
+        {
+          requestId: "request_123",
+          taskdeckInstanceId: "taskdeck_123",
+          taskId: "task_123",
+        },
+        lease,
+        {
+          now: "2026-06-24T00:00:02.000Z",
+        },
+      ).validationStatus,
     ).toBe("stale");
   });
 
@@ -382,5 +462,183 @@ describe("Decision Gateway connector helpers", () => {
     });
 
     expect(duplicateResult).toEqual(receivedLease);
+  });
+
+  it("does not auto-deliver when disabled", () => {
+    const lease = createDecisionGatewayDecisionLease({
+      leaseId: "lease_123",
+      requestId: "request_123",
+      taskId: "task_123",
+      taskdeckInstanceId: "taskdeck_123",
+    });
+    const mailboxItem = { mailboxItemId: "mail_123" };
+
+    expect(
+      shouldAutoDeliverDecisionGatewayDecision({
+        autoDeliverEnabled: false,
+        lease,
+        mailboxItem,
+        validationStatus: "valid",
+      }),
+    ).toEqual({ ok: false, reason: "auto-delivery-disabled" });
+  });
+
+  it("allows auto-delivery for a valid pending or received decision", () => {
+    const lease = createDecisionGatewayDecisionLease({
+      leaseId: "lease_123",
+      requestId: "request_123",
+      taskId: "task_123",
+      taskdeckInstanceId: "taskdeck_123",
+    });
+    const mailboxItem = { mailboxItemId: "mail_123" };
+
+    expect(
+      shouldAutoDeliverDecisionGatewayDecision({
+        autoDeliverEnabled: true,
+        lease,
+        mailboxItem,
+        validationStatus: "valid",
+        taskExists: true,
+        sessionActive: true,
+        deliveryAllowed: true,
+      }),
+    ).toEqual({ ok: true, reason: "deliver" });
+    expect(
+      shouldAutoDeliverDecisionGatewayDecision({
+        autoDeliverEnabled: true,
+        lease: markDecisionGatewayDecisionLeaseReceived(lease, {
+          mailboxItemId: "mail_123",
+          actionType: "accept",
+        }),
+        mailboxItem,
+        validationStatus: "valid",
+      }),
+    ).toEqual({ ok: true, reason: "deliver" });
+  });
+
+  it("does not auto-deliver stale, unmatched, or already delivered decisions", () => {
+    const lease = createDecisionGatewayDecisionLease({
+      leaseId: "lease_123",
+      requestId: "request_123",
+      taskId: "task_123",
+      taskdeckInstanceId: "taskdeck_123",
+    });
+    const mailboxItem = { mailboxItemId: "mail_123" };
+    const deliveredLease = markDecisionGatewayDecisionLeaseDelivered(lease, {
+      deliveryIdempotencyKey: "decision-delivery:request_123:mail_123",
+    });
+
+    expect(
+      shouldAutoDeliverDecisionGatewayDecision({
+        autoDeliverEnabled: true,
+        lease,
+        mailboxItem,
+        validationStatus: "stale",
+      }).ok,
+    ).toBe(false);
+    expect(
+      shouldAutoDeliverDecisionGatewayDecision({
+        autoDeliverEnabled: true,
+        lease,
+        mailboxItem,
+        validationStatus: "unmatched",
+      }).ok,
+    ).toBe(false);
+    expect(
+      shouldAutoDeliverDecisionGatewayDecision({
+        autoDeliverEnabled: true,
+        lease: deliveredLease,
+        mailboxItem,
+        validationStatus: "valid",
+      }).ok,
+    ).toBe(false);
+  });
+
+  it("marks delivery failure without losing the received decision", () => {
+    const lease = markDecisionGatewayDecisionLeaseReceived(
+      createDecisionGatewayDecisionLease({
+        leaseId: "lease_123",
+        requestId: "request_123",
+        taskId: "task_123",
+        taskdeckInstanceId: "taskdeck_123",
+      }),
+      {
+        mailboxItemId: "mail_123",
+        actionType: "accept",
+        reason: "Proceed.",
+      },
+    );
+    const failed = markDecisionGatewayDecisionLeaseDeliveryFailed(lease, {
+      deliveryError: "Codex App Server thread is not active.",
+    });
+
+    expect(failed).toMatchObject({
+      status: "delivery_failed",
+      mailboxItemId: "mail_123",
+      actionType: "accept",
+      reason: "Proceed.",
+      deliveryError: "Codex App Server thread is not active.",
+    });
+  });
+
+  it("builds scoped delivery messages for reject, suspend, and conditional_accept", () => {
+    const lease = createDecisionGatewayDecisionLease({
+      leaseId: "lease_123",
+      decisionGatewayUrl: "https://decision.example/decisions/decision_123",
+      requestId: "request_123",
+      taskId: "task_123",
+      taskdeckInstanceId: "taskdeck_123",
+      decisionQuestion: "Should the risky migration proceed?",
+    });
+
+    const rejectMessage = buildDecisionGatewayDeliveryMessage({
+      lease,
+      mailboxItem: {
+        mailboxItemId: "mail_reject",
+        actionType: "reject",
+        reason: "Too risky.",
+      },
+    });
+    const suspendMessage = buildDecisionGatewayDeliveryMessage({
+      lease,
+      mailboxItem: {
+        mailboxItemId: "mail_suspend",
+        actionType: "suspend",
+      },
+    });
+    const conditionalMessage = buildDecisionGatewayDeliveryMessage({
+      lease,
+      mailboxItem: {
+        mailboxItemId: "mail_conditional",
+        actionType: "conditional_accept",
+        condition: "Only edit docs.",
+      },
+    });
+
+    expect(rejectMessage).toContain("Decision: reject");
+    expect(rejectMessage).toContain("do not proceed with the rejected path");
+    expect(suspendMessage).toContain("Decision: suspend");
+    expect(suspendMessage).toContain("stop work and report suspended state");
+    expect(conditionalMessage).toContain("Decision: conditional_accept");
+    expect(conditionalMessage).toContain("Only edit docs.");
+    expect(conditionalMessage).toContain("continue only within the listed conditions");
+    expect(conditionalMessage).toContain("Do not broaden this approval");
+  });
+
+  it("uses a stable decision delivery idempotency key", () => {
+    const lease = createDecisionGatewayDecisionLease({
+      leaseId: "lease_123",
+      requestId: "request_123",
+      taskId: "task_123",
+      taskdeckInstanceId: "taskdeck_123",
+    });
+    const mailboxItem = {
+      mailboxItemId: "mail_123",
+      decisionActionId: "action_123",
+    };
+
+    expect(decisionGatewayDeliveryIdempotencyKey(lease, mailboxItem)).toBe(
+      "decision-delivery:request_123:mail_123:action_123",
+    );
   });
 });

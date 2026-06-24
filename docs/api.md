@@ -63,11 +63,11 @@ When `DECISION_GATEWAY_URL` is configured, TaskDeck polls outward to `GET <DECIS
 
 Received `decision_result` mailbox items are persisted under `.taskdeck/decision-gateway-mailbox.json` before TaskDeck posts `POST <DECISION_GATEWAY_URL>/api/taskdeck/mailbox/:id/ack` with `{ "taskdeckInstanceId": "..." }`. Malformed mailbox payloads and records that fail local persistence are not acknowledged.
 
-Outbound Ask decision requests are persisted as local leases under `.taskdeck/decision-gateway-leases.json`. A lease records `leaseId`, `decisionGatewayDecisionId`, `decisionGatewayUrl`, `requestId`, `taskId`, optional `sessionId`, `taskdeckInstanceId`, `status`, `createdAt`, `expiresAt`, and received mailbox metadata when available. `DECISION_GATEWAY_DECISION_LEASE_TTL_MS` optionally overrides the default 1800000 ms TTL.
+Outbound Ask decision requests are persisted as local leases under `.taskdeck/decision-gateway-leases.json`. A lease records `leaseId`, `decisionGatewayDecisionId`, `decisionGatewayUrl`, `requestId`, `taskId`, optional `sessionId`, App Server `threadId`, `turnId` and `callId` when available, `taskdeckInstanceId`, `status`, `createdAt`, `expiresAt`, received mailbox metadata, delivery timestamps, delivery error, and received decision payload when available. Lease statuses include `pending`, `received`, `delivered`, `delivery_failed`, `stale`, and `unmatched`; legacy `expired` and `cancelled` statuses remain loadable. `DECISION_GATEWAY_DECISION_LEASE_TTL_MS` optionally overrides the default 1800000 ms TTL.
 
 `GET /api/decision-gateway/mailbox/local` returns locally recorded mailbox items for UI rendering. Records carry `validationStatus` as `valid`, `unmatched`, or `stale`. TaskDeck may acknowledge valid, unmatched, and stale records after local persistence.
 
-`GET /api/decision-gateway/leases/local` returns locally recorded decision leases with `status` as `pending`, `received`, `expired`, or `cancelled`. Pending leases are marked `expired` lazily during mailbox polling or when rendered through local APIs.
+`GET /api/decision-gateway/leases/local` returns locally recorded decision leases with their current delivery status. Pending leases are marked `stale` lazily during mailbox polling.
 
 When `TASKDECK_CODEX_DYNAMIC_DECISION_TOOL=1`, TaskDeck registers a Codex App Server dynamic tool on thread start:
 
@@ -107,6 +107,10 @@ When `TASKDECK_CODEX_DYNAMIC_DECISION_TOOL=1`, TaskDeck registers a Codex App Se
 The dynamic tool is the preferred session-triggered path for human decisions when the flag is enabled. TaskDeck receives `item/tool/call`, resolves `threadId` to the active TaskDeck task/session from its own App Server runtime mapping, ignores any model-supplied routing fields, sends the request through the same Decision Gateway helper used by manual Ask, and records the same pending lease. Manual Ask from the task card remains the operator-triggered fallback when the tool is disabled or unavailable.
 
 The tool response is a pending status and decision URL for model awareness.
+
+When `TASKDECK_DECISION_AUTO_DELIVER=1`, mailbox polling automatically delivers valid matched decisions back to the originating Codex App Server thread by starting a new App Server turn. TaskDeck uses only host-owned lease data and current task/thread mappings for routing. The mailbox item may be rejected as `unmatched` or `stale`, and already delivered leases are not delivered again. Delivery failure marks the lease `delivery_failed`, preserves the mailbox result locally, and surfaces the error in task state/log output. When the flag is unset, current receive-only behavior remains: the task card can show **Decision received**, but no new turn is sent.
+
+The delivered turn text is scoped to the lease and original question. It includes the decision action, rationale, conditions, and decision URL, and instructs Codex not to broaden the approval into unrelated implementation permission. Decision delivery never uses PTY/stdin injection, direct Decision Gateway-to-agent communication, file inboxes, stdout markers, remote command execution, or a broad automatic apply path.
 
 ## Tasks
 

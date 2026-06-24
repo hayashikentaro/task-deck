@@ -46,6 +46,33 @@ By default TaskDeck uses the device-code login path. To smoke the browser redire
 8. Confirm the composer returns to send-input mode.
 9. Optionally send one second short prompt on the same thread and confirm it completes without another login.
 
+## Mobile Decision Auto-Delivery Smoke
+
+Start TaskDeck with Decision Gateway and auto-delivery enabled:
+
+```bash
+PORT=3001 \
+TASKDECK_CODEX_DYNAMIC_DECISION_TOOL=1 \
+TASKDECK_DECISION_AUTO_DELIVER=1 \
+DECISION_GATEWAY_URL=https://decision-gateway.vercel.app \
+TASKDECK_DECISION_GATEWAY_API_TOKEN=<token> \
+DECISION_GATEWAY_MAILBOX_POLL_MS=10000 \
+npm run dev
+```
+
+Then:
+
+1. Start a new Codex App Server task.
+2. Ask the session to call `taskdeck.request_decision`.
+3. Confirm the Slack/mobile notification arrives.
+4. Approve, reject, conditionally accept, or suspend on mobile.
+5. Do not touch the PC.
+6. Confirm TaskDeck receives the mailbox item.
+7. Confirm the originating App Server session receives a new turn with the human decision.
+8. Confirm the session continues or stops according to the decision.
+9. Confirm the TaskDeck card shows **Decision delivered**, or **Decision delivery failed** for blocked exceptional states.
+10. Confirm another mailbox poll does not create a duplicate turn.
+
 ## Successful Smoke Expectations
 
 - One ChatGPT login is requested at most when no valid ChatGPT session is already available.

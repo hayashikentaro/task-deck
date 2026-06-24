@@ -69,17 +69,22 @@ import {
   DECISION_GATEWAY_RECENT_OUTPUT_LIMIT,
   DecisionGatewayDecisionLeaseStatus,
   DecisionGatewayMailboxValidationStatus,
+  buildDecisionGatewayDeliveryMessage,
   buildDecisionGatewayTaskDeckHeaders,
   buildTaskDeckDecisionRequest,
   createDecisionGatewayDecisionLease,
+  decisionGatewayDeliveryIdempotencyKey,
   decisionGatewayTaskDeckErrorMessage,
   isDecisionGatewayDecisionLeaseExpired,
+  markDecisionGatewayDecisionLeaseDelivered,
+  markDecisionGatewayDecisionLeaseDeliveryFailed,
   markDecisionGatewayDecisionLeaseReceived,
   normalizeDecisionGatewayDecisionLease,
   normalizeDecisionGatewayTaskDeckApiToken,
   normalizeDecisionGatewayMailboxItem,
   normalizeTaskDeckDecisionRequestInput,
   normalizeDecisionGatewayUrl,
+  shouldAutoDeliverDecisionGatewayDecision,
   validateDecisionGatewayMailboxItemAgainstLease,
 } from "@taskdeck/core/decision-gateway";
 
@@ -135,7 +140,16 @@ const codexAppServerOnlyTaskError =
   "TaskDeck now only starts Codex App Server tasks while the App Server thread model is being rebuilt.";
 const decisionGatewayMailboxLimit = 20;
 const decisionGatewayMailboxValidationStatuses = new Set(["valid", "unmatched", "stale"]);
-const decisionGatewayDecisionLeaseStatuses = new Set(["pending", "received", "expired", "cancelled"]);
+const decisionGatewayDecisionLeaseStatuses = new Set([
+  "pending",
+  "received",
+  "delivered",
+  "delivery_failed",
+  "stale",
+  "unmatched",
+  "expired",
+  "cancelled",
+]);
 const defaultAgentProfiles = [
   {
     id: codexAppServerAgentProfileId,
@@ -155,6 +169,7 @@ const shell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe"
 const inputDebugEnabled = process.env.TASKDECK_INPUT_DEBUG === "1";
 const codexAppServerDebugEnabled = process.env.TASKDECK_CODEX_APP_SERVER_DEBUG === "1";
 const codexDynamicDecisionToolEnabled = process.env.TASKDECK_CODEX_DYNAMIC_DECISION_TOOL === "1";
+const decisionGatewayAutoDeliverEnabled = process.env.TASKDECK_DECISION_AUTO_DELIVER === "1";
 const decisionGatewayUrl = normalizeDecisionGatewayUrl(process.env.DECISION_GATEWAY_URL);
 const decisionGatewayTaskDeckApiToken = normalizeDecisionGatewayTaskDeckApiToken(
   process.env.TASKDECK_DECISION_GATEWAY_API_TOKEN,
@@ -247,6 +262,7 @@ app.get("/api/context", async (_request, response) => {
       mailboxPollingEnabled: Boolean(decisionGatewayUrl),
       mailboxPollIntervalMs: decisionGatewayMailboxPollIntervalMs,
       decisionLeaseTtlMs: decisionGatewayDecisionLeaseTtlMs,
+      autoDeliverEnabled: decisionGatewayAutoDeliverEnabled,
     },
   });
 });
@@ -687,7 +703,7 @@ class TaskDeckDecisionRequestError extends Error {
   }
 }
 
-async function sendTaskDecisionRequestToGateway({ task, decisionInput = null }) {
+async function sendTaskDecisionRequestToGateway({ task, decisionInput = null, decisionMetadata = {} }) {
   if (!task) {
     throw new TaskDeckDecisionRequestError("Unknown task/session.", { statusCode: 404 });
   }
@@ -752,7 +768,11 @@ async function sendTaskDecisionRequestToGateway({ task, decisionInput = null }) 
       requestId,
       taskId: task.id,
       sessionId: String(task.agentSessionId || "").trim(),
+      threadId: String(decisionMetadata.threadId || task.agentSessionId || "").trim(),
+      turnId: String(decisionMetadata.turnId || "").trim(),
+      callId: String(decisionMetadata.callId || "").trim(),
       taskdeckInstanceId,
+      decisionRequest,
     }).catch((error) => {
       console.warn(`TaskDeck could not record Decision Gateway decision lease ${requestId}: ${error.message}`);
     });
@@ -1693,7 +1713,7 @@ function sendCodexAppServerTurn(activeAppServer, input) {
   );
 }
 
-function sendCodexAppServerRequest(activeAppServer, method, params) {
+function sendCodexAppServerRequest(activeAppServer, method, params, metadata = {}) {
   const activeRuntime = codexRuntimeForThreadSession(activeAppServer);
   if (!activeRuntime) {
     appendCodexAppServerStatus(activeAppServer, "[TaskDeck] Codex App Server runtime is not available.\n");
@@ -1702,7 +1722,7 @@ function sendCodexAppServerRequest(activeAppServer, method, params) {
   const id = activeRuntime.nextRequestId;
   activeRuntime.nextRequestId += 1;
   const message = { jsonrpc: "2.0", id, method, params };
-  activeRuntime.pendingRequests.set(id, { method, params, threadSession: activeAppServer });
+  activeRuntime.pendingRequests.set(id, { method, params, threadSession: activeAppServer, metadata });
   if (codexAppServerDebugEnabled) {
     appendAndBroadcast(activeAppServer.taskId, `[TaskDeck -> Codex App Server] ${JSON.stringify(message)}\n`, {
       role: "taskdeck",
@@ -1984,6 +2004,7 @@ function handleCodexAppServerResponse(activeAppServer, message, pendingRequest =
       appendCodexAppServerStatus(activeAppServer, `[TaskDeck] Codex App Server turn stop failed: ${JSON.stringify(message.error)}\n`);
       return;
     }
+    markDecisionGatewayDeliveryFailedForCodexRequest(pendingRequest, JSON.stringify(message.error));
     if (codexRuntimeRequestCanMoveToAnotherThreadSession(method)) {
       finishCodexAppServerRuntime(activeRuntime, {
         exitCode: 1,
@@ -2509,6 +2530,11 @@ async function resolveCodexAppServerDynamicDecisionToolCall(activeAppServer, par
   const result = await sendTaskDecisionRequestToGateway({
     task: identity.task,
     decisionInput,
+    decisionMetadata: {
+      threadId: identity.threadId,
+      turnId: String(params?.turnId || "").trim(),
+      callId: String(params?.callId || "").trim(),
+    },
   });
 
   appendCodexAppServerStatusForTask(
@@ -4550,13 +4576,14 @@ async function processDecisionGatewayMailboxItem(rawItem, taskdeckInstanceId) {
   }
 
   const { record } = recordResult;
+  const deliveryResult = await maybeAutoDeliverDecisionGatewayMailboxRecord(record);
   try {
     await acknowledgeDecisionGatewayMailboxItem(record.mailboxItemId, taskdeckInstanceId);
   } catch (error) {
     warnDecisionGatewayMailboxPollFailure(
       `Unable to acknowledge Decision Gateway mailbox item ${record.mailboxItemId}: ${error.message}`,
     );
-    return { ok: false, changed: recordResult.recorded, record };
+    return { ok: false, changed: recordResult.recorded || deliveryResult.changed, record };
   }
 
   const ackedAt = new Date().toISOString();
@@ -4571,7 +4598,7 @@ async function processDecisionGatewayMailboxItem(rawItem, taskdeckInstanceId) {
     console.warn(`TaskDeck could not persist Decision Gateway mailbox ack state: ${error.message}`);
   }
 
-  return { ok: true, changed: recordResult.recorded || !record.ackedAt, record };
+  return { ok: true, changed: recordResult.recorded || deliveryResult.changed || !record.ackedAt, record };
 }
 
 async function recordDecisionGatewayMailboxItem(rawItem) {
@@ -4661,7 +4688,11 @@ async function recordDecisionGatewayPendingLease({
   requestId,
   taskId = "",
   sessionId = "",
+  threadId = "",
+  turnId = "",
+  callId = "",
   taskdeckInstanceId = "",
+  decisionRequest = null,
 }) {
   const normalizedRequestId = String(requestId || "").trim();
   if (!normalizedRequestId) {
@@ -4678,7 +4709,14 @@ async function recordDecisionGatewayPendingLease({
       requestId: normalizedRequestId,
       taskId,
       sessionId,
+      threadId,
+      turnId,
+      callId,
       taskdeckInstanceId,
+      decisionQuestion: decisionRequest?.decisionQuestion || "",
+      goal: decisionRequest?.goal || "",
+      axis: decisionRequest?.axis || "",
+      urgency: decisionRequest?.urgency || "",
       ttlMs: decisionGatewayDecisionLeaseTtlMs,
     });
 
@@ -4715,9 +4753,184 @@ function markDecisionGatewayLeaseReceived(record) {
       receivedAt: record.receivedAt,
       mailboxItemId: record.mailboxItemId,
       actionType: record.actionType,
+      condition: record.condition,
+      reason: record.reason,
+      decidedAt: record.decidedAt,
+      decisionPayload: {
+        actionType: record.actionType,
+        condition: record.condition,
+        reason: record.reason,
+        decidedAt: record.decidedAt,
+        decisionActionId: record.decisionActionId,
+        decisionRequestId: record.decisionRequestId,
+      },
     }),
     decisionGatewayDecisionId: lease.decisionGatewayDecisionId || record.decisionRequestId,
   });
+}
+
+async function maybeAutoDeliverDecisionGatewayMailboxRecord(record) {
+  const requestId = String(record?.requestId || "").trim();
+  const lease = requestId ? decisionGatewayDecisionLeases.get(requestId) : null;
+  const taskId = String(lease?.taskId || record?.taskId || "").trim();
+  const task = taskId ? tasks.get(taskId) : null;
+  const activeAppServer = taskId ? activeCodexThreadSessions.get(taskId) : null;
+  const deliveryCheck = shouldAutoDeliverDecisionGatewayDecision({
+    autoDeliverEnabled: decisionGatewayAutoDeliverEnabled,
+    lease,
+    mailboxItem: record,
+    validationStatus: record?.validationStatus || "",
+    taskExists: Boolean(task),
+    sessionActive: true,
+    deliveryAllowed: true,
+  });
+
+  if (!deliveryCheck.ok) {
+    return { changed: false, delivered: false, reason: deliveryCheck.reason };
+  }
+
+  const deliveryIdempotencyKey = decisionGatewayDeliveryIdempotencyKey(lease, record);
+  if (lease.deliveryIdempotencyKey && lease.deliveryIdempotencyKey === deliveryIdempotencyKey) {
+    return { changed: false, delivered: false, reason: "already-delivered" };
+  }
+
+  const deliveryAttempt = deliverDecisionGatewayMailboxRecordToCodexAppServer({
+    task,
+    activeAppServer,
+    lease,
+    record,
+    deliveryIdempotencyKey,
+  });
+  const nextLease = deliveryAttempt.ok
+    ? markDecisionGatewayDecisionLeaseDelivered(lease, {
+        deliveredAt: deliveryAttempt.deliveredAt,
+        deliveryIdempotencyKey,
+      })
+    : markDecisionGatewayDecisionLeaseDeliveryFailed(lease, {
+        deliveryError: deliveryAttempt.error,
+        deliveryIdempotencyKey,
+      });
+
+  decisionGatewayDecisionLeases.set(requestId, nextLease);
+  await persistDecisionGatewayLeases();
+  broadcastTasks();
+
+  if (!deliveryAttempt.ok) {
+    appendAndBroadcast(
+      taskId,
+      `[TaskDeck] Decision delivery failed: ${deliveryAttempt.error}\n`,
+      { role: "taskdeck", kind: "status" },
+    );
+    warnDecisionGatewayMailboxPollFailure(`Decision delivery failed for ${requestId}: ${deliveryAttempt.error}`);
+    return { changed: true, delivered: false, reason: deliveryAttempt.error };
+  }
+
+  appendAndBroadcast(taskId, "[TaskDeck] Decision delivered to Codex App Server session.\n", {
+    role: "taskdeck",
+    kind: "status",
+  });
+  return { changed: true, delivered: true, reason: "delivered" };
+}
+
+function deliverDecisionGatewayMailboxRecordToCodexAppServer({
+  task,
+  activeAppServer,
+  lease,
+  record,
+  deliveryIdempotencyKey,
+}) {
+  if (!task) {
+    return { ok: false, error: "Originating task no longer exists." };
+  }
+  if (!activeAppServer) {
+    return { ok: false, error: "Originating Codex App Server thread session is not active." };
+  }
+  if (task.status !== TaskStatus.RUNNING) {
+    return { ok: false, error: "Originating task is no longer running." };
+  }
+  if (activeAppServer.turnActive && activeAppServer.activeTurnId) {
+    return { ok: false, error: "Originating Codex App Server turn is still active." };
+  }
+  const expectedThreadId = String(lease.threadId || lease.sessionId || "").trim();
+  if (!activeAppServer.threadId || (expectedThreadId && activeAppServer.threadId !== expectedThreadId)) {
+    return { ok: false, error: "Originating Codex App Server thread id does not match the decision lease." };
+  }
+  if (codexRuntimeStateForThreadSession(activeAppServer).authFailureDetected) {
+    return { ok: false, error: "Codex App Server authentication has failed." };
+  }
+
+  const deliveryMessage = buildDecisionGatewayDeliveryMessage({ lease, mailboxItem: record });
+  const turnInput = buildCodexTurnInput(task, deliveryMessage);
+  const requestId = sendCodexAppServerRequest(
+    activeAppServer,
+    "turn/start",
+    buildCodexAppServerTurnStartParams({
+      threadId: activeAppServer.threadId,
+      text: turnInput.text,
+      model: turnInput.model,
+      effort: turnInput.effort,
+    }),
+    {
+      decisionDelivery: {
+        requestId: lease.requestId,
+        deliveryIdempotencyKey,
+      },
+    },
+  );
+  if (requestId === null) {
+    return { ok: false, error: "Codex App Server runtime is not writable." };
+  }
+
+  appendCodexAppServerUserInput(activeAppServer, deliveryMessage);
+  updateAgentStateFromTaskDeckEvent(task.id, AgentState.WORKING, {
+    reason: "TaskDeck delivered a mobile decision to Codex App Server.",
+    source: AgentStateSource.TASKDECK_EVENT,
+    confidence: AgentStateConfidence.HIGH,
+    attentionState: AttentionState.NONE,
+    attentionReason: "Mobile decision delivered to Codex App Server.",
+    attentionSource: AgentStateSource.TASKDECK_EVENT,
+    attentionConfidence: AgentStateConfidence.HIGH,
+  });
+  return {
+    ok: true,
+    deliveredAt: new Date().toISOString(),
+    deliveryIdempotencyKey,
+  };
+}
+
+function markDecisionGatewayDeliveryFailedForCodexRequest(pendingRequest, error) {
+  const delivery = pendingRequest?.metadata?.decisionDelivery;
+  const requestId = String(delivery?.requestId || "").trim();
+  if (!requestId) {
+    return false;
+  }
+  const lease = decisionGatewayDecisionLeases.get(requestId);
+  if (!lease || lease.status !== DecisionGatewayDecisionLeaseStatus.DELIVERED) {
+    return false;
+  }
+  const deliveryIdempotencyKey = String(delivery.deliveryIdempotencyKey || "").trim();
+  if (
+    deliveryIdempotencyKey &&
+    lease.deliveryIdempotencyKey &&
+    deliveryIdempotencyKey !== lease.deliveryIdempotencyKey
+  ) {
+    return false;
+  }
+
+  const nextLease = markDecisionGatewayDecisionLeaseDeliveryFailed(lease, {
+    deliveryError: `Codex App Server turn/start failed: ${error}`,
+    deliveryIdempotencyKey,
+  });
+  decisionGatewayDecisionLeases.set(requestId, nextLease);
+  persistDecisionGatewayLeases().catch((persistError) => {
+    console.warn(`TaskDeck could not persist Decision Gateway delivery failure: ${persistError.message}`);
+  });
+  broadcastTasks();
+  appendAndBroadcast(lease.taskId, `[TaskDeck] Decision delivery failed: ${nextLease.deliveryError}\n`, {
+    role: "taskdeck",
+    kind: "status",
+  });
+  return true;
 }
 
 function warnDecisionGatewayMailboxPollFailure(message) {
@@ -5596,6 +5809,7 @@ function serializeDecisionGatewayMailboxRecordForClient(record) {
     decisionRequestId: record.decisionRequestId || "",
     decisionActionId: record.decisionActionId || "",
     requestId: record.requestId || "",
+    taskdeckInstanceId: record.taskdeckInstanceId || "",
     taskId: record.taskId || "",
     sessionId: record.sessionId || "",
     actionType: record.actionType || "",
@@ -5621,13 +5835,26 @@ function serializeDecisionGatewayLeaseForClient(record) {
     requestId: record.requestId || "",
     taskId: record.taskId || "",
     sessionId: record.sessionId || "",
+    threadId: record.threadId || "",
+    turnId: record.turnId || "",
+    callId: record.callId || "",
     taskdeckInstanceId: record.taskdeckInstanceId || "",
     status: decisionGatewayDecisionLeaseStatuses.has(record.status) ? record.status : "pending",
+    decisionQuestion: record.decisionQuestion || "",
+    goal: record.goal || "",
+    axis: record.axis || "",
+    urgency: record.urgency || "",
     createdAt: record.createdAt || "",
     expiresAt: record.expiresAt || "",
     receivedAt: record.receivedAt || "",
+    deliveredAt: record.deliveredAt || "",
+    deliveryError: record.deliveryError || "",
+    deliveryIdempotencyKey: record.deliveryIdempotencyKey || "",
     mailboxItemId: record.mailboxItemId || "",
     actionType: record.actionType || "",
+    condition: record.condition || "",
+    reason: record.reason || "",
+    decidedAt: record.decidedAt || "",
   };
 }
 
@@ -6220,6 +6447,7 @@ function normalizeStoredDecisionGatewayMailboxRecord(value) {
     decisionRequestId: String(value.decisionRequestId || "").trim(),
     decisionActionId: String(value.decisionActionId || "").trim(),
     requestId: String(value.requestId || "").trim(),
+    taskdeckInstanceId: String(value.taskdeckInstanceId || "").trim(),
     taskId: String(value.taskId || "").trim(),
     sessionId: String(value.sessionId || "").trim(),
     actionType,
@@ -6273,13 +6501,27 @@ function normalizeLegacyDecisionGatewayLeaseRecord(value) {
     requestId,
     taskId,
     sessionId: String(value.sessionId || "").trim(),
+    threadId: String(value.threadId || value.sessionId || "").trim(),
+    turnId: String(value.turnId || "").trim(),
+    callId: String(value.callId || "").trim(),
     taskdeckInstanceId: String(value.taskdeckInstanceId || "legacy").trim(),
     status,
+    decisionQuestion: String(value.decisionQuestion || "").trim(),
+    goal: String(value.goal || "").trim(),
+    axis: String(value.axis || "").trim(),
+    urgency: String(value.urgency || "").trim(),
     createdAt: sentAt,
     expiresAt: String(value.expiresAt || defaultDecisionGatewayLeaseExpiresAt(sentAt)).trim(),
     receivedAt,
+    deliveredAt: String(value.deliveredAt || "").trim(),
+    deliveryError: String(value.deliveryError || "").trim(),
+    deliveryIdempotencyKey: String(value.deliveryIdempotencyKey || "").trim(),
     mailboxItemId: String(value.mailboxItemId || value.receivedMailboxItemId || "").trim(),
     actionType: String(value.actionType || "").trim(),
+    condition: String(value.condition || "").trim(),
+    reason: String(value.reason || "").trim(),
+    decidedAt: String(value.decidedAt || "").trim(),
+    decisionPayload: null,
   };
 }
 
@@ -6850,7 +7092,7 @@ function markExpiredDecisionGatewayLeases(now = new Date().toISOString()) {
     }
     decisionGatewayDecisionLeases.set(requestId, {
       ...lease,
-      status: DecisionGatewayDecisionLeaseStatus.EXPIRED,
+      status: DecisionGatewayDecisionLeaseStatus.STALE,
     });
     changed = true;
   }

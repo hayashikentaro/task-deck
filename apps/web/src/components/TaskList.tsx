@@ -310,6 +310,9 @@ export function TaskList({
           const latestDecisionResult = latestDecisionResultForTask(task);
           const latestDecisionLease = latestDecisionLeaseForTask(task);
           const hasPendingDecisionLease = latestDecisionLease?.status === "pending" && !latestDecisionResult;
+          const hasReceivedDecisionLease = latestDecisionLease?.status === "received" && Boolean(latestDecisionResult);
+          const hasDeliveredDecisionLease = latestDecisionLease?.status === "delivered";
+          const hasFailedDecisionDelivery = latestDecisionLease?.status === "delivery_failed";
           const hasLocalDecisionUrl =
             decisionRequestState?.status === "sent" && Boolean(decisionRequestState.decisionUrl);
           const inputLockLabel = isNativeSubagent
@@ -481,7 +484,17 @@ export function TaskList({
                         Status error
                       </span>
                     ) : null}
-                    {latestDecisionResult ? (
+                    {hasDeliveredDecisionLease ? (
+                      <span className="task-badge" data-kind="decision-delivered" title={decisionLeaseTitle(latestDecisionLease)}>
+                        Decision delivered
+                      </span>
+                    ) : null}
+                    {hasFailedDecisionDelivery ? (
+                      <span className="task-badge" data-kind="decision-delivery-failed" title={decisionLeaseTitle(latestDecisionLease)}>
+                        Decision delivery failed
+                      </span>
+                    ) : null}
+                    {hasReceivedDecisionLease ? (
                       <span className="task-badge" data-kind="decision-received" title={decisionResultTitle(latestDecisionResult)}>
                         Decision received
                       </span>
@@ -558,7 +571,24 @@ export function TaskList({
               {decisionRequestState?.status === "failed" ? (
                 <p className="task-action-error">{decisionRequestState.error || "Unable to send decision request."}</p>
               ) : null}
-              {latestDecisionResult ? (
+              {hasDeliveredDecisionLease ? (
+                <div className="task-action-status task-decision-received" data-kind="decision">
+                  <span>Decision delivered</span>
+                  <span className="task-decision-received-detail">
+                    {decisionActionLabel(latestDecisionLease?.actionType)}
+                    <span>{formatDecisionDateTime(latestDecisionLease?.deliveredAt || latestDecisionLease?.receivedAt)}</span>
+                  </span>
+                </div>
+              ) : null}
+              {hasFailedDecisionDelivery ? (
+                <div className="task-action-status task-decision-received" data-kind="decision-error">
+                  <span>Decision delivery failed</span>
+                  <span className="task-decision-received-detail">
+                    {latestDecisionLease?.deliveryError || "Unable to deliver decision to Codex App Server"}
+                  </span>
+                </div>
+              ) : null}
+              {hasReceivedDecisionLease && latestDecisionResult ? (
                 <div className="task-action-status task-decision-received" data-kind="decision">
                   <span>Decision received</span>
                   <span className="task-decision-received-detail">
@@ -787,7 +817,12 @@ function latestDecisionResultForTask(task: Task) {
 
 function latestDecisionLeaseForTask(task: Task) {
   const leases = Array.isArray(task.decisionLeases) ? task.decisionLeases : [];
-  return leases.find((item) => item.status === "pending" || item.status === "received") ?? leases[0] ?? null;
+  return leases.find((item) =>
+    item.status === "pending" ||
+    item.status === "received" ||
+    item.status === "delivered" ||
+    item.status === "delivery_failed"
+  ) ?? leases[0] ?? null;
 }
 
 function decisionResultTitle(item: DecisionGatewayMailboxItem) {
@@ -798,7 +833,19 @@ function decisionLeaseTitle(item: DecisionGatewayDecisionLease | null) {
   if (!item) {
     return "Decision pending";
   }
-  return ["Decision pending", item.requestId ? `request ${item.requestId}` : "", item.expiresAt ? `expires ${item.expiresAt}` : ""]
+  const label = item.status === "delivered"
+    ? "Decision delivered"
+    : item.status === "delivery_failed"
+      ? "Decision delivery failed"
+      : item.status === "received"
+        ? "Decision received"
+        : "Decision pending";
+  return [
+    label,
+    item.requestId ? `request ${item.requestId}` : "",
+    item.deliveryError || "",
+    item.expiresAt && item.status === "pending" ? `expires ${item.expiresAt}` : "",
+  ]
     .filter(Boolean)
     .join(" ");
 }

@@ -1333,9 +1333,15 @@ dd {
   color: var(--status-failed);
 }
 
-.task-badge[data-kind="decision-received"] {
+.task-badge[data-kind="decision-received"],
+.task-badge[data-kind="decision-delivered"] {
   border-color: color-mix(in srgb, var(--status-focus) 70%, var(--line));
   color: var(--status-focus);
+}
+
+.task-badge[data-kind="decision-delivery-failed"] {
+  border-color: var(--status-failed);
+  color: var(--status-failed);
 }
 
 .task-badge[data-kind="decision-pending"] {
@@ -2371,6 +2377,10 @@ dd {
 
 .task-action-status[data-kind="decision"] {
   border-color: color-mix(in srgb, var(--status-focus) 48%, var(--line));
+}
+
+.task-action-status[data-kind="decision-error"] {
+  border-color: var(--status-failed);
 }
 
 .task-action-status a {
