@@ -9,6 +9,7 @@
     "./codex-app-server": "./src/codexAppServer.js",
     "./decision-gateway": "./src/decisionGateway.js",
     "./manager-inbox": "./src/managerInbox.js",
-    "./manager-readable": "./src/managerReadable.js"
+    "./manager-readable": "./src/managerReadable.js",
+    "./team-templates": "./src/teamTemplates.js"
   }
 }

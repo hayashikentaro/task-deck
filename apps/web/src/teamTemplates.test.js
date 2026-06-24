@@ -1,0 +1,147 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import { createTask, serializeTask } from "@taskdeck/core";
+import {
+  buildTeamTemplateInitialInstruction,
+  loadTeamTemplatesFromFile,
+  normalizeTeamTemplatesConfig,
+} from "@taskdeck/core/team-templates";
+
+describe("TaskDeck team template helpers", () => {
+  it("loads a valid taskdeck.team-templates.json", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "taskdeck-team-template-"));
+    try {
+      const templatePath = path.join(tempDir, "taskdeck.team-templates.json");
+      await writeFile(templatePath, JSON.stringify({
+        teamTemplates: [
+          {
+            id: "decision-aware-solo",
+            label: "Decision-aware solo agent",
+            agentProfileId: "codex-app-server",
+            teamId: "single-decision-aware-agent",
+            roleId: "decision-aware-implementation-controller",
+            promptFiles: ["docs/agents/teams/single-decision-aware-agent.md"],
+            decisionGateway: {
+              required: true,
+              autoDeliver: true,
+              requireResumeActions: true,
+            },
+          },
+        ],
+      }));
+
+      expect(await loadTeamTemplatesFromFile(templatePath)).toEqual([
+        expect.objectContaining({
+          id: "decision-aware-solo",
+          agentProfileId: "codex-app-server",
+          teamId: "single-decision-aware-agent",
+          roleId: "decision-aware-implementation-controller",
+          promptFiles: ["docs/agents/teams/single-decision-aware-agent.md"],
+          decisionGateway: {
+            required: true,
+            autoDeliver: true,
+            requireResumeActions: true,
+          },
+        }),
+      ]);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns an empty list when taskdeck.team-templates.json is missing", async () => {
+    expect(await loadTeamTemplatesFromFile(path.join(os.tmpdir(), "missing-taskdeck-team-templates.json"))).toEqual([]);
+  });
+
+  it("normalizes invalid configs to an empty list", () => {
+    expect(normalizeTeamTemplatesConfig({})).toEqual([]);
+    expect(normalizeTeamTemplatesConfig({ teamTemplates: [{ id: "missing-required-fields" }] })).toEqual([]);
+    expect(normalizeTeamTemplatesConfig({
+      teamTemplates: [
+        {
+          id: "absolute-prompt",
+          label: "Absolute prompt",
+          agentProfileId: "codex-app-server",
+          teamId: "team",
+          roleId: "role",
+          promptFiles: [path.join(os.tmpdir(), "prompt.md")],
+        },
+      ],
+    })).toEqual([]);
+    expect(normalizeTeamTemplatesConfig({
+      teamTemplates: [
+        {
+          id: "bad-prompt-files",
+          label: "Bad prompt files",
+          agentProfileId: "codex-app-server",
+          teamId: "team",
+          roleId: "role",
+          promptFiles: "prompt.md",
+        },
+      ],
+    })).toEqual([]);
+  });
+
+  it("prepends prompt file contents to the user launch instruction", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "taskdeck-team-prompt-"));
+    try {
+      await writeFile(path.join(tempDir, "team.md"), "Team prompt");
+      await writeFile(path.join(tempDir, "role.md"), "Role prompt");
+
+      const initialInstruction = await buildTeamTemplateInitialInstruction({
+        documentRoot: tempDir,
+        template: {
+          promptFiles: ["team.md", "role.md"],
+        },
+        userInstruction: "Implement feature X.",
+      });
+
+      expect(initialInstruction).toBe([
+        "TaskDeck team template instructions:",
+        "Team prompt",
+        "",
+        "Role prompt",
+        "",
+        "User launch instruction:",
+        "Implement feature X.",
+      ].join("\n"));
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("serializes team template task metadata while preserving no-template tasks", () => {
+    const templatedTask = serializeTask(createTask({
+      title: "Templated",
+      command: "codex app-server",
+      cwd: "/workspace/project",
+      teamTemplateId: "decision-aware-solo",
+      teamId: "single-decision-aware-agent",
+      roleId: "decision-aware-implementation-controller",
+      decisionGatewayMode: "auto-deliver",
+      decisionResultHandling: "resume-action",
+    }));
+    const plainTask = serializeTask(createTask({
+      title: "Plain",
+      command: "codex app-server",
+      cwd: "/workspace/project",
+    }));
+
+    expect(templatedTask).toMatchObject({
+      teamTemplateId: "decision-aware-solo",
+      teamId: "single-decision-aware-agent",
+      roleId: "decision-aware-implementation-controller",
+      decisionGatewayMode: "auto-deliver",
+      decisionResultHandling: "resume-action",
+    });
+    expect(plainTask).toMatchObject({
+      teamTemplateId: "",
+      teamId: "",
+      roleId: "",
+      decisionGatewayMode: "",
+      decisionResultHandling: "",
+    });
+  });
+});

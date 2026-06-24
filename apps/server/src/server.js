@@ -89,6 +89,10 @@ import {
   shouldAutoDeliverDecisionGatewayDecision,
   validateDecisionGatewayMailboxItemAgainstLease,
 } from "@taskdeck/core/decision-gateway";
+import {
+  buildTeamTemplateInitialInstruction,
+  loadTeamTemplatesFromFile,
+} from "@taskdeck/core/team-templates";
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
@@ -122,6 +126,7 @@ const managerActionLogRoot = path.join(dataRoot, "manager-actions");
 const managerActionHistoryPath = path.join(managerActionLogRoot, "history.json");
 const defaultConfigPath = path.join(repoRoot, "taskdeck.config.json");
 const localConfigPath = path.join(repoRoot, "taskdeck.local.json");
+const teamTemplatesPath = path.join(repoRoot, "taskdeck.team-templates.json");
 const envConfigPath = process.env.TASKDECK_CONFIG ? path.resolve(process.env.TASKDECK_CONFIG) : "";
 const managerAgentProfileId = "taskdeck-manager";
 const codexAppServerAgentProfileId = "codex-app-server";
@@ -258,6 +263,7 @@ app.get("/api/context", async (_request, response) => {
     defaultModel: await loadDefaultModel(),
     agentProfiles: await loadAgentProfiles(),
     agentProfileConfig: await getAgentProfileConfigSummary(),
+    teamTemplates: await loadTeamTemplates(),
     decisionGateway: {
       configured: Boolean(decisionGatewayUrl),
       url: decisionGatewayUrl,
@@ -897,6 +903,7 @@ wss.on("connection", (socket) => {
           agentSessionSource: String(message.agentSessionSource || "").trim(),
           agentSessionDetectedAt: String(message.agentSessionDetectedAt || "").trim(),
           agentSessionResumeCommand: String(message.agentSessionResumeCommand || "").trim(),
+          teamTemplateId: String(message.teamTemplateId || "").trim(),
           initialInstruction: String(message.initialInstruction || "").trim(),
           attachments: normalizePendingAttachmentRefs(message.attachments),
         },
@@ -1028,6 +1035,7 @@ async function startTaskNow({
   agentSessionSource,
   agentSessionDetectedAt,
   agentSessionResumeCommand,
+  teamTemplateId,
   initialInstruction,
   attachments = [],
 }, socket) {
@@ -1047,10 +1055,19 @@ async function startTaskNow({
   const resolvedCwd = cwdValidation.resolvedCwd;
   const effectiveCommand = await commandForTaskCwd(command, resolvedCwd);
   const resolvedAgentModel = agentModel || modelFromCommand(effectiveCommand) || await loadDefaultModel();
+  const teamTemplateResult = await resolveTeamTemplateLaunch({
+    teamTemplateId,
+    agentProfileId,
+    initialInstruction,
+  });
+  if (!teamTemplateResult.ok) {
+    send(socket, { type: "error", message: teamTemplateResult.error });
+    return { ok: false, error: teamTemplateResult.error };
+  }
   const launchInitialInstruction = await initialInstructionForTaskLaunch({
     isManagerLaunch,
     command: effectiveCommand,
-    initialInstruction,
+    initialInstruction: teamTemplateResult.initialInstruction,
   });
   const explicitAgentSession = normalizeExplicitAgentSession({
     agentSessionProvider,
@@ -1073,6 +1090,7 @@ async function startTaskNow({
     identityColorSlot,
     initialInstruction: launchInitialInstruction,
     isManager: isManagerLaunch,
+    ...teamTemplateResult.metadata,
     ...explicitAgentSession,
   });
   const childStatusFile = await ensureChildStatusFilePath(baseTask);
@@ -1102,6 +1120,60 @@ async function cwdForTaskLaunch({ cwd, isManagerLaunch }) {
     return taskDeckControlRootCwd();
   }
   return cwd;
+}
+
+async function resolveTeamTemplateLaunch({ teamTemplateId, agentProfileId, initialInstruction }) {
+  const normalizedTemplateId = String(teamTemplateId || "").trim();
+  if (!normalizedTemplateId) {
+    return {
+      ok: true,
+      initialInstruction,
+      metadata: {},
+    };
+  }
+
+  const template = (await loadTeamTemplates()).find((candidate) => candidate.id === normalizedTemplateId);
+  if (!template) {
+    return { ok: false, error: `Unknown team template: ${normalizedTemplateId}` };
+  }
+  if (template.agentProfileId !== agentProfileId) {
+    return { ok: false, error: `Team template ${template.id} requires agent profile ${template.agentProfileId}.` };
+  }
+  if (template.decisionGateway?.required && !decisionGatewayUrl) {
+    return { ok: false, error: `Team template ${template.id} requires DECISION_GATEWAY_URL.` };
+  }
+  if (template.decisionGateway?.autoDeliver && !decisionGatewayAutoDeliverEnabled) {
+    return { ok: false, error: `Team template ${template.id} requires decision auto-delivery.` };
+  }
+
+  try {
+    return {
+      ok: true,
+      initialInstruction: await buildTeamTemplateInitialInstruction({
+        template,
+        documentRoot: repoRoot,
+        userInstruction: initialInstruction,
+      }),
+      metadata: {
+        teamTemplateId: template.id,
+        teamId: template.teamId,
+        roleId: template.roleId,
+        decisionGatewayMode: template.decisionGateway?.autoDeliver ? "auto-deliver" : "",
+        decisionResultHandling: template.decisionGateway?.requireResumeActions ? "resume-action" : "",
+      },
+    };
+  } catch (error) {
+    return { ok: false, error: `Unable to load team template ${template.id}: ${error.message}` };
+  }
+}
+
+async function loadTeamTemplates() {
+  try {
+    return await loadTeamTemplatesFromFile(teamTemplatesPath);
+  } catch (error) {
+    console.warn(`TaskDeck could not load team templates: ${error.message}`);
+    return [];
+  }
 }
 
 async function taskDeckControlRootCwd() {

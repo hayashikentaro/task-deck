@@ -13,6 +13,7 @@ const defaultAgentProfileId = "codex-app-server";
 
 export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFormProps) {
   const [selectedProjectPath, setSelectedProjectPath] = useState("");
+  const [selectedTeamTemplateId, setSelectedTeamTemplateId] = useState("");
 
   const projectSuggestions = useMemo(() => buildProjectSuggestions(context), [context]);
 
@@ -26,6 +27,8 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
   }, [context?.defaultCwd, projectSuggestions, selectedProjectPath]);
 
   const codexAppServerProfile = findCodexAppServerProfile(context?.agentProfiles ?? []);
+  const teamTemplates = (context?.teamTemplates ?? []).filter((template) => template.agentProfileId === defaultAgentProfileId);
+  const selectedTeamTemplate = teamTemplates.find((template) => template.id === selectedTeamTemplateId) ?? null;
   const command = codexAppServerProfile?.command.trim() ?? "";
   const effectiveCwd = selectedProjectPath || context?.defaultCwd || "";
   const canStart = !disabled && Boolean(codexAppServerProfile) && Boolean(effectiveCwd) && Boolean(command);
@@ -44,6 +47,7 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
       agentLabel: codexAppServerProfile?.label || "Codex App Server",
       agentModel: context?.defaultModel?.trim() || undefined,
       sessionMode: "new",
+      teamTemplateId: selectedTeamTemplate?.id || undefined,
     });
   };
 
@@ -62,6 +66,21 @@ export function TaskCreateForm({ context, disabled, onCreateTask }: TaskCreateFo
             </option>
           ))}
         </SelectField>
+        {teamTemplates.length > 0 ? (
+          <SelectField
+            className="team-template-field"
+            label="Team template"
+            value={selectedTeamTemplateId}
+            onChange={setSelectedTeamTemplateId}
+          >
+            <option value="">None</option>
+            {teamTemplates.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.label}
+              </option>
+            ))}
+          </SelectField>
+        ) : null}
         <Button disabled={!canStart} fullWidth type="submit" variant="panel">
           Start Codex Session
         </Button>

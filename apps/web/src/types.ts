@@ -129,6 +129,11 @@ export type Task = {
   agentSessionProvider?: string;
   agentSessionDetectedAt?: string;
   agentSessionResumeCommand?: string;
+  teamTemplateId?: string;
+  teamId?: string;
+  roleId?: string;
+  decisionGatewayMode?: string;
+  decisionResultHandling?: string;
   parentSessionId?: string;
   childStatusFile?: string;
   childReportedState?: ChildReportedState | "";
@@ -193,6 +198,7 @@ export type CreateTaskInput = {
   agentSessionSource?: string;
   agentSessionDetectedAt?: string;
   agentSessionResumeCommand?: string;
+  teamTemplateId?: string;
   initialInstruction?: string;
   attachments?: PendingTaskAttachment[];
 };
@@ -229,6 +235,21 @@ export type AgentProfile = {
   modelOptions?: ModelOption[];
 };
 
+export type TeamTemplate = {
+  id: string;
+  label: string;
+  description?: string;
+  agentProfileId: string;
+  teamId: string;
+  roleId: string;
+  promptFiles?: string[];
+  decisionGateway?: {
+    required?: boolean;
+    autoDeliver?: boolean;
+    requireResumeActions?: boolean;
+  };
+};
+
 export type AgentProfileConfigSummary = {
   source: string;
   path: string;
@@ -263,6 +284,7 @@ export type TaskDeckContext = {
   defaultModel?: string;
   agentProfiles: AgentProfile[];
   agentProfileConfig?: AgentProfileConfigSummary;
+  teamTemplates?: TeamTemplate[];
   decisionGateway?: {
     configured: boolean;
     url?: string;

@@ -1,0 +1,21 @@
+{
+  "teamTemplates": [
+    {
+      "id": "decision-aware-solo",
+      "label": "Decision-aware solo agent",
+      "description": "One App Server task that works autonomously and uses Decision Gateway as the only human decision channel.",
+      "agentProfileId": "codex-app-server",
+      "teamId": "single-decision-aware-agent",
+      "roleId": "decision-aware-implementation-controller",
+      "promptFiles": [
+        "docs/agents/teams/single-decision-aware-agent.md",
+        "docs/agents/roles/decision-aware-implementation-controller.md"
+      ],
+      "decisionGateway": {
+        "required": true,
+        "autoDeliver": true,
+        "requireResumeActions": true
+      }
+    }
+  ]
+}

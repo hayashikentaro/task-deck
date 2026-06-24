@@ -114,6 +114,14 @@ The delivered turn text is scoped to the lease and original question. It include
 
 ## Tasks
 
+## Team Templates
+
+TaskDeck optionally reads `taskdeck.team-templates.json` from the repository root. The first supported template is `decision-aware-solo`, which starts one Codex App Server task as a decision-aware solo implementation controller.
+
+The template connects the `codex-app-server` agent profile to the `single-decision-aware-agent` team and `decision-aware-implementation-controller` role. Its `promptFiles` are read relative to the TaskDeck document root and prepended to the user launch instruction. This is only the first minimal Decision Gateway-oriented slice; it is not multi-agent orchestration, Main/Worker splitting, or a manager-mediated loop.
+
+`GET /api/context` includes `teamTemplates` for launch UI use. Tasks started with a template persist `teamTemplateId`, `teamId`, `roleId`, `decisionGatewayMode`, and `decisionResultHandling` metadata while older task records without those fields remain loadable.
+
 `GET /api/tasks` and `GET /api/tasks/:taskId` return persisted task metadata including the launch command, cwd, agent profile fields, input lock timestamp, App Server thread session identity when available, legacy session fields when present, parent/child metadata, child reported status, and `taskOrderIndex` when a manual card order is stored.
 
 The server still recognizes the legacy `taskdeck-manager` agent profile id on stored tasks for persisted compatibility. The committed App Server route does not expose or launch a Codex TUI manager profile.
