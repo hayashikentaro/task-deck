@@ -98,7 +98,7 @@ Agent profiles merge by `id`: built-in defaults load first, then committed confi
 
 ## Decision Gateway
 
-TaskDeck can pair a phone through Decision Gateway, send a manual one-way decision request from a task card, and poll the Decision Result Mailbox for display-only results. Configure the gateway URL before starting TaskDeck:
+TaskDeck can pair a phone through Decision Gateway, send a manual one-way decision request from a task card, and poll the Decision Result Mailbox. Configure the gateway URL before starting TaskDeck:
 
 ```bash
 PORT=3001 DECISION_GATEWAY_URL=http://localhost:3000 npm run dev
@@ -120,7 +120,7 @@ When the mailbox returns decision results addressed to this TaskDeck instance, T
 
 For local testing, run Decision Gateway locally first, then start TaskDeck with `PORT=3001 DECISION_GATEWAY_URL=http://localhost:3000 npm run dev`. If Supabase is not configured yet, the local Decision Gateway may use its file-store fallback for first verification. For deployed Decision Gateway use, Supabase is required for reliable deployed workspace loading. Slack remains notification-only.
 
-Decision Gateway integration is still display-only for received decisions. TaskDeck does not apply mailbox decisions to agents, resume AI work, execute remote commands, deliver received condition/reason text as agent input, or mark decisions as applied. Local pending leases are TaskDeck's safety boundary: a future apply path must require a valid non-expired lease match for `requestId`, `taskId`, and `sessionId` before any agent delivery.
+Local pending leases are TaskDeck's safety boundary: any decision delivery path must require a valid non-expired lease match for `requestId`, `taskId`, and `sessionId`.
 
 ## Branch Worktree Lifecycle
 

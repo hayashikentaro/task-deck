@@ -65,7 +65,7 @@ Received `decision_result` mailbox items are persisted under `.taskdeck/decision
 
 Outbound Ask decision requests are persisted as local leases under `.taskdeck/decision-gateway-leases.json`. A lease records `leaseId`, `decisionGatewayDecisionId`, `decisionGatewayUrl`, `requestId`, `taskId`, optional `sessionId`, `taskdeckInstanceId`, `status`, `createdAt`, `expiresAt`, and received mailbox metadata when available. `DECISION_GATEWAY_DECISION_LEASE_TTL_MS` optionally overrides the default 1800000 ms TTL.
 
-`GET /api/decision-gateway/mailbox/local` returns locally recorded mailbox items for UI rendering. Records carry `validationStatus` as `valid`, `unmatched`, or `stale`. TaskDeck may acknowledge valid, unmatched, and stale records after local persistence because this step only surfaces decisions to the user.
+`GET /api/decision-gateway/mailbox/local` returns locally recorded mailbox items for UI rendering. Records carry `validationStatus` as `valid`, `unmatched`, or `stale`. TaskDeck may acknowledge valid, unmatched, and stale records after local persistence.
 
 `GET /api/decision-gateway/leases/local` returns locally recorded decision leases with `status` as `pending`, `received`, `expired`, or `cancelled`. Pending leases are marked `expired` lazily during mailbox polling or when rendered through local APIs.
 
@@ -106,7 +106,7 @@ When `TASKDECK_CODEX_DYNAMIC_DECISION_TOOL=1`, TaskDeck registers a Codex App Se
 
 The dynamic tool is the preferred session-triggered path for human decisions when the flag is enabled. TaskDeck receives `item/tool/call`, resolves `threadId` to the active TaskDeck task/session from its own App Server runtime mapping, ignores any model-supplied routing fields, sends the request through the same Decision Gateway helper used by manual Ask, and records the same pending lease. Manual Ask from the task card remains the operator-triggered fallback when the tool is disabled or unavailable.
 
-The tool response is a pending status and decision URL for model awareness only. TaskDeck does not automatically apply decisions to the agent, resume the agent, deliver mailbox decision text as agent input, or execute commands after a mailbox decision arrives.
+The tool response is a pending status and decision URL for model awareness.
 
 ## Tasks
 
@@ -124,7 +124,7 @@ The server still recognizes the legacy `taskdeck-manager` agent profile id on st
 
 The WebSocket composer sends `{ "type": "codex-app-server-interrupt-turn", "taskId": "..." }` to stop the selected task's active Codex App Server turn. The server translates this into `turn/interrupt` with the task's current App Server `threadId` and active `turnId`; it does not close the TaskDeck task or kill the shared runtime.
 
-`POST /api/tasks/:taskId/decision-request` sends a manual one-way decision request to Decision Gateway when `DECISION_GATEWAY_URL` is configured. TaskDeck includes source context such as the stable `source.taskdeckInstanceId`, task id, session id when available, agent profile, cwd, attention state, and a bounded redacted recent-output snippet. The route returns `{ "ok": true, "decisionUrl": "...", "decisionId": "...", "requestId": "..." }` and records a local pending lease for later mailbox validation. It does not change TaskDeck task state, resume agents, deliver decisions back, or mark decisions as applied.
+`POST /api/tasks/:taskId/decision-request` sends a manual one-way decision request to Decision Gateway when `DECISION_GATEWAY_URL` is configured. TaskDeck includes source context such as the stable `source.taskdeckInstanceId`, task id, session id when available, agent profile, cwd, attention state, and a bounded redacted recent-output snippet. The route returns `{ "ok": true, "decisionUrl": "...", "decisionId": "...", "requestId": "..." }` and records a local pending lease for later mailbox validation.
 
 `DELETE /api/tasks` bulk-clears tasks and their logs. `DELETE /api/tasks/:taskId` clears a single task; clearing an individual running task stops its active App Server runtime and removes that task.
 
