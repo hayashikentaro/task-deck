@@ -40,7 +40,7 @@ Do not treat future design notes as implemented behavior.
 
 Static docs may describe direction, rationale, and constraints. The running app's generated manager-readable files are the source of truth for available manager actions in that runtime.
 
-Manager actions must go through `taskdeckctl`. Do not add raw manager Web API paths, raw terminal-write paths, direct worker-to-worker command paths, or direct state mutation paths unless the actor protocol is explicitly changed in the same work.
+Do not add raw manager Web API paths, raw terminal-write paths, direct worker-to-worker command paths, or direct state mutation paths unless an explicit protocol redesign is approved in the same work.
 
 ## Generated Files
 

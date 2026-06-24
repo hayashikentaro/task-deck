@@ -6,49 +6,48 @@ GitHub Issues remain the source of truth for actionable work, open/closed state,
 
 ## Current priority order
 
-1. Document and enforce the TaskDeck actor protocol boundary.
-2. Read-only global manager MVP: complete.
-3. Minimum manager action/write path through `taskdeckctl`: implemented for ack, review, and close.
-4. Manager action discoverability and runtime action guide: implemented enough to support real manager sessions.
+1. Redesign the TaskDeck AI-agent actor model.
+2. Legacy read-only supervision transport: complete.
+3. Minimum local action/write path through `taskdeckctl`: implemented for ack, review, and close.
+4. Runtime action discoverability and action guide: implemented enough for current local commands.
 5. Codex work sessions use the App Server-first route as the only committed task launch surface on this branch.
 6. App Server dynamic human-decision requests through `taskdeck.request_decision`: enabled by default.
 7. Mobile decision auto-delivery to originating App Server threads: enabled by default for valid matched decisions.
-8. Next phase: rebuild the manager-mediated main/sub-session loop only on App Server-native semantics; do not add stdout-marker or request-file shortcuts.
+8. Next phase: redesign the AI-agent actor model before rebuilding any main/sub-session loop.
 9. Resume broader product work such as Electron packaging, non-Codex provider support, external configuration, and broader decision workflow policy only after the local implementation loop is stable.
 
-## Completed read-only manager MVP
+## Completed read-only supervision transport
 
-Read-only global manager MVP: complete.
+The previous read-only supervision transport work is complete.
 
 The completed scope includes:
 
-- global manager launch from the control/document root;
-- manager cwd `/workspace` in the QA environment;
-- project-bound worker sessions;
-- manager inbox unread events;
-- generated manager-readable context and unread event files;
-- manager nudge;
+- control-root launch path;
+- cwd `/workspace` in the QA environment;
+- generated unread events;
+- generated readable context and unread event files;
+- short nudge;
 - terminal-only manager judgment;
-- no `TASKDECK_STATUS_FILE` writes by the manager;
-- no `STATUS ERROR` from manager status parsing.
+- no `TASKDECK_STATUS_FILE` writes;
+- no `STATUS ERROR` from status parsing.
 
-The read-only MVP intentionally did not include `taskdeckctl` or manager write actions. That baseline has since been extended by the minimum manager action/write path below.
+The read-only MVP intentionally did not include `taskdeckctl` write actions. That baseline has since been extended by the minimum local action/write path below.
 
-## Completed minimum manager action/write path
+## Completed minimum local action/write path
 
-The minimum manager action/write path is implemented through `taskdeckctl` over server-owned local transports.
+The minimum local action/write path is implemented through `taskdeckctl` over server-owned local transports.
 
 The completed scope includes:
 
 - `taskdeckctl` as the manager-facing command surface;
 - local IPC / Unix socket transport;
 - token-protected loopback TCP fallback for Docker manager sessions;
-- manager action schema;
-- server-side manager action executor;
+- action schema;
+- server-side action executor;
 - validation, dedupe, action logging, and compact history;
 - `ack`, `review`, and `close` actions first.
 
-Current supported manager commands:
+Current supported commands:
 
 ```sh
 taskdeckctl ack --event <eventId>
@@ -57,20 +56,19 @@ taskdeckctl review --task <taskId>
 taskdeckctl close --task <taskId>
 ```
 
-## Completed manager action discoverability baseline
+## Completed action discoverability baseline
 
-TaskDeck now has the baseline needed for real manager sessions to discover supported actions at runtime.
+TaskDeck now has the baseline needed for supported local commands to be discoverable at runtime.
 
 The completed or established scope includes:
 
 - generated manager-readable action guidance;
 - generated capabilities file shape;
-- manager environment pointers such as `TASKDECK_MANAGER_ACTIONS_FILE` and `TASKDECK_MANAGER_CAPABILITIES_FILE`;
-- manager bootstrap instructions that tell the manager to read role guidance and runtime action files;
+- runtime action file pointers such as `TASKDECK_MANAGER_ACTIONS_FILE` and `TASKDECK_MANAGER_CAPABILITIES_FILE`;
 - per-event suggested actions for currently supported actions;
 - a strict rule that generated action guidance must not list unsupported future commands.
 
-This does not mean manager-to-session messaging is implemented. It means the runtime capability surface is ready to expose that command only after the server and `taskdeckctl` support it end-to-end.
+This does not mean session messaging is implemented. It means the runtime capability surface can expose a command only after the server and `taskdeckctl` support it end-to-end.
 
 ## Current phase: Codex App Server-first route
 
@@ -104,90 +102,33 @@ Implementation priorities for this phase:
 6. Make native subagent rendering and manager-loop flows App Server-compatible before broadening feature work.
 7. Do not add Codex TUI parsing or committed Codex CLI/TUI launch profiles on this branch.
 
-## Next phase: manager-mediated implementation loop (#64)
+## Next phase: actor model redesign
 
-The manager-mediated implementation loop remains the next product workflow goal. It must build on the App Server-first Codex route and preserve the same TaskDeck actor boundaries.
+The previous implementation-loop role model has been removed pending redesign.
 
 Do not implement this loop by adding stdout marker parsing, request-file writers, or request-directory environment variables. The next viable path is App Server-native: either supervise Codex native subagent events as read-only cards or add a new server-owned action protocol that is explicitly documented and exposed by the running server.
 
-The goal is to make TaskDeck support a real implementation loop with these roles:
-
-```text
-User
-  -> gives work direction and final authority
-
-Main session
-  -> owns the specification and implementation plan
-  -> acts as reviewer
-  -> decides follow-up instructions or closure
-
-Sub-sessions
-  -> future App Server-native bounded work sessions, not stdout-marker or request-file sessions
-  -> report blocked / ready_for_review / done / failed only after a supported reporting path exists
-
-TaskDeck Manager
-  -> acts as messenger and control-plane executor
-  -> reads manager inbox and generated action guide
-  -> delivers supported messages/actions through taskdeckctl
-  -> acknowledges handled events
-  -> marks reviewed work reviewed
-  -> closes no-longer-needed sessions
-```
-
-The manager is not the specification owner and not the implementer. The main session owns specification and review. Sub-sessions own bounded implementation. The manager moves messages and executes supported TaskDeck actions through the server-owned command boundary.
-
-The next missing capability is bounded manager-to-session messaging.
-
-The expected direction is:
-
-```text
-Manager
-  -> taskdeckctl supported message action
-  -> TaskDeck server validates / dedupes / logs
-  -> server delivers message to the target session
-```
-
-The likely command shape is:
-
-```sh
-taskdeckctl send-task-input --target-task <taskId> --message <message>
-```
-
-That command must not appear in generated manager action guidance until it is implemented end-to-end in both `taskdeckctl` and the server action validator/executor.
+The redesigned actor model should define any implementation-loop responsibilities from scratch. Do not reuse deleted role names or authority boundaries as if they were current.
 
 ## Implementation order for #64
 
 Prefer small, testable slices:
 
-1. Document the App Server-native role model and avoid implying that stdout-marker or request-file sub-session routes exist.
-2. Implement one bounded manager-to-session message action through `taskdeckctl` and the server-owned manager action endpoint.
+1. Redesign and document the App Server-native actor model without relying on the removed role definitions.
+2. Implement one bounded session-message action through `taskdeckctl` and the server-owned action endpoint only after the actor redesign defines it.
 3. Decide whether sub-session work is represented by Codex native subagent events or by a new TaskDeck server-owned action; document that protocol before exposing it.
 4. Add generated suggested actions only for actions that the running server and `taskdeckctl` support.
 5. QA one full local loop before broadening the action set.
 
-The first full-loop QA target is:
-
-```text
-user gives goal to main session
-main session triggers an App Server-native sub-work path that TaskDeck explicitly supports
-sub-work reports blocked or ready_for_review through that supported path
-manager sees the supported event
-manager sends a bounded message to the main session
-main session reviews or provides follow-up
-manager acknowledges / reviews / closes as appropriate
-```
+The first full-loop QA target should be defined after the actor redesign.
 
 ## Why this order
 
 - The current architectural focus is the App Server-first local TaskDeck implementation loop, not provider expansion, desktop packaging, or external decision services.
 - The App Server route gives TaskDeck structured Codex turns, command output, and user-input requests instead of relying on Codex TUI transcript interpretation.
-- Worker agents should continue to communicate through append-only files and bounded status/reporting surfaces.
-- Worker sessions are project-bound; the manager session is a global TaskDeck supervisor launched from the TaskDeck control/document root.
-- Manager reads are file-based and global across projects: manager inbox, generated readable views, and file change notifications.
-- Manager writes should not be raw Web API calls, direct cross-agent commands, or direct edits to TaskDeck state.
 - The manager-facing write path is `taskdeckctl` calling a local IPC endpoint owned by TaskDeck server.
 - TaskDeck server remains the only actor that validates, dedupes, logs, executes mutations, and coordinates session effects.
-- A real implementation loop needs a messenger, but the messenger must still be bounded by generated runtime capabilities.
+- A redesigned implementation loop must be bounded by generated runtime capabilities.
 
 ## Current constraints
 
@@ -197,22 +138,18 @@ manager acknowledges / reviews / closes as appropriate
 - Do not use platform-native multi-agent/sub-agent tools as independently commandable TaskDeck sessions.
 - TaskDeck branch work uses `git worktree`: one worktree, one branch, one purpose.
 - Do not create disposable full clones for TaskDeck branch work.
-- Do not let non-manager agents command other agents directly.
-- Do not launch the manager inside an individual project workspace; launch it from the TaskDeck control/document root.
-- Do not expose a manager Web API endpoint as the manager-facing write path.
+- Do not expose a broad Web API endpoint as the write path.
 - Do not show unsupported future commands in generated manager-readable action guidance.
-- Do not let the manager become the spec owner for the implementation loop; the main session owns spec and review.
-- Do not start a SQLite migration as part of the immediate manager-mediated implementation loop work.
-- Do not start tmux/session reattach work as part of the immediate manager-mediated implementation loop work; see #60 for future recovery tracking.
+- Do not start a SQLite migration as part of the immediate actor-model redesign work.
+- Do not start tmux/session reattach work as part of the immediate actor-model redesign work; see #60 for future recovery tracking.
 
 ## Primary design docs
 
 - `docs/taskdeck-actor-protocol.md`
-- `docs/agents/roles/taskdeck-manager.md`
 
 ## Primary issue
 
-- #64 Build manager-mediated main/sub-session implementation loop
+- #64 Build main/sub-session implementation loop
 
 ## Branch worktree lifecycle
 

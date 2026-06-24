@@ -2,7 +2,7 @@
 
 Guidance for Codex and other AI agents working in this repository.
 
-This file is the repository router and workflow checklist. Durable product principles, actor boundaries, and role-specific guidance live in the linked docs.
+This file is the repository router and workflow checklist. Durable product principles and workflow guidance live in the linked docs.
 
 ## Repository Boundary
 
@@ -42,13 +42,10 @@ Do not edit files outside this repository for TaskDeck work unless the user expl
 Read the relevant docs before changing the matching area:
 
 - Product and agent operating principles: `docs/agents/operating-principles.md`
-- Actor-specific documentation map: `docs/agents/README.md`
-- GPT collaborator role guidance: `docs/agents/roles/gpt-collaborator.md`
 - Current short-term execution order: `docs/current-work-plan.md`
-- TaskDeck actor and manager control-plane boundary: `docs/taskdeck-actor-protocol.md`
-- Dedicated manager role guidance: `docs/agents/roles/taskdeck-manager.md`
+- Agent documentation status: `docs/agents/README.md`
+- TaskDeck actor protocol redesign placeholder: `docs/taskdeck-actor-protocol.md`
 - AI-first layering and responsibility boundaries: `docs/ai-first-layering.md`
-- Integration role guidance when doing parent/integration merge work: `docs/agents/roles/integration.md`
 - UI styling changes: `docs/guides/ui-style.md`
 - Reusable UI components, shared controls, or icon-only controls: `docs/guides/ui-components.md`
 
@@ -71,22 +68,11 @@ This branch is intentionally App Server-only.
 - Codex App Server native subagents may be materialized as read-only supervision cards. They are App Server thread projections, not TaskDeck-launched sessions, and TaskDeck must not expose controls that imply they can be commanded independently.
 - Docker diagnostics code may still exist for compatibility, tests, or future local overrides. Do not use its presence as evidence that Docker is active product behavior.
 
-## Actor Boundary
+## Actor Model
 
-For session hierarchy, native subagent display, manager behavior, agent-to-TaskDeck communication, request transports, or session input delivery, follow `docs/taskdeck-actor-protocol.md`.
+The previous AI-agent actor and role definitions have been removed pending redesign. Do not infer durable actor responsibilities, manager authority, worker authority, parent/sub-session behavior, or agent-to-agent communication rules from deleted role docs, historical prompts, or older issue notes.
 
-At a high level:
-
-- Non-manager agents may only write append-only status, result, artifact, or explicitly supported request files.
-- Non-manager agents must not mutate canonical TaskDeck state.
-- Non-manager agents must not command other agents directly.
-- Manager sessions are global TaskDeck supervisor sessions launched from the TaskDeck control/document root, not an individual project workspace.
-- Manager write operations must go through `taskdeckctl`.
-- TaskDeck server is the only actor that may validate, dedupe, log, execute mutations, and deliver input to another session.
-
-Do not add raw Web API manager-write paths, raw terminal-write paths, raw SQL mutation paths, or direct worker-to-worker command paths unless the user explicitly approves a protocol change and `docs/taskdeck-actor-protocol.md` is updated in the same change.
-
-Do not add direct worker-to-worker command paths. Do not use platform-native multi-agent/sub-agent tools as TaskDeck-launched sessions, and do not treat Codex native subagents as independently commandable TaskDeck sessions.
+Do not add a new actor protocol or role taxonomy unless the user explicitly asks for that redesign.
 
 ## Branch And Worktree Policy
 

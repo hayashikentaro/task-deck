@@ -134,7 +134,7 @@ See [Branch worktree lifecycle](docs/branch-worktree-lifecycle.md) for the stand
 
 TaskDeck stores runtime data under `.taskdeck/`, including task records, local task card display order, persisted logs, session labels, presets, attachments, and received Decision Gateway mailbox records. This directory is intentionally ignored by Git and may contain sensitive agent output. Dragging task cards in the left rail persists only the local UI order under `.taskdeck/task-order.json`; it does not change task state, App Server thread routing, or agent execution.
 
-TaskDeck also starts local manager action transports and records them in `.taskdeck/run/manager-actions.json`. The preferred transport is the Unix socket at `.taskdeck/run/manager-actions.sock`; a token-protected loopback TCP fallback is advertised for manager sessions running inside Docker containers where a mounted macOS host socket is visible but not connectable. Manager sessions use `taskdeckctl ack`, `taskdeckctl review`, and `taskdeckctl close`; the server validates, logs under `.taskdeck/manager-actions/`, mutates, and broadcasts the result.
+TaskDeck also starts local manager action transports and records them in `.taskdeck/run/manager-actions.json`. The preferred transport is the Unix socket at `.taskdeck/run/manager-actions.sock`; a token-protected loopback TCP fallback is advertised for environments where a mounted macOS host socket is visible but not connectable. The supported local commands are `taskdeckctl ack`, `taskdeckctl review`, and `taskdeckctl close`; the server validates, logs under `.taskdeck/manager-actions/`, mutates, and broadcasts the result.
 
 ## Safety Notes
 
@@ -144,7 +144,7 @@ TaskDeck can launch local agent processes that may edit files and run commands. 
 
 - [Architecture map](docs/architecture.md)
 - [Local API reference](docs/api.md)
-- [Actor protocol and manager control plane](docs/taskdeck-actor-protocol.md)
+- [Actor protocol redesign placeholder](docs/taskdeck-actor-protocol.md)
 - [Branch worktree lifecycle](docs/branch-worktree-lifecycle.md)
 - [Current work plan](docs/current-work-plan.md)
 - [Session identity card experiment](docs/issues/0015-session-identity-first-cards.md)

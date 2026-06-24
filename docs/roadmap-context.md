@@ -12,25 +12,20 @@ It is not a chatbot UI, a provider-specific Codex UI, or merely a prettier termi
 
 ## Medium-term themes
 
-### Manager control plane
+### Control plane
 
-Maintain a dedicated manager control plane so non-manager agents can report bounded outputs while TaskDeck server remains the only actor that mutates state or delivers commands.
+The previous AI-agent actor model has been removed pending redesign. Keep the existing local control-plane implementation documented as runtime behavior, not as a durable actor taxonomy.
 
 The current design direction is:
 
-- worker sessions are project-bound and read generated context for the selected project workspace;
-- worker agents use supported App Server/session surfaces or append-only status/result/artifact files from their project scope;
-- the manager session is a global TaskDeck supervisor launched from the TaskDeck control/document root, not from an individual project workspace;
-- manager-readable context is global across projects and includes file-based manager inbox events and generated readable views;
-- Read-only global manager MVP: complete. The completed scope includes global manager launch from the control/document root, manager cwd `/workspace` in QA, project-bound worker sessions, manager inbox unread events, generated manager-readable context/unread files, manager nudge, terminal-only manager judgment, no manager writes to `TASKDECK_STATUS_FILE`, no `STATUS ERROR` from manager status parsing, and no direct manager mutation path;
-- Minimum manager action/write path: implemented for ack, review, and close actions;
+- Read-only supervision transport MVP: complete. The completed scope includes control-root launch, cwd `/workspace` in QA, generated unread events, generated readable context/unread files, short nudge, terminal-only judgment, no `TASKDECK_STATUS_FILE` writes, no `STATUS ERROR` from status parsing, and no direct mutation path;
+- Minimum local action/write path: implemented for ack, review, and close actions;
 - App Server dynamic human-decision requests: enabled by default and routed through Decision Gateway;
-- Next phase: bounded manager-to-session messaging for the main/sub-session implementation loop, only after the App Server-native session model is explicit;
-- manager writes should go through `taskdeckctl`;
+- Next phase: redesign the actor model before adding broader session-to-session workflow behavior;
 - `taskdeckctl` should talk to a local IPC endpoint, preferably a Unix domain socket, rather than an exposed Web API;
 - TaskDeck server validates, dedupes, logs, executes, and broadcasts every mutation.
 
-The manager action/write path includes `taskdeckctl`, local IPC / Unix socket, manager action schema, the server-side manager action executor, and ack/review/close actions. Later bounded message or sub-work actions must be App Server-native or a new server-owned protocol; they must not introduce stdout-marker or request-file shortcuts.
+The local action/write path includes `taskdeckctl`, local IPC / Unix socket, action schema, the server-side action executor, and ack/review/close actions. Later bounded message or sub-work actions must be App Server-native or a new server-owned protocol; they must not introduce stdout-marker or request-file shortcuts.
 
 Related design doc:
 
@@ -98,13 +93,11 @@ Related issues:
 - Keep machine control data out of human display planes.
 - Prefer bounded file, environment, local IPC, and command protocols for machine-readable coordination.
 - Prefer structured App Server or provider adapter protocols over TUI transcript parsing for agent control.
-- Keep worker-to-TaskDeck reporting constrained and append-only where possible.
-- Keep worker sessions project-bound and keep the manager session TaskDeck-control-root-bound.
-- Treat manager-readable context as global cross-project supervision context.
-- Avoid free-form subtask-to-parent or worker-to-worker chat.
-- Keep manager write behavior constrained to generated `taskdeckctl` capabilities.
-- Keep future manager write operations behind `taskdeckctl` and server-side validation.
-- Avoid exposing manager write as a broad Web API surface.
+- Redesign AI-agent actor responsibilities before adding new role-specific behavior.
+- Avoid free-form subtask-to-parent or worker-to-worker chat until the actor redesign defines supported behavior.
+- Keep write behavior constrained to generated `taskdeckctl` capabilities.
+- Keep future write operations behind `taskdeckctl` and server-side validation.
+- Avoid exposing writes as a broad Web API surface.
 - Avoid building UI around unstable configuration concepts.
 - Prefer diagnostics over settings mutation UI.
 - Keep TaskDeck provider-neutral.
@@ -112,8 +105,8 @@ Related issues:
 ## Non-goals for this phase
 
 - Public HTTP API.
-- Broad manager Web API surface.
-- Manager write operations that are not exposed through generated `taskdeckctl` capabilities.
+- Broad Web API write surface.
+- Write operations that are not exposed through generated `taskdeckctl` capabilities.
 - SQLite migration.
 - tmux/session reattach.
 - General workflow queue.

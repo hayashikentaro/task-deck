@@ -116,7 +116,7 @@ The delivered turn text is scoped to the lease and original question. It include
 
 `GET /api/tasks` and `GET /api/tasks/:taskId` return persisted task metadata including the launch command, cwd, agent profile fields, input lock timestamp, App Server thread session identity when available, legacy session fields when present, parent/child metadata, child reported status, and `taskOrderIndex` when a manual card order is stored.
 
-The server still recognizes the legacy `taskdeck-manager` agent profile id on stored tasks as a global manager session marker for manager protocol safety. The committed App Server route does not expose or launch a Codex TUI manager profile. Normal worker sessions do not receive manager-only instructions or manager action environment variables.
+The server still recognizes the legacy `taskdeck-manager` agent profile id on stored tasks for persisted compatibility. The committed App Server route does not expose or launch a Codex TUI manager profile.
 
 `PATCH /api/tasks/:taskId/title` updates the TaskDeck display name used to identify a task/session. When a task has legacy external session metadata, the display name may also be stored against that session key for persisted compatibility. Tasks without session metadata update their own task title.
 

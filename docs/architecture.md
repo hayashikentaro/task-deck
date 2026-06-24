@@ -49,7 +49,7 @@ Ownership map:
 - Runtime owns Codex App Server subprocess lifecycle, JSON-RPC notification handling, native subagent task materialization, thread-to-task log routing, and completion transitions. Typical file: `apps/server/src/server.js`.
 - UI owns the read-only subagent card presentation, `Subagent` badge, locked input affordance, and normal task-card selection behavior. Typical files: `apps/web/src/components/TaskList.tsx`, `InputComposer.tsx`, and related styles.
 - Core owns durable task/session metadata that is still needed by the App Server path, including `parentSessionId` for native subagent cards and persisted compatibility rules for old task records.
-- Integration owns branch/worktree convergence when explicitly assigned by a development workflow. Integration is not part of native subagent card materialization; use `docs/agents/roles/integration.md` for branch-worktree merge guidance.
+- Branch/worktree convergence is separate from native subagent card materialization; use `docs/branch-worktree-lifecycle.md` for branch worktree guidance.
 
 Do not add stdout marker parsing, request-file writers, raw launch commands from agent output, or direct worker-to-worker command paths as a shortcut for App Server-native sub-work.
 
