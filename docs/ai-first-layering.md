@@ -1,5 +1,7 @@
 # AI-First Layering
 
+Status: design principle, not implemented behavior or an actor protocol.
+
 TaskDeck is being developed with AI-assisted workflows. This document captures a working design principle for using architectural layers as responsibility boundaries.
 
 This is not a strict Clean Architecture template. Use it as a practical way to shape agent responsibilities, decision authority, context reuse, and integration flow.
