@@ -1,6 +1,10 @@
 # TaskDeck Local API
 
+Status: current local API reference.
+
 TaskDeck exposes a local REST API for the web UI and related operator actions. The API is intended for local use with the TaskDeck server, not as a public network service.
+
+This document describes routes that exist in the current app. Compatibility fields, optional diagnostics, and locally overridden profiles are not necessarily committed product routes on this branch. The committed task launch route is Codex App Server.
 
 ## Routes
 
@@ -35,9 +39,9 @@ DELETE /api/presets
 
 ## Diagnostics
 
-`GET /api/diagnostics` returns merged agent-profile config sources and optional Docker/container diagnostics for locally configured profiles that declare diagnostic containers. The committed App Server profile does not require Docker.
+`GET /api/diagnostics` returns merged agent-profile config sources and optional Docker/container diagnostics for locally configured profiles that declare diagnostic containers. Docker/container diagnostics are local-override compatibility support; the committed App Server profile does not require Docker.
 
-`POST /api/diagnostics/containers/:containerName/start` starts a configured diagnostic container when a local profile explicitly declares one and it exists but is stopped.
+`POST /api/diagnostics/containers/:containerName/start` starts a configured diagnostic container when a local profile explicitly declares one and it exists but is stopped. This route supports local diagnostics and should not be treated as evidence that Docker is part of the committed launch route.
 
 ## Cwd Validation
 
@@ -124,13 +128,13 @@ Each template connects the `codex-app-server` agent profile to one team and role
 
 `GET /api/context` includes `teamTemplates` for launch UI use. Tasks started with a template persist `teamTemplateId`, `teamId`, `roleId`, `decisionGatewayMode`, and `decisionResultHandling` metadata while older task records without those fields remain loadable.
 
-`GET /api/tasks` and `GET /api/tasks/:taskId` return persisted task metadata including the launch command, cwd, agent profile fields, input lock timestamp, App Server thread session identity when available, legacy session fields when present, parent/child metadata, child reported status, and `taskOrderIndex` when a manual card order is stored.
+`GET /api/tasks` and `GET /api/tasks/:taskId` return persisted task metadata including the launch command, cwd, agent profile fields, input lock timestamp, App Server thread session identity when available, compatibility legacy session fields when present, native subagent or older parent/child metadata when present, child reported status when present, and `taskOrderIndex` when a manual card order is stored.
 
 The server still recognizes the legacy `taskdeck-manager` agent profile id on stored tasks for persisted compatibility. The committed App Server route does not expose or launch a Codex TUI manager profile.
 
 `PATCH /api/tasks/:taskId/title` updates the TaskDeck display name used to identify a task/session. When a task has legacy external session metadata, the display name may also be stored against that session key for persisted compatibility. Tasks without session metadata update their own task title.
 
-`PATCH /api/tasks/:taskId/attention/acknowledge` clears the current attention event for a running task without stopping or modifying its active runtime. The task stores `attentionAcknowledgedAt`, returns to Not now by setting `attentionState` to `none`, and can surface again when a future App Server request, child-status report, or manager action sets a new attention state.
+`PATCH /api/tasks/:taskId/attention/acknowledge` clears the current attention event for a running task without stopping or modifying its active runtime. The task stores `attentionAcknowledgedAt`, returns to Not now by setting `attentionState` to `none`, and can surface again when a future App Server request, native subagent status, compatibility child-status report, or supported local action sets a new attention state.
 
 `PATCH /api/tasks/:taskId/input-lock` accepts `{ "locked": true }` or `{ "locked": false }` for running tasks. Locking blocks new user input without moving the task in the list. Unlocking stores a fresh activity timestamp so the operator can resume that task intentionally.
 

@@ -1,5 +1,7 @@
 # Codex App Server Route Smoke
 
+Status: current manual smoke path for the committed App Server route.
+
 This note records the manual smoke path for TaskDeck's primary Codex App Server route.
 
 Do this smoke once after batching App Server auth, logging, and UI-state changes. Avoid repeated ChatGPT login attempts during development because repeated login flows can cause exchange failures.

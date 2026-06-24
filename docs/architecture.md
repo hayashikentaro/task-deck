@@ -1,6 +1,10 @@
 # TaskDeck Architecture
 
+Status: current implementation reference.
+
 This document is a navigation map for contributors and AI-agent sessions. It describes the current shape of the project and likely refactoring boundaries, but it is not a request to refactor code.
+
+Read this as a map of current behavior and compatibility boundaries. When it mentions legacy metadata, optional diagnostics, or local overrides, that does not mean those paths are part of the committed product route on this branch.
 
 ## Product Invariant
 
@@ -16,7 +20,7 @@ In the current session-identity-first card design, the primary card-level visual
 - `apps/web`: React/Vite frontend for task cards, task output rendering, task creation, composer input, App Server request controls, and API/WebSocket state handling.
 - `packages/core`: Shared task-state primitives and task serialization helpers used by server and web code.
 - `.taskdeck/`: Ignored local runtime state. It stores persisted tasks, logs, presets, session labels, attachments, and other local data that may be sensitive.
-- Config files: `taskdeck.config.json` is committed config and exposes only the Codex App Server task profile on this branch; ignored `taskdeck.local.json`, `TASKDECK_CONFIG`, `TASKDECK_PROJECT_ROOT`, and `TASKDECK_PROJECT_ROOTS` carry machine-local overrides. `taskdeck.local.example.json` is the public example for local setup.
+- Config files: `taskdeck.config.json` is committed config and exposes only the Codex App Server task profile on this branch; ignored `taskdeck.local.json`, `TASKDECK_CONFIG`, `TASKDECK_PROJECT_ROOT`, and `TASKDECK_PROJECT_ROOTS` carry machine-local overrides. `taskdeck.local.example.json` is the public example for local setup. Local overrides are for machine-specific setup and compatibility, not evidence of additional committed launch routes.
 
 ## Runtime Data Flow
 
@@ -80,18 +84,18 @@ For running Codex App Server work, server memory keeps App Server runtime handle
 ## Domain Concepts
 
 - Task: The central supervision unit. For Codex App Server work, a parent task represents an App Server thread session and persists its thread identity in session metadata once the thread is ready. A task also owns low-level runtime status, command/cwd, agent profile metadata, attachments, logs, risk, `agentState`, `attentionState`, and timing.
-- Agent profile: A configured launch profile. On this branch, the exposed committed profile is Codex App Server running directly in the TaskDeck server environment. Profiles merge from built-in defaults, committed config, ignored local config, and `TASKDECK_CONFIG`.
+- Agent profile: A configured launch profile. On this branch, the exposed committed profile is Codex App Server running directly in the TaskDeck server environment. Profile merge code still supports ignored local overrides and old stored metadata for compatibility, but additional local profiles are not committed product behavior.
 - Session mode: How an agent starts. The committed App Server route starts new sessions; legacy stored tasks may still carry older session mode values.
 - Attention state: The primary operator signal for `Needs you` / `Not now`. It should remain conservative and false-positive tolerant.
 - Agent state: A process/supervision state such as starting, working, waiting input, review ready, done, or failed. It is related to but not identical to attention.
 - Project root / project suggestion: `projectRoot` means a parent directory whose immediate child directories become Project choices. With no configured project root, TaskDeck falls back to the TaskDeck repo itself as the selectable project.
-- Diagnostics: Server-side checks for optional locally configured Docker/container profiles and related local setup. The committed App Server profile does not require Docker diagnostics.
+- Diagnostics: Server-side checks for optional locally configured Docker/container profiles and related local setup. This is compatibility/local-override support. The committed App Server profile does not require Docker diagnostics, and Docker diagnostics should not be read as active product behavior on this branch.
 
 ## Task And Session Behavior
 
 Multiple tasks can exist in the task list, and multiple App Server thread sessions can run at the same time. The committed launch surface reuses one shared stdio App Server runtime for parent Codex thread sessions. Bulk clearing removes tasks and their logs. Clearing an individual running task removes that thread-session handle and only stops the shared runtime when no active thread sessions remain.
 
-Tasks carry a low-level process `status`, a supervisor-facing `agentState`, and a primary `attentionState` that answers whether the operator should look at the task now. `attentionState` can be `none`, `may_need_user`, `needs_input`, `needs_approval`, `review_ready`, or `failed`, with source/confidence/reason metadata. For Codex work sessions, attention should come from TaskDeck lifecycle events, App Server status/request events, child-status reports, manager actions, or explicit UI actions.
+Tasks carry a low-level process `status`, a supervisor-facing `agentState`, and a primary `attentionState` that answers whether the operator should look at the task now. `attentionState` can be `none`, `may_need_user`, `needs_input`, `needs_approval`, `review_ready`, or `failed`, with source/confidence/reason metadata. For Codex work sessions, attention should come from TaskDeck lifecycle events, App Server status/request events, native subagent status, or explicit UI actions. Older child-status and manager-action metadata may still appear in persisted compatibility paths, but it is not the branch's committed control route.
 
 Agent state also carries lightweight `agentStateReason`, `agentStateSource`, and `agentStateConfidence` metadata so operators can distinguish TaskDeck-owned events from App Server process events. TaskDeck treats its own lifecycle events as the primary state source: session start, user input, App Server status/request events, and process exit. Silence does not imply thinking.
 
@@ -133,9 +137,9 @@ After App Server authentication is ready, TaskDeck requests `model/list` and bro
 
 For maintainer environments, user-specific paths such as `/Users/hayashikentarou/Documents` belong in `taskdeck.local.json`, not committed config. Existing `projectRoots`, `TASKDECK_PROJECT_ROOT`, and `TASKDECK_PROJECT_ROOTS` values are still accepted for compatibility.
 
-Agent profiles can be changed without editing application code. TaskDeck merges profiles by `id`: built-in defaults are loaded first, then `taskdeck.config.json`, then ignored `taskdeck.local.json`, then `TASKDECK_CONFIG`. Later files override matching ids and append new ids, and the server exposes the merged profile list.
+Agent profiles can be changed without editing application code for local compatibility and machine-specific overrides. TaskDeck merges profiles by `id`: built-in defaults are loaded first, then `taskdeck.config.json`, then ignored `taskdeck.local.json`, then `TASKDECK_CONFIG`. Later files override matching ids and append new ids, and the server exposes the merged profile list. The committed repository still exposes only the Codex App Server launch route.
 
-Each profile supports `id`, `label`, `command`, `description`, optional `diagnosticContainer`, optional `diagnosticWorkspace`, and optional `modelOptions`. The diagnostics API uses the diagnostic fields to inspect/start configured Docker containers and check whether expected container workspace directories exist. Profiles without diagnostic container fields are launchable but omitted from container diagnostics. The committed App Server profile has no diagnostic container because it runs in the TaskDeck server environment.
+Each profile supports `id`, `label`, `command`, `description`, optional `diagnosticContainer`, optional `diagnosticWorkspace`, and optional `modelOptions`. The diagnostics API uses the diagnostic fields to inspect/start configured Docker containers and check whether expected container workspace directories exist. Profiles without diagnostic container fields are launchable but omitted from container diagnostics. The committed App Server profile has no diagnostic container because it runs in the TaskDeck server environment. Docker-related fields are local diagnostics compatibility, not a product requirement.
 
 Codex App Server launches through `codex --sandbox danger-full-access --ask-for-approval never app-server --listen stdio://` so TaskDeck can communicate over ordinary stdin/stdout pipes. The committed route uses `danger-full-access` in the TaskDeck server environment, and TaskDeck also passes full-access/no-approval overrides when starting App Server threads and turns. TaskDeck does not otherwise synthesize Codex CLI/TUI reasoning, startup, or resume flags for this profile. If a local machine needs Docker wrapping, use ignored local config to override the profile command.
 
@@ -145,7 +149,7 @@ Codex App Server launches through `codex --sandbox danger-full-access --ask-for-
 - Config loading: `apps/server/src/server.js` config candidate loading and profile/project-root normalization.
 - Agent profiles: Built-in profile definitions and profile merge/sanitize logic in `apps/server/src/server.js`; frontend profile types in `apps/web/src/types.ts`; launch-command selection in `TaskCreateForm.tsx`.
 - App Server lifecycle and input/output: Task/thread-session creation, shared App Server runtime spawn/stdin/stdout handling, log append, sequenced WebSocket output handling in `apps/server/src/server.js`; output replay helpers in `apps/web/src/outputReplay.ts`; output rendering in `OutputPane.tsx`; composer behavior in `InputComposer.tsx`.
-- Attention/supervision logic: App Server status/request handling, child-status handling, manager actions, and task state marking in `apps/server/src/server.js`; task-card display in `apps/web/src/components/TaskList.tsx`.
+- Attention/supervision logic: App Server status/request handling, native subagent status projection, compatibility child-status/manager-action handling, and task state marking in `apps/server/src/server.js`; task-card display in `apps/web/src/components/TaskList.tsx`.
 - Output and input UI: `apps/web/src/components/OutputPane.tsx`, `InputComposer.tsx`, related output/composer CSS in `apps/web/src/styles.css`.
 - Diagnostics: `/api/diagnostics` plus container inspection/start helpers in `apps/server/src/server.js`; a dedicated diagnostics UI would be future work.
 
@@ -157,7 +161,7 @@ Codex App Server launches through `codex --sandbox danger-full-access --ask-for-
 - `profiles`: Built-in agent profile definitions, launch helper behavior, Docker-wrapper workdir correction, and profile diagnostics metadata.
 - `tasks`: Task persistence, task mutation helpers, task cleanup, presets, and attachment persistence.
 - `codex-app-server`: App Server thread-session lifecycle, shared runtime spawn, JSON-RPC request/notification handling, pending request state, auth/device-login flow, and structured output rendering.
-- `supervision`: App Server request/status reduction, child-status attention, manager-action state changes, and task-card supervision display.
+- `supervision`: App Server request/status reduction, native subagent status projection, compatibility child-status/manager-action handling, and task-card supervision display.
 - `diagnostics`: Optional local Docker reachability, container inspection/start, and workspace checks for locally overridden profiles.
 - `api`: Express route registration separated from business logic.
 
