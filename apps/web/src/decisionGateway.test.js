@@ -9,6 +9,7 @@ import {
   decisionGatewayDeliveryIdempotencyKey,
   decisionGatewayTaskDeckErrorMessage,
   isDecisionGatewayDecisionLeaseExpired,
+  isDecisionGatewayAutoDeliverEnabledFromEnv,
   markDecisionGatewayDecisionLeaseDelivered,
   markDecisionGatewayDecisionLeaseDeliveryFailed,
   markDecisionGatewayDecisionLeaseReceived,
@@ -476,6 +477,40 @@ describe("Decision Gateway connector helpers", () => {
     expect(
       shouldAutoDeliverDecisionGatewayDecision({
         autoDeliverEnabled: false,
+        lease,
+        mailboxItem,
+        validationStatus: "valid",
+      }),
+    ).toEqual({ ok: false, reason: "auto-delivery-disabled" });
+  });
+
+  it("enables auto-delivery by default unless the emergency disable env is set", () => {
+    const lease = createDecisionGatewayDecisionLease({
+      leaseId: "lease_123",
+      requestId: "request_123",
+      taskId: "task_123",
+      taskdeckInstanceId: "taskdeck_123",
+    });
+    const mailboxItem = { mailboxItemId: "mail_123" };
+
+    expect(isDecisionGatewayAutoDeliverEnabledFromEnv({})).toBe(true);
+    expect(
+      isDecisionGatewayAutoDeliverEnabledFromEnv({
+        TASKDECK_DISABLE_DECISION_AUTO_DELIVER: "1",
+      }),
+    ).toBe(false);
+    expect(
+      shouldAutoDeliverDecisionGatewayDecision({
+        lease,
+        mailboxItem,
+        validationStatus: "valid",
+      }),
+    ).toEqual({ ok: true, reason: "deliver" });
+    expect(
+      shouldAutoDeliverDecisionGatewayDecision({
+        autoDeliverEnabled: isDecisionGatewayAutoDeliverEnabledFromEnv({
+          TASKDECK_DISABLE_DECISION_AUTO_DELIVER: "1",
+        }),
         lease,
         mailboxItem,
         validationStatus: "valid",

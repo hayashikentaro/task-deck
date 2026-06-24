@@ -266,6 +266,7 @@ export type TaskDeckContext = {
   decisionGateway?: {
     configured: boolean;
     url?: string;
+    dynamicDecisionToolEnabled?: boolean;
     mailboxPollingEnabled?: boolean;
     mailboxPollIntervalMs?: number;
     decisionLeaseTtlMs?: number;

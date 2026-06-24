@@ -48,6 +48,7 @@ import {
   getOrCreateCodexAppServerDynamicToolCallEntry,
   isCodexAppServerAuthError,
   isTaskDeckDynamicDecisionToolCall,
+  isTaskDeckDynamicDecisionToolEnabledFromEnv,
   isRoutineCodexAppServerNotification,
   normalizeCodexAppServerModels,
   resolveCodexAppServerTaskIdForThread,
@@ -79,6 +80,7 @@ import {
   markDecisionGatewayDecisionLeaseDelivered,
   markDecisionGatewayDecisionLeaseDeliveryFailed,
   markDecisionGatewayDecisionLeaseReceived,
+  isDecisionGatewayAutoDeliverEnabledFromEnv,
   normalizeDecisionGatewayDecisionLease,
   normalizeDecisionGatewayTaskDeckApiToken,
   normalizeDecisionGatewayMailboxItem,
@@ -168,8 +170,8 @@ const host = process.env.HOST || "127.0.0.1";
 const shell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "bash");
 const inputDebugEnabled = process.env.TASKDECK_INPUT_DEBUG === "1";
 const codexAppServerDebugEnabled = process.env.TASKDECK_CODEX_APP_SERVER_DEBUG === "1";
-const codexDynamicDecisionToolEnabled = process.env.TASKDECK_CODEX_DYNAMIC_DECISION_TOOL === "1";
-const decisionGatewayAutoDeliverEnabled = process.env.TASKDECK_DECISION_AUTO_DELIVER === "1";
+const codexDynamicDecisionToolEnabled = isTaskDeckDynamicDecisionToolEnabledFromEnv(process.env);
+const decisionGatewayAutoDeliverEnabled = isDecisionGatewayAutoDeliverEnabledFromEnv(process.env);
 const decisionGatewayUrl = normalizeDecisionGatewayUrl(process.env.DECISION_GATEWAY_URL);
 const decisionGatewayTaskDeckApiToken = normalizeDecisionGatewayTaskDeckApiToken(
   process.env.TASKDECK_DECISION_GATEWAY_API_TOKEN,
@@ -259,6 +261,7 @@ app.get("/api/context", async (_request, response) => {
     decisionGateway: {
       configured: Boolean(decisionGatewayUrl),
       url: decisionGatewayUrl,
+      dynamicDecisionToolEnabled: codexDynamicDecisionToolEnabled,
       mailboxPollingEnabled: Boolean(decisionGatewayUrl),
       mailboxPollIntervalMs: decisionGatewayMailboxPollIntervalMs,
       decisionLeaseTtlMs: decisionGatewayDecisionLeaseTtlMs,
@@ -961,6 +964,14 @@ server.on("error", (error) => {
 
 server.listen(port, host, () => {
   console.log(`TaskDeck listening on http://${host}:${port}`);
+  console.log(`TaskDeck Dynamic decision tool: ${codexDynamicDecisionToolEnabled ? "enabled" : "disabled"}`);
+  console.log(`TaskDeck Decision auto-delivery: ${decisionGatewayAutoDeliverEnabled ? "enabled" : "disabled"}`);
+  console.log(`TaskDeck Decision Gateway URL: ${decisionGatewayUrl ? "configured" : "missing"}`);
+  console.log(
+    `TaskDeck Decision Gateway mailbox polling interval: ${decisionGatewayMailboxPollIntervalMs} ms${
+      decisionGatewayUrl ? "" : " (polling disabled until DECISION_GATEWAY_URL is configured)"
+    }`,
+  );
 });
 
 const childStatusTimer = setInterval(scanChildStatusFiles, childStatusPollIntervalMs);

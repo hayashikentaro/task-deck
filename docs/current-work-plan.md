@@ -11,8 +11,8 @@ GitHub Issues remain the source of truth for actionable work, open/closed state,
 3. Minimum manager action/write path through `taskdeckctl`: implemented for ack, review, and close.
 4. Manager action discoverability and runtime action guide: implemented enough to support real manager sessions.
 5. Codex work sessions use the App Server-first route as the only committed task launch surface on this branch.
-6. App Server dynamic human-decision requests through `taskdeck.request_decision`: implemented behind `TASKDECK_CODEX_DYNAMIC_DECISION_TOOL=1`.
-7. Mobile decision auto-delivery to originating App Server threads: implemented behind `TASKDECK_DECISION_AUTO_DELIVER=1`.
+6. App Server dynamic human-decision requests through `taskdeck.request_decision`: enabled by default.
+7. Mobile decision auto-delivery to originating App Server threads: enabled by default for valid matched decisions.
 8. Next phase: rebuild the manager-mediated main/sub-session loop only on App Server-native semantics; do not add stdout-marker or request-file shortcuts.
 9. Resume broader product work such as Electron packaging, non-Codex provider support, external configuration, and broader decision workflow policy only after the local implementation loop is stable.
 
@@ -90,9 +90,9 @@ The committed `Codex App Server` profile is the only exposed task launch profile
 
 During this App Server-only migration slice, TaskDeck may render Codex native subagent events as read-only native subagent cards. Those cards are App Server thread projections, not independently launched TaskDeck sessions, and must not expose direct subagent input routing or any other independently commandable control surface.
 
-When `TASKDECK_CODEX_DYNAMIC_DECISION_TOOL=1`, TaskDeck registers the `taskdeck.request_decision` dynamic tool for App Server threads. A running session can request a human decision by sending bounded decision content; TaskDeck resolves the session identity server-side and sends the request through Decision Gateway. The returned decision URL is for awareness while TaskDeck waits for a received decision result.
+TaskDeck registers the `taskdeck.request_decision` dynamic tool for App Server threads by default. A running session can request a human decision by sending bounded decision content; TaskDeck resolves the session identity server-side and sends the request through Decision Gateway. The returned decision URL is for awareness while TaskDeck waits for a received decision result.
 
-When `TASKDECK_DECISION_AUTO_DELIVER=1`, a valid matched mobile decision is automatically delivered back to the originating App Server thread as a scoped new turn. The normal product flow is mobile approval, TaskDeck lease validation, then App Server turn delivery. PC action is reserved for unmatched, stale, duplicate, or blocked delivery states.
+Valid matched mobile decisions are automatically delivered back to the originating App Server thread as scoped new turns by default. The normal product flow is mobile approval, TaskDeck lease validation, then App Server turn delivery. PC action is reserved for unmatched, stale, duplicate, or blocked delivery states.
 
 Implementation priorities for this phase:
 

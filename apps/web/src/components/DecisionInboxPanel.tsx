@@ -1,38 +1,46 @@
 import type { DecisionGatewayMailboxItem } from "../types";
 
 type DecisionInboxPanelProps = {
+  autoDeliveryDisabled?: boolean;
   items: DecisionGatewayMailboxItem[];
 };
 
-export function DecisionInboxPanel({ items }: DecisionInboxPanelProps) {
+export function DecisionInboxPanel({ autoDeliveryDisabled = false, items }: DecisionInboxPanelProps) {
   const visibleItems = items.filter((item) => item.validationStatus !== "valid").slice(0, 5);
 
-  if (visibleItems.length === 0) {
+  if (!autoDeliveryDisabled && visibleItems.length === 0) {
     return null;
   }
 
   return (
     <section className="decision-inbox-panel" aria-label="Decision inbox">
+      {autoDeliveryDisabled ? (
+        <div className="decision-delivery-warning" role="status">
+          Auto delivery disabled
+        </div>
+      ) : null}
       <div className="decision-inbox-heading">
         <h2>Decision inbox</h2>
         <span>{visibleItems.length}</span>
       </div>
-      <div className="decision-inbox-items">
-        {visibleItems.map((item) => (
-          <article className="decision-inbox-item" key={item.mailboxItemId} title={decisionInboxTitle(item)}>
-            <span className="decision-inbox-status" data-status={item.validationStatus}>
-              {item.validationStatus}
-            </span>
-            <span className="decision-inbox-action">
-              {decisionActionLabel(item.actionType)}
-              <span>{formatDecisionTime(item.decidedAt || item.receivedAt)}</span>
-            </span>
-            <span className="decision-inbox-meta">
-              {item.taskId ? `task ${shortId(item.taskId)}` : `mail ${shortId(item.mailboxItemId)}`}
-            </span>
-          </article>
-        ))}
-      </div>
+      {visibleItems.length > 0 ? (
+        <div className="decision-inbox-items">
+          {visibleItems.map((item) => (
+            <article className="decision-inbox-item" key={item.mailboxItemId} title={decisionInboxTitle(item)}>
+              <span className="decision-inbox-status" data-status={item.validationStatus}>
+                {item.validationStatus}
+              </span>
+              <span className="decision-inbox-action">
+                {decisionActionLabel(item.actionType)}
+                <span>{formatDecisionTime(item.decidedAt || item.receivedAt)}</span>
+              </span>
+              <span className="decision-inbox-meta">
+                {item.taskId ? `task ${shortId(item.taskId)}` : `mail ${shortId(item.mailboxItemId)}`}
+              </span>
+            </article>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }

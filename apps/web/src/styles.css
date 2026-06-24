@@ -2202,6 +2202,18 @@ dd {
   padding: 14px;
 }
 
+.decision-delivery-warning {
+  min-width: 0;
+  border: 1px solid var(--status-failed);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--status-failed) 12%, transparent);
+  padding: 8px;
+  color: var(--status-failed);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
 .decision-inbox-heading {
   min-width: 0;
   display: flex;

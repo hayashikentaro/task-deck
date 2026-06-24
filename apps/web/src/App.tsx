@@ -402,7 +402,13 @@ export function App() {
             onCreateTask={createTask}
           />
           <PhonePairingPanel decisionGatewayConfigured={Boolean(taskDeckContext?.decisionGateway?.configured)} />
-          <DecisionInboxPanel items={decisionGatewayMailboxItems} />
+          <DecisionInboxPanel
+            autoDeliveryDisabled={Boolean(
+              taskDeckContext?.decisionGateway?.configured &&
+                taskDeckContext.decisionGateway.autoDeliverEnabled === false,
+            )}
+            items={decisionGatewayMailboxItems}
+          />
         </aside>
       </section>
     </main>

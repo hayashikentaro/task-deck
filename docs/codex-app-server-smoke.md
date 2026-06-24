@@ -48,12 +48,10 @@ By default TaskDeck uses the device-code login path. To smoke the browser redire
 
 ## Mobile Decision Auto-Delivery Smoke
 
-Start TaskDeck with Decision Gateway and auto-delivery enabled:
+Start TaskDeck with Decision Gateway configured:
 
 ```bash
 PORT=3001 \
-TASKDECK_CODEX_DYNAMIC_DECISION_TOOL=1 \
-TASKDECK_DECISION_AUTO_DELIVER=1 \
 DECISION_GATEWAY_URL=https://decision-gateway.vercel.app \
 TASKDECK_DECISION_GATEWAY_API_TOKEN=<token> \
 DECISION_GATEWAY_MAILBOX_POLL_MS=10000 \

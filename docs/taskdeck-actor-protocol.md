@@ -37,7 +37,7 @@ TaskDeck Codex work tasks should be treated as App Server thread-session project
 
 TaskDeck may materialize Codex App Server native subagents as read-only supervision cards. Those cards are App Server thread projections. TaskDeck does not launch them as independent sessions and must not expose controls that imply the user or manager can command them separately from the parent App Server task.
 
-When `TASKDECK_CODEX_DYNAMIC_DECISION_TOOL=1`, TaskDeck may expose the host-provided Codex App Server dynamic tool `taskdeck.request_decision` to a running App Server thread. This is an App Server-native callback into TaskDeck server, not an agent-owned network credential or a file protocol. The session supplies only bounded decision content; TaskDeck server resolves `threadId` to its own task/session mapping, injects `taskdeckInstanceId`, `taskId`, `sessionId`, agent profile, and label, then sends the request to Decision Gateway through the same server-owned path used by manual Ask. When `TASKDECK_DECISION_AUTO_DELIVER=1`, TaskDeck may deliver a valid matched mobile decision back to the originating App Server thread through the existing App Server turn path. Decision Gateway remains a cloud decision surface and mailbox; it does not communicate directly with agents.
+TaskDeck exposes the host-provided Codex App Server dynamic tool `taskdeck.request_decision` to running App Server threads by default. This is an App Server-native callback into TaskDeck server, not an agent-owned network credential or a file protocol. The session supplies only bounded decision content; TaskDeck server resolves `threadId` to its own task/session mapping, injects `taskdeckInstanceId`, `taskId`, `sessionId`, agent profile, and label, then sends the request to Decision Gateway through the same server-owned path used by manual Ask. TaskDeck delivers valid matched mobile decisions back to the originating App Server thread through the existing App Server turn path by default. Decision Gateway remains a cloud decision surface and mailbox; it does not communicate directly with agents.
 
 Do not add stdout marker protocols, request-file writers, or request-directory environment variables as an App Server control path.
 
@@ -345,7 +345,7 @@ The minimum manager write path uses these server-owned transports for ack, revie
 
 The manager protocol boundary, manager-readable context, short nudge path, local manager action transport, and generated manager action guide are implemented. The generated action guide and capabilities file are the runtime source of truth for real manager sessions.
 
-Current manager writes are limited to ack, review, and close. Human decision requests are not manager writes; they use the App Server dynamic-tool path when `TASKDECK_CODEX_DYNAMIC_DECISION_TOOL=1` is enabled for the running session.
+Current manager writes are limited to ack, review, and close. Human decision requests are not manager writes; they use the App Server dynamic-tool path exposed to running Codex App Server sessions by default.
 
 Future manager actions such as manager-to-worker messaging or child creation should extend the same structured action/result model only after `taskdeckctl`, server validation, action logging, and generated manager guidance support them end-to-end.
 

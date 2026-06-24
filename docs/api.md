@@ -69,7 +69,7 @@ Outbound Ask decision requests are persisted as local leases under `.taskdeck/de
 
 `GET /api/decision-gateway/leases/local` returns locally recorded decision leases with their current delivery status. Pending leases are marked `stale` lazily during mailbox polling.
 
-When `TASKDECK_CODEX_DYNAMIC_DECISION_TOOL=1`, TaskDeck registers a Codex App Server dynamic tool on thread start:
+TaskDeck registers a Codex App Server dynamic tool on thread start by default:
 
 ```json
 {
@@ -104,11 +104,11 @@ When `TASKDECK_CODEX_DYNAMIC_DECISION_TOOL=1`, TaskDeck registers a Codex App Se
 }
 ```
 
-The dynamic tool is the preferred session-triggered path for human decisions when the flag is enabled. TaskDeck receives `item/tool/call`, resolves `threadId` to the active TaskDeck task/session from its own App Server runtime mapping, ignores any model-supplied routing fields, sends the request through the same Decision Gateway helper used by manual Ask, and records the same pending lease. Manual Ask from the task card remains the operator-triggered fallback when the tool is disabled or unavailable.
+The dynamic tool is the preferred session-triggered path for human decisions. TaskDeck receives `item/tool/call`, resolves `threadId` to the active TaskDeck task/session from its own App Server runtime mapping, ignores any model-supplied routing fields, sends the request through the same Decision Gateway helper used by manual Ask, and records the same pending lease. Manual Ask from the task card remains the operator-triggered fallback when the tool is unavailable.
 
 The tool response is a pending status and decision URL for model awareness.
 
-When `TASKDECK_DECISION_AUTO_DELIVER=1`, mailbox polling automatically delivers valid matched decisions back to the originating Codex App Server thread by starting a new App Server turn. TaskDeck uses only host-owned lease data and current task/thread mappings for routing. The mailbox item may be rejected as `unmatched` or `stale`, and already delivered leases are not delivered again. Delivery failure marks the lease `delivery_failed`, preserves the mailbox result locally, and surfaces the error in task state/log output. When the flag is unset, current receive-only behavior remains: the task card can show **Decision received**, but no new turn is sent.
+Mailbox polling automatically delivers valid matched decisions back to the originating Codex App Server thread by starting a new App Server turn. TaskDeck uses only host-owned lease data and current task/thread mappings for routing. The mailbox item may be rejected as `unmatched` or `stale`, and already delivered leases are not delivered again. Delivery failure marks the lease `delivery_failed`, preserves the mailbox result locally, and surfaces the error in task state/log output. `TASKDECK_DISABLE_DYNAMIC_DECISION_TOOL=1` and `TASKDECK_DISABLE_DECISION_AUTO_DELIVER=1` are development/emergency escape hatches; they are not normal setup.
 
 The delivered turn text is scoped to the lease and original question. It includes the decision action, rationale, conditions, and decision URL, and instructs Codex not to broaden the approval into unrelated implementation permission. Decision delivery never uses PTY/stdin injection, direct Decision Gateway-to-agent communication, file inboxes, stdout markers, remote command execution, or a broad automatic apply path.
 

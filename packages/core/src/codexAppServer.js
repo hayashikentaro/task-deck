@@ -113,7 +113,11 @@ export const taskDeckDynamicDecisionTool = Object.freeze({
   },
 });
 
-export function taskDeckDynamicDecisionTools({ enabled = false } = {}) {
+export function isTaskDeckDynamicDecisionToolEnabledFromEnv(env = {}) {
+  return String(env?.TASKDECK_DISABLE_DYNAMIC_DECISION_TOOL || "").trim() !== "1";
+}
+
+export function taskDeckDynamicDecisionTools({ enabled = true } = {}) {
   return enabled ? [taskDeckDynamicDecisionTool] : [];
 }
 
@@ -162,7 +166,7 @@ export function buildCodexAppServerDynamicToolCallResponse(payload, success) {
 export function buildCodexAppServerThreadStartParams({
   cwd,
   model = "",
-  enableDynamicDecisionTool = false,
+  enableDynamicDecisionTool = true,
 } = {}) {
   const normalizedModel = String(model || "").trim();
   const dynamicTools = taskDeckDynamicDecisionTools({ enabled: enableDynamicDecisionTool });

@@ -11,12 +11,14 @@ import {
   getOrCreateCodexAppServerDynamicToolCallEntry,
   isCodexAppServerAuthError,
   isTaskDeckDynamicDecisionToolCall,
+  isTaskDeckDynamicDecisionToolEnabledFromEnv,
   isRoutineCodexAppServerNotification,
   normalizeCodexAppServerModels,
   resolveCodexAppServerTaskIdForThread,
   shouldIgnoreCodexAppServerMessageAfterAuthFailure,
   shouldSuppressCodexAppServerAuthErrorLine,
   taskDeckDynamicDecisionTool,
+  taskDeckDynamicDecisionTools,
 } from "@taskdeck/core/codex-app-server";
 
 describe("Codex App Server helper contracts", () => {
@@ -115,12 +117,21 @@ describe("Codex App Server helper contracts", () => {
       sandbox: "danger-full-access",
       approvalPolicy: "never",
       model: "gpt-5.5",
+      dynamicTools: [taskDeckDynamicDecisionTool],
     });
     expect(buildCodexAppServerThreadStartParams({ cwd: "/workspace/project" })).not.toHaveProperty("model");
-    expect(buildCodexAppServerThreadStartParams({ cwd: "/workspace/project" })).not.toHaveProperty("dynamicTools");
   });
 
-  it("registers the TaskDeck decision dynamic tool only when enabled", () => {
+  it("registers the TaskDeck decision dynamic tool by default", () => {
+    const params = buildCodexAppServerThreadStartParams({
+      cwd: "/workspace/project",
+    });
+
+    expect(taskDeckDynamicDecisionTools()).toEqual([taskDeckDynamicDecisionTool]);
+    expect(params.dynamicTools).toEqual([taskDeckDynamicDecisionTool]);
+  });
+
+  it("registers the TaskDeck decision dynamic tool when enabled", () => {
     const params = buildCodexAppServerThreadStartParams({
       cwd: "/workspace/project",
       enableDynamicDecisionTool: true,
@@ -140,6 +151,19 @@ describe("Codex App Server helper contracts", () => {
       "materials",
     ]);
     expect(params.dynamicTools[0].inputSchema.properties.urgency.enum).toEqual(["normal", "blocking"]);
+  });
+
+  it("omits the TaskDeck decision dynamic tool when the emergency disable env is set", () => {
+    expect(isTaskDeckDynamicDecisionToolEnabledFromEnv({})).toBe(true);
+    expect(isTaskDeckDynamicDecisionToolEnabledFromEnv({ TASKDECK_DISABLE_DYNAMIC_DECISION_TOOL: "1" })).toBe(false);
+    expect(
+      buildCodexAppServerThreadStartParams({
+        cwd: "/workspace/project",
+        enableDynamicDecisionTool: isTaskDeckDynamicDecisionToolEnabledFromEnv({
+          TASKDECK_DISABLE_DYNAMIC_DECISION_TOOL: "1",
+        }),
+      }),
+    ).not.toHaveProperty("dynamicTools");
   });
 
   it("recognizes and deduplicates TaskDeck decision dynamic tool calls", () => {

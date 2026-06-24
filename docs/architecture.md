@@ -42,7 +42,7 @@ Codex App Server parent task
 
 TaskDeck does not parse parent task output for launch markers and does not create independently commandable sub-sessions from worker text. Native subagent cards come only from structured Codex App Server events such as native subagent thread creation, item deltas, command execution summaries, and turn completion.
 
-Human decision requests initiated by a running Codex session use the App Server dynamic tool `taskdeck.request_decision` when enabled. TaskDeck maps the App Server thread to its local task/session identity on the server side and sends the bounded request through Decision Gateway. This is separate from manager `taskdeckctl` actions. When `TASKDECK_DECISION_AUTO_DELIVER=1`, a valid matched mobile decision is delivered back to the originating Codex App Server thread through a new App Server turn. TaskDeck remains the local trust root: Decision Gateway is only the cloud decision surface/mailbox, and delivery routing uses the local lease plus current task/thread maps.
+Human decision requests initiated by a running Codex session use the App Server dynamic tool `taskdeck.request_decision` by default. TaskDeck maps the App Server thread to its local task/session identity on the server side and sends the bounded request through Decision Gateway. This is separate from manager `taskdeckctl` actions. Valid matched mobile decisions are delivered back to the originating Codex App Server thread through a new App Server turn by default. TaskDeck remains the local trust root: Decision Gateway is only the cloud decision surface/mailbox, and delivery routing uses the local lease plus current task/thread maps.
 
 Ownership map:
 

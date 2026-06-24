@@ -24,7 +24,7 @@ The current design direction is:
 - manager-readable context is global across projects and includes file-based manager inbox events and generated readable views;
 - Read-only global manager MVP: complete. The completed scope includes global manager launch from the control/document root, manager cwd `/workspace` in QA, project-bound worker sessions, manager inbox unread events, generated manager-readable context/unread files, manager nudge, terminal-only manager judgment, no manager writes to `TASKDECK_STATUS_FILE`, no `STATUS ERROR` from manager status parsing, and no direct manager mutation path;
 - Minimum manager action/write path: implemented for ack, review, and close actions;
-- App Server dynamic human-decision requests: implemented behind `TASKDECK_CODEX_DYNAMIC_DECISION_TOOL=1` and routed through Decision Gateway;
+- App Server dynamic human-decision requests: enabled by default and routed through Decision Gateway;
 - Next phase: bounded manager-to-session messaging for the main/sub-session implementation loop, only after the App Server-native session model is explicit;
 - manager writes should go through `taskdeckctl`;
 - `taskdeckctl` should talk to a local IPC endpoint, preferably a Unix domain socket, rather than an exposed Web API;
@@ -47,7 +47,7 @@ The current route is:
 - keep raw App Server JSON out of normal logs;
 - render assistant text, command output, and App Server status as TaskDeck task output;
 - surface user-input requests through TaskDeck controls;
-- expose `taskdeck.request_decision` as the App Server-native human-decision request path when enabled;
+- expose `taskdeck.request_decision` as the default App Server-native human-decision request path;
 - keep committed Codex work sessions on the App Server route only;
 - avoid adding Codex TUI parsing or committed Codex CLI/TUI launch profiles.
 

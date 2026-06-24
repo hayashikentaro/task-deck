@@ -623,8 +623,12 @@ export function markDecisionGatewayDecisionLeaseDeliveryFailed(lease, {
   };
 }
 
+export function isDecisionGatewayAutoDeliverEnabledFromEnv(env = {}) {
+  return String(env?.TASKDECK_DISABLE_DECISION_AUTO_DELIVER || "").trim() !== "1";
+}
+
 export function shouldAutoDeliverDecisionGatewayDecision({
-  autoDeliverEnabled = false,
+  autoDeliverEnabled = true,
   lease,
   mailboxItem,
   validationStatus = "",
