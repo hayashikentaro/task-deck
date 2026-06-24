@@ -85,7 +85,8 @@ Treat each cycle as one decision unit and one commit unit.
 
 The session may finish when any of these is true:
 
-- The maximum cycle count has been reached. The default is 3 cycles.
+- The mission has been completed.
+- There is no clear next small task that advances the mission.
 - A major product or specification judgment is needed.
 - The required change has grown larger than expected.
 - Test failures cannot be resolved quickly.

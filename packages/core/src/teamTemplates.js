@@ -109,11 +109,7 @@ function normalizeTeamTemplateLoop(value) {
     return undefined;
   }
 
-  const defaultMaxCycles = Number(value.defaultMaxCycles);
   return {
-    defaultMaxCycles: Number.isInteger(defaultMaxCycles) && defaultMaxCycles > 0
-      ? defaultMaxCycles
-      : undefined,
     requireDecisionBeforeEachCycle: value.requireDecisionBeforeEachCycle === true,
   };
 }

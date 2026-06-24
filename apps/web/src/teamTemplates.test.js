@@ -75,7 +75,6 @@ describe("TaskDeck team template helpers", () => {
         requireResumeActions: true,
       },
       loop: {
-        defaultMaxCycles: 3,
         requireDecisionBeforeEachCycle: true,
       },
     });

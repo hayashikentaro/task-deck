@@ -249,7 +249,6 @@ export type TeamTemplate = {
     requireResumeActions?: boolean;
   };
   loop?: {
-    defaultMaxCycles?: number;
     requireDecisionBeforeEachCycle?: boolean;
   };
 };

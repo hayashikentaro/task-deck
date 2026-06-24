@@ -34,7 +34,6 @@
         "requireResumeActions": true
       },
       "loop": {
-        "defaultMaxCycles": 3,
         "requireDecisionBeforeEachCycle": true
       }
     }
