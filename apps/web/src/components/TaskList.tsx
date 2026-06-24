@@ -1,4 +1,4 @@
-import { FormEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { taskIdentityCssProperties } from "../taskIdentity";
 import type { AttentionState, DecisionGatewayDecisionLease, DecisionGatewayMailboxItem, Task } from "../types";
 import { Button } from "./ui/Button";
@@ -38,6 +38,7 @@ export function TaskList({
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
+  const [isTaskClearTemporarilyDisabled, setIsTaskClearTemporarilyDisabled] = useState(false);
   const [decisionRequestByTaskId, setDecisionRequestByTaskId] = useState<
     Record<string, { status: "sending" | "sent" | "failed"; decisionUrl?: string; error?: string }>
   >({});
@@ -45,9 +46,19 @@ export function TaskList({
   const itemRefs = useRef(new Map<string, HTMLElement>());
   const previousRectsRef = useRef(new Map<string, DOMRect>());
   const reorderAnimationFrameRef = useRef<number | null>(null);
+  const reorderClearGuardTimeoutRef = useRef<number | null>(null);
   const runningTaskIdSet = useMemo(() => new Set(runningTaskIds), [runningTaskIds]);
   const visibleTasks = useMemo(() => sortTasksBySupervision(tasks.filter((task) => matchesFilter(task, filter))), [filter, tasks]);
   const visibleTaskOrderKey = visibleTasks.map((task) => task.id).join("|");
+
+  useEffect(() => {
+    return () => {
+      if (reorderClearGuardTimeoutRef.current !== null) {
+        window.clearTimeout(reorderClearGuardTimeoutRef.current);
+        reorderClearGuardTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   useLayoutEffect(() => {
     if (reorderAnimationFrameRef.current !== null) {
@@ -78,6 +89,14 @@ export function TaskList({
       });
 
       if (movedElements.length > 0) {
+        if (reorderClearGuardTimeoutRef.current !== null) {
+          window.clearTimeout(reorderClearGuardTimeoutRef.current);
+        }
+        setIsTaskClearTemporarilyDisabled(true);
+        reorderClearGuardTimeoutRef.current = window.setTimeout(() => {
+          setIsTaskClearTemporarilyDisabled(false);
+          reorderClearGuardTimeoutRef.current = null;
+        }, 220);
         reorderAnimationFrameRef.current = requestAnimationFrame(() => {
           movedElements.forEach((element) => {
             element.style.transition = "";
@@ -320,7 +339,18 @@ export function TaskList({
                           <path d="M5.25 10.5h5.5" />
                         </svg>
                       </IconButton>
-                      <button aria-label="Clear task" className="task-clear-button" onClick={() => onClearTask(task.id)} title="Clear task" type="button">
+                      <button
+                        aria-label="Clear task"
+                        className="task-clear-button"
+                        disabled={isTaskClearTemporarilyDisabled}
+                        onClick={() => onClearTask(task.id)}
+                        title={
+                          isTaskClearTemporarilyDisabled
+                            ? "Task cards are moving; wait a moment before clearing"
+                            : "Clear task"
+                        }
+                        type="button"
+                      >
                         <svg aria-hidden="true" className="task-clear-icon" focusable="false" viewBox="0 0 16 16">
                           <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
                         </svg>
