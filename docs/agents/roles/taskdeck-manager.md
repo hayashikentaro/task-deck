@@ -38,7 +38,7 @@ Do not call raw TaskDeck endpoints. Do not mutate TaskDeck files directly. Do no
 
 Use only commands listed in the generated manager action guide. Do not invent `taskdeckctl` subcommands from memory or from future-looking design docs.
 
-Current minimum supported actions are:
+Current `taskdeckctl` manager actions are:
 
 ```sh
 taskdeckctl ack --event <eventId>
@@ -48,6 +48,8 @@ taskdeckctl close --task <taskId>
 ```
 
 If a command is not listed in the generated action guide, treat it as unavailable in the current runtime.
+
+Human decision requests are a separate Codex App Server dynamic-tool path when the running session exposes `taskdeck.request_decision`. They are not `taskdeckctl` manager actions and must not be invented from the manager action guide.
 
 ## Worker messaging
 

@@ -14,16 +14,17 @@ It is not a chatbot UI, a provider-specific Codex UI, or merely a prettier termi
 
 ### Manager control plane
 
-Introduce a dedicated manager control plane so non-manager agents can report bounded outputs while TaskDeck server remains the only actor that mutates state or delivers commands.
+Maintain a dedicated manager control plane so non-manager agents can report bounded outputs while TaskDeck server remains the only actor that mutates state or delivers commands.
 
 The current design direction is:
 
 - worker sessions are project-bound and read generated context for the selected project workspace;
-- worker agents write append-only status/result/artifact files from their project scope;
+- worker agents use supported App Server/session surfaces or append-only status/result/artifact files from their project scope;
 - the manager session is a global TaskDeck supervisor launched from the TaskDeck control/document root, not from an individual project workspace;
 - manager-readable context is global across projects and includes file-based manager inbox events and generated readable views;
 - Read-only global manager MVP: complete. The completed scope includes global manager launch from the control/document root, manager cwd `/workspace` in QA, project-bound worker sessions, manager inbox unread events, generated manager-readable context/unread files, manager nudge, terminal-only manager judgment, no manager writes to `TASKDECK_STATUS_FILE`, no `STATUS ERROR` from manager status parsing, and no direct manager mutation path;
 - Minimum manager action/write path: implemented for ack, review, and close actions;
+- App Server dynamic human-decision requests: implemented behind `TASKDECK_CODEX_DYNAMIC_DECISION_TOOL=1` and routed through Decision Gateway;
 - Next phase: bounded manager-to-session messaging for the main/sub-session implementation loop, only after the App Server-native session model is explicit;
 - manager writes should go through `taskdeckctl`;
 - `taskdeckctl` should talk to a local IPC endpoint, preferably a Unix domain socket, rather than an exposed Web API;
@@ -46,6 +47,7 @@ The current route is:
 - keep raw App Server JSON out of normal logs;
 - render assistant text, command output, and App Server status as TaskDeck task output;
 - surface user-input requests through TaskDeck controls;
+- expose `taskdeck.request_decision` as the App Server-native human-decision request path when enabled;
 - keep committed Codex work sessions on the App Server route only;
 - avoid adding Codex TUI parsing or committed Codex CLI/TUI launch profiles.
 
@@ -100,7 +102,7 @@ Related issues:
 - Keep worker sessions project-bound and keep the manager session TaskDeck-control-root-bound.
 - Treat manager-readable context as global cross-project supervision context.
 - Avoid free-form subtask-to-parent or worker-to-worker chat.
-- Prove manager read behavior before implementing manager write behavior.
+- Keep manager write behavior constrained to generated `taskdeckctl` capabilities.
 - Keep future manager write operations behind `taskdeckctl` and server-side validation.
 - Avoid exposing manager write as a broad Web API surface.
 - Avoid building UI around unstable configuration concepts.
@@ -111,7 +113,7 @@ Related issues:
 
 - Public HTTP API.
 - Broad manager Web API surface.
-- Manager write implementation before manager read-loop validation.
+- Manager write operations that are not exposed through generated `taskdeckctl` capabilities.
 - SQLite migration.
 - tmux/session reattach.
 - General workflow queue.

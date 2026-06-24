@@ -25,12 +25,12 @@ Do not treat generated runtime files as editable source files.
 
 Use the worker reporting channels provided by TaskDeck, such as:
 
+- supported App Server/session request surfaces;
 - append-only status files;
 - append-only result or artifact files;
-- bounded request files only when the current runtime explicitly supports that protocol;
 - normal terminal output for user-visible progress.
 
-Write only your own status, result, artifact, or explicitly supported request files.
+Write only through your own supported session surfaces or your own status, result, and artifact files.
 
 ## Boundaries
 
@@ -41,7 +41,7 @@ Do not:
 - command another worker directly;
 - call manager-action commands;
 - edit generated `.taskdeck` runtime files by hand;
-- smuggle raw commands, environment variables, secrets, or auto-approval fields through request/status files;
+- smuggle raw commands, environment variables, secrets, or auto-approval fields through unsupported request/status payloads;
 - treat platform-native sub-agent tools as independently commandable TaskDeck sessions.
 
 On the current App Server-only route, do not add stdout-marker protocols, request-file writers, or direct worker-to-worker command paths.

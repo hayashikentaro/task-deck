@@ -18,12 +18,12 @@ Remote GitHub branches are the durable source of truth. A branch task is complet
 
 TaskDeck should separate agent-readable communication from state mutation.
 
-Non-manager AI agents should not directly mutate TaskDeck state and should not send commands directly to other agents. They produce append-only file outputs. The manager reads those outputs and decides what should happen next. The manager also does not directly control worker agents; it calls a constrained TaskDeck command interface, and TaskDeck server performs the actual validated action.
+Non-manager AI agents should not directly mutate TaskDeck state and should not send commands directly to other agents. They communicate through supported App Server/session surfaces or append-only file outputs. The manager reads TaskDeck-generated context and decides what should happen next. The manager also does not directly control worker agents; it calls a constrained TaskDeck command interface, and TaskDeck server performs the actual validated action.
 
 The read loop has been proven first; the current implementation routes the minimum manager write path through `taskdeckctl`.
 
 ```text
-Workers write files.
+Workers use supported session surfaces or write files.
 Manager reads files first.
 Manager calls taskdeckctl for supported writes.
 Server performs the validated action.
@@ -109,7 +109,6 @@ They may write:
 - append-only status files
 - append-only result or artifact files
 - their own notes
-- bounded request files when the current running protocol explicitly allows them
 ```
 
 They must not:
@@ -120,7 +119,7 @@ They must not:
 - send commands directly to another agent
 - call manager-action commands
 - bypass TaskDeck's supported request/action surfaces
-- smuggle raw commands, env, secrets, or auto-approval fields through request files
+- smuggle raw commands, env, secrets, or auto-approval fields through unsupported request/action payloads
 ```
 
 ### Global Manager Agent
@@ -342,85 +341,13 @@ If running in containers, mount the manager action pointer and runtime directory
 
 The minimum manager write path uses these server-owned transports for ack, review, and close actions; future manager write support should preserve the same boundary.
 
-## MVP implementation sequence
+## Current implemented state
 
-### Phase 1: Document protocol boundary
+The manager protocol boundary, manager-readable context, short nudge path, local manager action transport, and generated manager action guide are implemented. The generated action guide and capabilities file are the runtime source of truth for real manager sessions.
 
-Add and maintain this actor protocol document. Reference it from `AGENTS.md` so future agents do not collapse worker, manager, and server responsibilities.
+Current manager writes are limited to ack, review, and close. Human decision requests are not manager writes; they use the App Server dynamic-tool path when `TASKDECK_CODEX_DYNAMIC_DECISION_TOOL=1` is enabled for the running session.
 
-### Phase 2: Validate manager inbox MVP
-
-Use a branch worktree to verify that supported task status changes emit valid manager inbox events.
-
-### Phase 3: Add an App Server-backed manager session
-
-Introduce a way to run a global manager session whose job is to read manager inbox events and generated readable context across all projects.
-
-This branch intentionally does not ship a built-in Codex TUI `TaskDeck Manager` profile. A future manager route should use the App Server path and must launch from the TaskDeck control/document root, not from a selected project workspace.
-
-### Phase 4: Add manager-readable context
-
-Generate or expose global files the manager can read without scraping UI transcripts:
-
-```text
-unread manager events across projects
-active tasks across projects
-supported task/sub-work status summaries across projects
-relevant task summaries
-```
-
-The current files are `.taskdeck/manager-readable/context.md` and `.taskdeck/manager-readable/unread-events.json` under the TaskDeck runtime `dataRoot`. The manager still launches from the TaskDeck control/document root; do not infer the readable file location from the manager cwd.
-
-### Phase 5: Wire short manager nudge
-
-When manager inbox changes, server sends a short nudge to the manager session:
-
-```text
-New manager event is available.
-Read the manager inbox and decide the next action.
-```
-
-### Phase 6: QA the manager read loop
-
-Verify:
-
-```text
-worker in any project writes append-only status through a currently supported path
-server emits global manager event / readable context
-global manager receives nudge
-global manager reads files
-global manager reports its judgment in the terminal response only
-the manager terminal makes the manager judgment visible
-```
-
-### Phase 7: Define manager write schema and transport
-
-The minimum manager write vertical slice defines the first manager action schema and server-owned local IPC transports. Future actions should extend the same structured action/result model.
-
-### Phase 8: Implement minimum manager write support
-
-The first implemented manager write operations are acknowledgement, review marking, and task closing.
-
-### Phase 9: Stabilize manager action discoverability and QA
-
-The current phase is to make supported actions obvious to real manager agents and prevent unsupported future commands from being inferred.
-
-Verify or add:
-
-```text
-- generated manager-readable actions.md
-- generated manager-readable capabilities.json
-- TASKDECK_MANAGER_ACTIONS_FILE
-- TASKDECK_MANAGER_CAPABILITIES_FILE
-- manager nudge instruction to read the action guide
-- per-event suggested actions where appropriate
-- taskdeckctl help / server allowlist / generated guide consistency
-- real-manager QA for ack, review, and close
-```
-
-### Phase 10: Add future manager actions only after discoverability is stable
-
-Future actions such as manager-to-worker messaging, child creation, or human decision requests should be added only after the generated action guide and action registry are in place.
+Future manager actions such as manager-to-worker messaging or child creation should extend the same structured action/result model only after `taskdeckctl`, server validation, action logging, and generated manager guidance support them end-to-end.
 
 ## Non-goals for now
 
@@ -431,7 +358,7 @@ Future actions such as manager-to-worker messaging, child creation, or human dec
 - manager-facing raw Web API action surface
 - direct worker-to-worker communication
 - manager direct session command path
-- broad manager write operations beyond ack/review/close before action discoverability is stable
+- broad manager write operations beyond ack/review/close without generated action-guide support
 ```
 
 ## Design slogan

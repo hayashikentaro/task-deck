@@ -29,7 +29,7 @@ Prefer structural boundaries over relying on long behavioral instructions.
 
 Examples:
 
-- Workers write append-only status/result/request files instead of mutating canonical TaskDeck state.
+- Workers use supported App Server/session surfaces or append-only status/result/artifact files instead of mutating canonical TaskDeck state.
 - Manager write operations go through `taskdeckctl`.
 - TaskDeck server validates, dedupes, logs, executes mutations, and coordinates App Server session effects.
 - Generated runtime action guides expose only actions supported by the running server and CLI.

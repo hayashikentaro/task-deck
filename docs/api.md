@@ -104,9 +104,9 @@ When `TASKDECK_CODEX_DYNAMIC_DECISION_TOOL=1`, TaskDeck registers a Codex App Se
 }
 ```
 
-The dynamic tool is the preferred session-triggered path for human decisions when the flag is enabled. TaskDeck receives `item/tool/call`, resolves `threadId` to the active TaskDeck task/session from its own App Server runtime mapping, ignores any model-supplied routing fields, sends the request through the same Decision Gateway helper used by manual Ask, and records the same pending lease. Manual Ask from the task card remains the fallback when the tool is disabled or unavailable.
+The dynamic tool is the preferred session-triggered path for human decisions when the flag is enabled. TaskDeck receives `item/tool/call`, resolves `threadId` to the active TaskDeck task/session from its own App Server runtime mapping, ignores any model-supplied routing fields, sends the request through the same Decision Gateway helper used by manual Ask, and records the same pending lease. Manual Ask from the task card remains the operator-triggered fallback when the tool is disabled or unavailable.
 
-The tool response is a pending status and decision URL for model awareness only. TaskDeck does not automatically apply decisions to the agent, resume the agent, write to PTY/stdin, or execute commands after a mailbox decision arrives.
+The tool response is a pending status and decision URL for model awareness only. TaskDeck does not automatically apply decisions to the agent, resume the agent, deliver mailbox decision text as agent input, or execute commands after a mailbox decision arrives.
 
 ## Tasks
 
