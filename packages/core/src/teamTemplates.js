@@ -23,11 +23,32 @@ export async function loadTeamTemplatesFromFile(filePath) {
   }
 }
 
+export function mergeTeamTemplates(...templateGroups) {
+  const mergedTemplates = [];
+  const indexById = new Map();
+  for (const templates of templateGroups) {
+    for (const template of Array.isArray(templates) ? templates : []) {
+      const id = normalizedString(template?.id);
+      if (!id) {
+        continue;
+      }
+      if (indexById.has(id)) {
+        mergedTemplates[indexById.get(id)] = template;
+        continue;
+      }
+      indexById.set(id, mergedTemplates.length);
+      mergedTemplates.push(template);
+    }
+  }
+  return mergedTemplates;
+}
+
 export async function buildTeamTemplateInitialInstruction({
   template,
   documentRoot,
   userInstruction = "",
 } = {}) {
+  const instructions = Array.isArray(template?.instructions) ? template.instructions : [];
   const promptFiles = Array.isArray(template?.promptFiles) ? template.promptFiles : [];
   const promptContents = [];
   for (const promptFile of promptFiles) {
@@ -37,7 +58,7 @@ export async function buildTeamTemplateInitialInstruction({
 
   return [
     "TaskDeck team template instructions:",
-    promptContents.filter(Boolean).join("\n\n"),
+    [...instructions, ...promptContents].filter(Boolean).join("\n\n"),
     "",
     "User launch instruction:",
     String(userInstruction || "").trim(),
@@ -75,7 +96,13 @@ function normalizeTeamTemplate(value) {
   if (value.promptFiles !== undefined && !Array.isArray(value.promptFiles)) {
     return null;
   }
+  if (value.instructions !== undefined && !Array.isArray(value.instructions)) {
+    return null;
+  }
 
+  const instructions = Array.isArray(value.instructions)
+    ? value.instructions.map((instruction) => normalizedString(instruction)).filter(Boolean)
+    : [];
   const promptFiles = Array.isArray(value.promptFiles)
     ? value.promptFiles.map((promptFile) => normalizedString(promptFile)).filter(Boolean)
     : [];
@@ -90,6 +117,7 @@ function normalizeTeamTemplate(value) {
     agentProfileId,
     teamId,
     roleId,
+    instructions,
     promptFiles,
     decisionGateway: normalizeTeamTemplateDecisionGateway(value.decisionGateway),
     loop: normalizeTeamTemplateLoop(value.loop),

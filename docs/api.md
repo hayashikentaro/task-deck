@@ -120,11 +120,11 @@ The delivered turn text is scoped to the lease and original question. It prefers
 
 ## Team Templates
 
-TaskDeck optionally reads `taskdeck.team-templates.json` from the repository root. The supported Decision Gateway-oriented templates are `decision-aware-solo`, which starts one Codex App Server task as a decision-aware solo implementation controller, and `decision-aware-loop`, which keeps one App Server task running through multiple small implementation cycles.
+TaskDeck reads default team templates from `taskdeck.team-templates.json` in the repository root, then merges `teamTemplates` entries from `taskdeck.config.json`, ignored `taskdeck.local.json`, and `TASKDECK_CONFIG`. Later entries with the same `id` replace earlier entries, and new ids are appended. The supported Decision Gateway-oriented defaults are `decision-aware-solo`, which starts one Codex App Server task as a decision-aware solo implementation controller, and `decision-aware-loop`, which keeps one App Server task running through multiple small implementation cycles. These default template operating instructions live in the app config entry's `instructions` array so the product template design is runtime configuration, not a docs-only source of truth.
 
 The `decision-aware-loop` template treats each completed cycle as a required commit unit: verify, commit, report the commit hash, confirm the working tree, then continue to the next cycle until a state-based exit condition applies. This is a prompt/template operating contract, not runtime cycle-count persistence or a change to the App Server startup flow.
 
-Each template connects the `codex-app-server` agent profile to one team and role. Its `promptFiles` are read relative to the TaskDeck document root and prepended to the user launch instruction. These templates are small Decision Gateway-oriented slices; they are not multi-agent orchestration, Main/Worker splitting, or independently commandable subagents.
+Each template connects the `codex-app-server` agent profile to one team and role. Its inline `instructions` are prepended to the user launch instruction. Optional `promptFiles` remain supported for local/custom templates and are read relative to the TaskDeck document root after inline instructions. These templates are small Decision Gateway-oriented slices; they are not multi-agent orchestration, Main/Worker splitting, or independently commandable subagents.
 
 `GET /api/context` includes `teamTemplates` for launch UI use. Tasks started with a template persist `teamTemplateId`, `teamId`, `roleId`, `decisionGatewayMode`, and `decisionResultHandling` metadata while older task records without those fields remain loadable.
 

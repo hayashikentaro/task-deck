@@ -242,6 +242,7 @@ export type TeamTemplate = {
   agentProfileId: string;
   teamId: string;
   roleId: string;
+  instructions?: string[];
   promptFiles?: string[];
   decisionGateway?: {
     required?: boolean;

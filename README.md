@@ -96,6 +96,8 @@ The committed App Server route uses `danger-full-access` and `--ask-for-approval
 
 Agent profiles merge by `id`: built-in defaults load first, then committed config, ignored local config, and finally `TASKDECK_CONFIG`.
 
+Team templates are product runtime config, not docs-only prompts. TaskDeck loads default templates from `taskdeck.team-templates.json`, then merges `teamTemplates` entries from `taskdeck.config.json`, ignored `taskdeck.local.json`, and `TASKDECK_CONFIG` by `id` so local configs can add or override templates without editing docs.
+
 ## Decision Gateway
 
 TaskDeck can pair a phone through Decision Gateway, send a manual one-way decision request from a task card, and poll the Decision Result Mailbox. Configure the gateway URL before starting TaskDeck:

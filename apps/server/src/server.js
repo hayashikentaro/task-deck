@@ -92,6 +92,7 @@ import {
 import {
   buildTeamTemplateInitialInstruction,
   loadTeamTemplatesFromFile,
+  mergeTeamTemplates,
 } from "@taskdeck/core/team-templates";
 
 const execFileAsync = promisify(execFile);
@@ -1168,12 +1169,21 @@ async function resolveTeamTemplateLaunch({ teamTemplateId, agentProfileId, initi
 }
 
 async function loadTeamTemplates() {
-  try {
-    return await loadTeamTemplatesFromFile(teamTemplatesPath);
-  } catch (error) {
-    console.warn(`TaskDeck could not load team templates: ${error.message}`);
-    return [];
+  const configCandidates = [
+    { source: "taskdeck.team-templates.json", path: teamTemplatesPath },
+    { source: "taskdeck.config.json", path: defaultConfigPath },
+    { source: "taskdeck.local.json", path: localConfigPath },
+    { source: "TASKDECK_CONFIG", path: envConfigPath },
+  ].filter((configCandidate) => configCandidate.path);
+  const templateGroups = [];
+  for (const configCandidate of configCandidates) {
+    try {
+      templateGroups.push(await loadTeamTemplatesFromFile(configCandidate.path));
+    } catch (error) {
+      console.warn(`TaskDeck could not load team templates from ${configCandidate.source}: ${error.message}`);
+    }
   }
+  return mergeTeamTemplates(...templateGroups);
 }
 
 async function taskDeckControlRootCwd() {
