@@ -342,11 +342,13 @@ export function TaskList({
                       <button
                         aria-label="Clear task"
                         className="task-clear-button"
-                        disabled={isTaskClearTemporarilyDisabled}
+                        disabled={isTaskClearTemporarilyDisabled || isInputLocked}
                         onClick={() => onClearTask(task.id)}
                         title={
                           isTaskClearTemporarilyDisabled
                             ? "Task cards are moving; wait a moment before clearing"
+                            : isInputLocked
+                              ? "Unlock input before clearing this task"
                             : "Clear task"
                         }
                         type="button"
