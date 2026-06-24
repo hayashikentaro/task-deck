@@ -63,9 +63,23 @@ Run each cycle in this order:
 5. Apply the decision result.
 6. Implement the selected task.
 7. Verify the change.
-8. Report briefly in Japanese.
-9. Update mission progress.
-10. If no exit condition has been reached, start the next cycle.
+8. Commit the cycle change.
+9. Report the commit hash and verification result briefly in Japanese.
+10. Confirm the working tree state with `git status --short --branch`.
+11. If no exit condition has been reached, start the next cycle only after the previous cycle commit is complete.
+
+Treat each cycle as one decision unit and one commit unit.
+
+## Commit Contract
+
+- Commit after every completed cycle.
+- Verify the change before committing.
+- Do not continue to the next cycle with a dirty working tree.
+- Do not create an exception for uncommitted cycles.
+- Use a short commit message that describes the cycle content.
+- Include the commit hash in the cycle report after committing.
+- Leave existing local untracked files alone when they are unrelated to the current cycle, for example `.DS_Store`. They may be mentioned in reports, but they must not block or become part of the cycle commit unless they are part of the cycle work.
+- Start implementation for the next cycle only after the previous cycle has been committed and the working tree has been checked.
 
 ## Exit Conditions
 
@@ -82,7 +96,9 @@ The session may finish when any of these is true:
 When exiting, always report in Japanese:
 
 - Completed cycle count.
+- Commit hash for each completed cycle.
 - What changed.
-- Verification results.
+- Verification results for each cycle.
 - Unfinished work.
 - Where to resume next.
+- Final working tree state.
