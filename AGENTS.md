@@ -42,7 +42,6 @@ Do not edit files outside this repository for TaskDeck work unless the user expl
 Read the relevant docs before changing the matching area:
 
 - Product and agent operating principles: `docs/agents/operating-principles.md`
-- Current short-term execution order: `docs/current-work-plan.md`
 - Agent documentation status: `docs/agents/README.md`
 - TaskDeck actor protocol redesign placeholder: `docs/taskdeck-actor-protocol.md`
 - AI-first layering and responsibility boundaries: `docs/ai-first-layering.md`
@@ -50,8 +49,6 @@ Read the relevant docs before changing the matching area:
 - Reusable UI components, shared controls, or icon-only controls: `docs/guides/ui-components.md`
 
 GitHub Issues are the source of truth for actionable work, open/closed state, detailed acceptance criteria, and backlog. Repository docs are durable context and design guidance, not a parallel issue tracker.
-
-If `docs/issues/` is referenced, treat it as historical or decision-record-like context, not as a general backlog. Do not add task status bookkeeping there when a GitHub Issue is the appropriate source of truth.
 
 Do not treat future design notes as implemented behavior. Runtime-generated files and generated manager action guides describe the capabilities of the running app instance.
 
