@@ -8,12 +8,12 @@ Human judgment must go through `taskdeck.request_decision` when that tool is ava
 
 When creating a decision request, include:
 
-- decision kind
-- decision question
-- current step
-- recommended decision
-- concrete options
-- resume action for each option
+- `decisionKind`
+- `decisionQuestion`
+- `currentStep`
+- `recommendedDecision`
+- `options`
+- each option's `resumeAction`
 
 When a Decision Gateway result is delivered back to the session:
 
