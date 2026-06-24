@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { DragEvent, FormEvent } from "react";
 import { taskIdentityCssProperties } from "../taskIdentity";
 import type { AttentionState, DecisionGatewayDecisionLease, DecisionGatewayMailboxItem, Task } from "../types";
 import { Button } from "./ui/Button";
@@ -14,6 +15,7 @@ type TaskListProps = {
   onClearTask: (taskId: string) => void;
   onClearTasks: () => void | Promise<void>;
   onRenameTask: (taskId: string, title: string) => Promise<boolean>;
+  onReorderTasks: (taskIds: string[]) => void | Promise<boolean>;
   onSendDecisionRequest: (
     taskId: string,
   ) => Promise<{ ok: true; decisionUrl: string; decisionId: string; requestId: string } | { ok: false; error: string }>;
@@ -29,6 +31,7 @@ export function TaskList({
   onClearTask,
   onClearTasks,
   onRenameTask,
+  onReorderTasks,
   onSendDecisionRequest,
   onSelectTask,
   onToggleInputLock,
@@ -39,6 +42,9 @@ export function TaskList({
   const [editingTitle, setEditingTitle] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
   const [isTaskClearTemporarilyDisabled, setIsTaskClearTemporarilyDisabled] = useState(false);
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
+  const [isTaskReorderSaving, setIsTaskReorderSaving] = useState(false);
   const [decisionRequestByTaskId, setDecisionRequestByTaskId] = useState<
     Record<string, { status: "sending" | "sent" | "failed"; decisionUrl?: string; error?: string }>
   >({});
@@ -48,8 +54,10 @@ export function TaskList({
   const reorderAnimationFrameRef = useRef<number | null>(null);
   const reorderClearGuardTimeoutRef = useRef<number | null>(null);
   const runningTaskIdSet = useMemo(() => new Set(runningTaskIds), [runningTaskIds]);
-  const visibleTasks = useMemo(() => sortTasksBySupervision(tasks.filter((task) => matchesFilter(task, filter))), [filter, tasks]);
+  const orderedTasks = useMemo(() => sortTasksForDisplay(tasks), [tasks]);
+  const visibleTasks = useMemo(() => orderedTasks.filter((task) => matchesFilter(task, filter)), [filter, orderedTasks]);
   const visibleTaskOrderKey = visibleTasks.map((task) => task.id).join("|");
+  const taskClearDisabled = isTaskClearTemporarilyDisabled || isTaskReorderSaving;
 
   useEffect(() => {
     return () => {
@@ -59,6 +67,17 @@ export function TaskList({
       }
     };
   }, []);
+
+  const startTaskClearGuard = () => {
+    if (reorderClearGuardTimeoutRef.current !== null) {
+      window.clearTimeout(reorderClearGuardTimeoutRef.current);
+    }
+    setIsTaskClearTemporarilyDisabled(true);
+    reorderClearGuardTimeoutRef.current = window.setTimeout(() => {
+      setIsTaskClearTemporarilyDisabled(false);
+      reorderClearGuardTimeoutRef.current = null;
+    }, 220);
+  };
 
   useLayoutEffect(() => {
     if (reorderAnimationFrameRef.current !== null) {
@@ -89,14 +108,7 @@ export function TaskList({
       });
 
       if (movedElements.length > 0) {
-        if (reorderClearGuardTimeoutRef.current !== null) {
-          window.clearTimeout(reorderClearGuardTimeoutRef.current);
-        }
-        setIsTaskClearTemporarilyDisabled(true);
-        reorderClearGuardTimeoutRef.current = window.setTimeout(() => {
-          setIsTaskClearTemporarilyDisabled(false);
-          reorderClearGuardTimeoutRef.current = null;
-        }, 220);
+        startTaskClearGuard();
         reorderAnimationFrameRef.current = requestAnimationFrame(() => {
           movedElements.forEach((element) => {
             element.style.transition = "";
@@ -182,6 +194,67 @@ export function TaskList({
     }
   };
 
+  const handleTaskDragStart = (event: DragEvent<HTMLElement>, taskId: string) => {
+    event.stopPropagation();
+    if (isTaskReorderSaving) {
+      event.preventDefault();
+      return;
+    }
+    setDraggedTaskId(taskId);
+    setDragOverTaskId(null);
+    startTaskClearGuard();
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", taskId);
+  };
+
+  const handleTaskDragOver = (event: DragEvent<HTMLElement>, taskId: string) => {
+    if (!draggedTaskId || draggedTaskId === taskId || isTaskReorderSaving) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDragOverTaskId(taskId);
+  };
+
+  const handleTaskDragEnd = () => {
+    setDraggedTaskId(null);
+    setDragOverTaskId(null);
+    startTaskClearGuard();
+  };
+
+  const handleTaskDrop = (event: DragEvent<HTMLElement>, targetTaskId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const sourceTaskId = draggedTaskId || event.dataTransfer.getData("text/plain");
+    setDraggedTaskId(null);
+    setDragOverTaskId(null);
+
+    if (!sourceTaskId || sourceTaskId === targetTaskId || isTaskReorderSaving) {
+      startTaskClearGuard();
+      return;
+    }
+
+    const visibleTaskIds = visibleTasks.map((task) => task.id);
+    const nextVisibleTaskIds = moveTaskIdInOrder(visibleTaskIds, sourceTaskId, targetTaskId);
+    if (nextVisibleTaskIds === visibleTaskIds) {
+      startTaskClearGuard();
+      return;
+    }
+
+    const nextTaskIds = mergeVisibleTaskOrder(
+      orderedTasks.map((task) => task.id),
+      visibleTaskIds,
+      nextVisibleTaskIds,
+    );
+    setIsTaskReorderSaving(true);
+    startTaskClearGuard();
+    Promise.resolve(onReorderTasks(nextTaskIds)).finally(() => {
+      setIsTaskReorderSaving(false);
+      startTaskClearGuard();
+    });
+  };
+
   return (
     <aside className="task-list" aria-label="Tasks">
       <div className="task-list-toolbar">
@@ -248,9 +321,12 @@ export function TaskList({
           return (
             <article
               className="task-list-item"
+              data-drag-over={dragOverTaskId === task.id ? "true" : "false"}
               data-selected={isSelected}
               data-tone={taskTone(task, runningTaskIdSet)}
               key={task.id}
+              onDragOver={(event) => handleTaskDragOver(event, task.id)}
+              onDrop={(event) => handleTaskDrop(event, task.id)}
               onClick={() => selectTask(task.id)}
               ref={(element) => {
                 if (element) {
@@ -287,6 +363,21 @@ export function TaskList({
                   className="task-select-button"
                 >
                   <span className="task-card-header">
+                    <button
+                      aria-label={`Reorder ${taskDisplayName(task)}`}
+                      className="task-drag-handle"
+                      disabled={isTaskReorderSaving}
+                      draggable={!isTaskReorderSaving}
+                      onClick={(event) => event.stopPropagation()}
+                      onDragEnd={handleTaskDragEnd}
+                      onDragStart={(event) => handleTaskDragStart(event, task.id)}
+                      title="Drag to reorder task"
+                      type="button"
+                    >
+                      <svg aria-hidden="true" className="task-drag-icon" focusable="false" viewBox="0 0 16 16">
+                        <path d="M6 3.5h.01M10 3.5h.01M6 8h.01M10 8h.01M6 12.5h.01M10 12.5h.01" />
+                      </svg>
+                    </button>
                     <span
                       className="task-row-heading"
                       onKeyDown={(event) => {
@@ -342,11 +433,11 @@ export function TaskList({
                       <button
                         aria-label="Clear task"
                         className="task-clear-button"
-                        disabled={isTaskClearTemporarilyDisabled || isInputLocked}
+                        disabled={taskClearDisabled || isInputLocked}
                         onClick={() => onClearTask(task.id)}
                         title={
-                          isTaskClearTemporarilyDisabled
-                            ? "Task cards are moving; wait a moment before clearing"
+                          taskClearDisabled
+                            ? "Task cards are being reordered; wait a moment before clearing"
                             : isInputLocked
                               ? "Unlock input before clearing this task"
                             : "Clear task"
@@ -502,14 +593,57 @@ function matchesFilter(task: Task, filter: TaskFilter) {
   return true;
 }
 
-function sortTasksBySupervision(tasks: Task[]) {
+export function sortTasksForDisplay(tasks: Task[]) {
   return [...tasks].sort((left, right) => {
+    const leftOrder = normalizedTaskOrderIndex(left.taskOrderIndex);
+    const rightOrder = normalizedTaskOrderIndex(right.taskOrderIndex);
+    if (leftOrder !== null || rightOrder !== null) {
+      if (leftOrder === null) {
+        return 1;
+      }
+      if (rightOrder === null) {
+        return -1;
+      }
+      if (leftOrder !== rightOrder) {
+        return leftOrder - rightOrder;
+      }
+    }
+
     const leftNeedsYou = supervisionBucket(left) === "needs_you";
     const rightNeedsYou = supervisionBucket(right) === "needs_you";
     if (leftNeedsYou !== rightNeedsYou) {
       return leftNeedsYou ? -1 : 1;
     }
     return timestampForSort(right.updatedAt) - timestampForSort(left.updatedAt);
+  });
+}
+
+function normalizedTaskOrderIndex(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+export function moveTaskIdInOrder(taskIds: string[], sourceTaskId: string, targetTaskId: string) {
+  const sourceIndex = taskIds.indexOf(sourceTaskId);
+  const targetIndex = taskIds.indexOf(targetTaskId);
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+    return taskIds;
+  }
+
+  const nextTaskIds = [...taskIds];
+  const [source] = nextTaskIds.splice(sourceIndex, 1);
+  nextTaskIds.splice(targetIndex, 0, source);
+  return nextTaskIds;
+}
+
+export function mergeVisibleTaskOrder(allTaskIds: string[], visibleTaskIds: string[], nextVisibleTaskIds: string[]) {
+  const visibleTaskIdSet = new Set(visibleTaskIds);
+  const nextVisibleQueue = [...nextVisibleTaskIds];
+
+  return allTaskIds.map((taskId) => {
+    if (!visibleTaskIdSet.has(taskId)) {
+      return taskId;
+    }
+    return nextVisibleQueue.shift() ?? taskId;
   });
 }
 

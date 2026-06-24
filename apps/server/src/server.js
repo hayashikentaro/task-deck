@@ -85,6 +85,7 @@ const webRoot = path.join(repoRoot, "apps/web");
 const webDist = path.join(webRoot, "dist");
 const dataRoot = path.join(repoRoot, ".taskdeck");
 const taskStorePath = path.join(dataRoot, "tasks.json");
+const taskOrderStorePath = path.join(dataRoot, "task-order.json");
 const presetStorePath = path.join(dataRoot, "presets.json");
 const sessionLabelStorePath = path.join(dataRoot, "session-labels.json");
 const taskdeckInstanceStorePath = path.join(dataRoot, "taskdeck-instance.json");
@@ -188,7 +189,9 @@ const childStatusFileSnapshots = new Map();
 let managerActionSocketPath = managerActionDefaultSocketPath;
 let managerActionTcpPort = 0;
 let managerActionTcpToken = "";
+let taskOrder = [];
 let persistTasksQueue = Promise.resolve();
+let persistTaskOrderQueue = Promise.resolve();
 let persistPresetsQueue = Promise.resolve();
 let persistSessionLabelsQueue = Promise.resolve();
 let persistDecisionGatewayMailboxQueue = Promise.resolve();
@@ -309,6 +312,31 @@ app.get("/api/tasks", async (_request, response) => {
     runningTaskIds: getRunningTaskIds(),
     codexModels,
     decisionGatewayMailboxItems: listDecisionGatewayMailboxItemsForClient(),
+  });
+});
+
+app.patch("/api/tasks/order", async (request, response) => {
+  const taskIds = request.body?.taskIds;
+
+  if (!Array.isArray(taskIds)) {
+    response.status(400).json({ error: "taskIds must be an array." });
+    return;
+  }
+
+  const nextTaskOrder = normalizeTaskOrder(taskIds, { appendMissing: true });
+  const changed = !areStringArraysEqual(taskOrder, nextTaskOrder);
+  taskOrder = nextTaskOrder;
+
+  if (changed) {
+    await persistTaskOrder();
+    broadcastTasks();
+  }
+
+  response.json({
+    ok: true,
+    tasks: listTasks(),
+    runningTaskId: getPrimaryRunningTaskId(),
+    runningTaskIds: getRunningTaskIds(),
   });
 });
 
@@ -5214,7 +5242,73 @@ function listTasks() {
       console.warn(`TaskDeck could not persist expired Decision Gateway decision leases: ${error.message}`);
     });
   }
-  return Array.from(tasks.values()).filter(isTaskVisibleInNormalList).map(serializeTaskForClient).reverse();
+  return orderTasksForClient(Array.from(tasks.values()).filter(isTaskVisibleInNormalList)).map(serializeTaskForClient);
+}
+
+function orderTasksForClient(visibleTasks) {
+  const visibleTasksById = new Map(visibleTasks.map((task) => [task.id, task]));
+  const orderedTasks = [];
+  const orderedTaskIds = new Set();
+
+  for (const taskId of taskOrder) {
+    const task = visibleTasksById.get(taskId);
+    if (!task) {
+      continue;
+    }
+    orderedTasks.push(task);
+    orderedTaskIds.add(taskId);
+  }
+
+  const unorderedTasks = [...visibleTasks].reverse().filter((task) => !orderedTaskIds.has(task.id));
+  return [...orderedTasks, ...unorderedTasks];
+}
+
+function normalizeTaskOrder(taskIds, options = {}) {
+  const normalizedTaskIds = [];
+  const seenTaskIds = new Set();
+
+  for (const value of taskIds) {
+    const taskId = String(value || "").trim();
+    if (!taskId || seenTaskIds.has(taskId)) {
+      continue;
+    }
+    const task = tasks.get(taskId);
+    if (!task || !isTaskVisibleInNormalList(task)) {
+      continue;
+    }
+    normalizedTaskIds.push(taskId);
+    seenTaskIds.add(taskId);
+  }
+
+  if (options.appendMissing) {
+    for (const task of orderTasksForClient(Array.from(tasks.values()).filter(isTaskVisibleInNormalList))) {
+      if (!seenTaskIds.has(task.id)) {
+        normalizedTaskIds.push(task.id);
+        seenTaskIds.add(task.id);
+      }
+    }
+  }
+
+  return normalizedTaskIds;
+}
+
+function pruneTaskOrder() {
+  const nextTaskOrder = normalizeTaskOrder(taskOrder);
+  const changed = !areStringArraysEqual(taskOrder, nextTaskOrder);
+  taskOrder = nextTaskOrder;
+  return changed;
+}
+
+function taskOrderIndex(taskId) {
+  const index = taskOrder.indexOf(taskId);
+  return index >= 0 ? index : null;
+}
+
+function areStringArraysEqual(left, right) {
+  if (left.length !== right.length) {
+    return false;
+  }
+  return left.every((value, index) => value === right[index]);
 }
 
 function listDecisionGatewayMailboxItemsForClient() {
@@ -5333,6 +5427,7 @@ function serializeTaskForClient(task) {
   const activeAppServer = activeCodexThreadSessions.get(task.id);
   return {
     ...serializedTask,
+    taskOrderIndex: taskOrderIndex(task.id),
     sessionLabel: taskSessionLabel(task),
     decisionResults: decisionGatewayMailboxItemsForTask(task.id),
     decisionLeases: decisionGatewayLeasesForTask(task.id),
@@ -5534,6 +5629,9 @@ async function clearTask(taskId) {
   tasks.delete(taskId);
   logs.delete(taskId);
   taskOutputSequences.delete(taskId);
+  if (pruneTaskOrder()) {
+    await persistTaskOrder();
+  }
   await deleteTaskLog(taskId);
   await deleteTaskAttachments(taskId);
 }
@@ -5747,8 +5845,16 @@ async function initializePersistence() {
   await fs.mkdir(logRoot, { recursive: true });
   await fs.mkdir(pendingAttachmentRoot, { recursive: true });
 
-  const [storedTasks, storedPresets, storedSessionLabels, storedDecisionGatewayMailbox, storedDecisionGatewayLeases] = await Promise.all([
+  const [
+    storedTasks,
+    storedTaskOrder,
+    storedPresets,
+    storedSessionLabels,
+    storedDecisionGatewayMailbox,
+    storedDecisionGatewayLeases,
+  ] = await Promise.all([
     readJsonArray(taskStorePath, "tasks"),
+    readJsonArray(taskOrderStorePath, "task order"),
     readJsonArray(presetStorePath, "presets"),
     readJsonObject(sessionLabelStorePath, "session labels"),
     readJsonObject(decisionGatewayMailboxStorePath, "Decision Gateway mailbox"),
@@ -5793,6 +5899,10 @@ async function initializePersistence() {
 
   if (changed) {
     persistTasks();
+  }
+  taskOrder = normalizeTaskOrder(storedTaskOrder);
+  if (!areStringArraysEqual(taskOrder, storedTaskOrder)) {
+    persistTaskOrder();
   }
   if (mailboxChanged) {
     persistDecisionGatewayMailbox().catch((error) => {
@@ -6390,6 +6500,23 @@ function persistTasks() {
     });
 
   return persistTasksQueue;
+}
+
+function persistTaskOrder() {
+  const serializedTaskOrder = normalizeTaskOrder(taskOrder);
+
+  persistTaskOrderQueue = persistTaskOrderQueue
+    .then(async () => {
+      await fs.mkdir(dataRoot, { recursive: true });
+      const tempPath = `${taskOrderStorePath}.tmp`;
+      await fs.writeFile(tempPath, `${JSON.stringify(serializedTaskOrder, null, 2)}\n`);
+      await fs.rename(tempPath, taskOrderStorePath);
+    })
+    .catch((error) => {
+      console.error(`TaskDeck could not persist task order: ${error.message}`);
+    });
+
+  return persistTaskOrderQueue;
 }
 
 function persistSessionLabels() {

@@ -95,6 +95,7 @@ export type DecisionGatewayDecisionLease = {
 
 export type Task = {
   id: string;
+  taskOrderIndex?: number | null;
   title: string;
   sessionLabel?: string;
   command: string;

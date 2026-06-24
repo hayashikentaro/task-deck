@@ -829,6 +829,11 @@ dd {
     0 10px 24px rgb(0 0 0 / 28%);
 }
 
+.task-list-item[data-drag-over="true"] {
+  outline: 2px solid color-mix(in srgb, var(--status-focus) 68%, transparent);
+  outline-offset: -2px;
+}
+
 .task-list-item[data-selected="true"][data-tone="risk"],
 .task-list-item[data-selected="true"][data-tone="waiting_input"],
 .task-list-item[data-selected="true"][data-tone="waiting_approval"],
@@ -970,6 +975,24 @@ dd {
   place-items: center;
 }
 
+.task-drag-handle {
+  width: 18px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--status-muted);
+  cursor: grab;
+  display: grid;
+  place-items: center;
+}
+
+.task-drag-handle:active {
+  cursor: grabbing;
+}
+
 .task-input-lock-button {
   width: 24px;
   height: 24px;
@@ -1029,8 +1052,8 @@ dd {
 .task-card-header {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 6px;
   align-items: center;
 }
 
@@ -2285,6 +2308,7 @@ dd {
 }
 
 .task-clear-button:hover:not(:disabled),
+.task-drag-handle:hover:not(:disabled),
 .task-edit-title-button:hover:not(:disabled),
 .task-decision-gateway-button:hover:not(:disabled),
 .task-input-lock-button:hover:not(:disabled) {
@@ -2299,6 +2323,7 @@ dd {
 }
 
 .task-clear-icon,
+.task-drag-icon,
 .task-edit-title-icon,
 .task-input-lock-icon {
   width: 16px;

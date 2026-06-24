@@ -14,6 +14,7 @@ POST /api/decision-gateway/pairing-requests
 GET /api/decision-gateway/mailbox/local
 GET /api/decision-gateway/leases/local
 GET /api/tasks
+PATCH /api/tasks/order
 DELETE /api/tasks
 GET /api/tasks/:taskId
 PATCH /api/tasks/:taskId/title
@@ -70,7 +71,7 @@ Outbound Ask decision requests are persisted as local leases under `.taskdeck/de
 
 ## Tasks
 
-`GET /api/tasks` and `GET /api/tasks/:taskId` return persisted task metadata including the launch command, cwd, agent profile fields, input lock timestamp, App Server thread session identity when available, legacy session fields when present, parent/child metadata, and child reported status.
+`GET /api/tasks` and `GET /api/tasks/:taskId` return persisted task metadata including the launch command, cwd, agent profile fields, input lock timestamp, App Server thread session identity when available, legacy session fields when present, parent/child metadata, child reported status, and `taskOrderIndex` when a manual card order is stored.
 
 The server still recognizes the legacy `taskdeck-manager` agent profile id on stored tasks as a global manager session marker for manager protocol safety. The committed App Server route does not expose or launch a Codex TUI manager profile. Normal worker sessions do not receive manager-only instructions or manager action environment variables.
 
@@ -79,6 +80,8 @@ The server still recognizes the legacy `taskdeck-manager` agent profile id on st
 `PATCH /api/tasks/:taskId/attention/acknowledge` clears the current attention event for a running task without stopping or modifying its active runtime. The task stores `attentionAcknowledgedAt`, returns to Not now by setting `attentionState` to `none`, and can surface again when a future App Server request, child-status report, or manager action sets a new attention state.
 
 `PATCH /api/tasks/:taskId/input-lock` accepts `{ "locked": true }` or `{ "locked": false }` for running tasks. Locking blocks new user input without moving the task in the list. Unlocking stores a fresh activity timestamp so the operator can resume that task intentionally.
+
+`PATCH /api/tasks/order` accepts `{ "taskIds": ["..."] }` from the web UI and persists the local task card display order under `.taskdeck/task-order.json`. The order is UI-only metadata; it does not change task state, running sessions, App Server thread routing, supervision status, or selection fallback behavior. Missing, duplicate, cleared, or non-normal task ids are ignored during normalization.
 
 The WebSocket composer sends `{ "type": "codex-app-server-interrupt-turn", "taskId": "..." }` to stop the selected task's active Codex App Server turn. The server translates this into `turn/interrupt` with the task's current App Server `threadId` and active `turnId`; it does not close the TaskDeck task or kill the shared runtime.
 

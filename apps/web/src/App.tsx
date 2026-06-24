@@ -278,6 +278,30 @@ export function App() {
     applyTaskList(payload.tasks, getRunningTaskIdsFromMessage(payload));
   };
 
+  const reorderTasks = async (taskIds: string[]) => {
+    try {
+      const response = await fetch("/api/tasks/order", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskIds }),
+      });
+      const payload = (await response.json()) as {
+        error?: string;
+        tasks?: Task[];
+        runningTaskId?: string | null;
+        runningTaskIds?: string[];
+      };
+      if (!response.ok || !payload.tasks) {
+        throw new Error(payload.error || "Unable to reorder tasks.");
+      }
+      applyTaskList(payload.tasks, getRunningTaskIdsFromMessage(payload));
+      return true;
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : "Unable to reorder tasks.");
+      return false;
+    }
+  };
+
   const toggleInputLock = async (taskId: string, locked: boolean) => {
     try {
       const response = await fetch(`/api/tasks/${taskId}/input-lock`, {
@@ -351,6 +375,7 @@ export function App() {
           onClearTask={clearTask}
           onClearTasks={clearTasks}
           onRenameTask={renameTask}
+          onReorderTasks={reorderTasks}
           onSendDecisionRequest={sendDecisionRequest}
           onSelectTask={setSelectedTaskId}
           onToggleInputLock={toggleInputLock}

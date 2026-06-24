@@ -130,7 +130,7 @@ See [Branch worktree lifecycle](docs/branch-worktree-lifecycle.md) for the stand
 
 ## Local Data
 
-TaskDeck stores runtime data under `.taskdeck/`, including task records, persisted logs, session labels, presets, attachments, and received Decision Gateway mailbox records. This directory is intentionally ignored by Git and may contain sensitive agent output.
+TaskDeck stores runtime data under `.taskdeck/`, including task records, local task card display order, persisted logs, session labels, presets, attachments, and received Decision Gateway mailbox records. This directory is intentionally ignored by Git and may contain sensitive agent output. Dragging task cards in the left rail persists only the local UI order under `.taskdeck/task-order.json`; it does not change task state, App Server thread routing, or agent execution.
 
 TaskDeck also starts local manager action transports and records them in `.taskdeck/run/manager-actions.json`. The preferred transport is the Unix socket at `.taskdeck/run/manager-actions.sock`; a token-protected loopback TCP fallback is advertised for manager sessions running inside Docker containers where a mounted macOS host socket is visible but not connectable. Manager sessions use `taskdeckctl ack`, `taskdeckctl review`, and `taskdeckctl close`; the server validates, logs under `.taskdeck/manager-actions/`, mutates, and broadcasts the result.
 
