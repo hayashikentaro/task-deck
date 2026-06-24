@@ -59,7 +59,7 @@ It returns whether the cwd resolves to an existing directory, its absolute path,
 
 When `TASKDECK_DECISION_GATEWAY_API_TOKEN` is configured, TaskDeck adds `Authorization: Bearer <token>` to every outbound Decision Gateway TaskDeck API request: decision requests, pairing requests, mailbox polling, and mailbox acknowledgements. When the token is unset, TaskDeck sends no Authorization header. Authentication failures are reported as `Decision Gateway authentication failed.` without logging or returning the token value.
 
-When `DECISION_GATEWAY_URL` is configured, TaskDeck polls outward to `GET <DECISION_GATEWAY_URL>/api/taskdeck/mailbox?taskdeckInstanceId=<id>&limit=20` using the same stable local `taskdeckInstanceId`. `DECISION_GATEWAY_MAILBOX_POLL_MS` optionally overrides the default 30000 ms interval. Mailbox polling is disabled quietly when `DECISION_GATEWAY_URL` is missing.
+When `DECISION_GATEWAY_URL` is configured, TaskDeck polls outward to `GET <DECISION_GATEWAY_URL>/api/taskdeck/mailbox?taskdeckInstanceId=<id>&limit=20` using the same stable local `taskdeckInstanceId`. Ask decision request payloads also include `source.taskdeckInstanceId` so Decision Gateway can create mailbox items addressed back to this TaskDeck instance. `DECISION_GATEWAY_MAILBOX_POLL_MS` optionally overrides the default 30000 ms interval. Mailbox polling is disabled quietly when `DECISION_GATEWAY_URL` is missing.
 
 Received `decision_result` mailbox items are persisted under `.taskdeck/decision-gateway-mailbox.json` before TaskDeck posts `POST <DECISION_GATEWAY_URL>/api/taskdeck/mailbox/:id/ack` with `{ "taskdeckInstanceId": "..." }`. Malformed mailbox payloads and records that fail local persistence are not acknowledged.
 
@@ -85,7 +85,7 @@ The server still recognizes the legacy `taskdeck-manager` agent profile id on st
 
 The WebSocket composer sends `{ "type": "codex-app-server-interrupt-turn", "taskId": "..." }` to stop the selected task's active Codex App Server turn. The server translates this into `turn/interrupt` with the task's current App Server `threadId` and active `turnId`; it does not close the TaskDeck task or kill the shared runtime.
 
-`POST /api/tasks/:taskId/decision-request` sends a manual one-way decision request to Decision Gateway when `DECISION_GATEWAY_URL` is configured. TaskDeck includes source context such as task id, session id when available, agent profile, cwd, attention state, and a bounded redacted recent-output snippet. The route returns `{ "ok": true, "decisionUrl": "...", "decisionId": "...", "requestId": "..." }` and records a local pending lease for later mailbox validation. It does not change TaskDeck task state, resume agents, deliver decisions back, or mark decisions as applied.
+`POST /api/tasks/:taskId/decision-request` sends a manual one-way decision request to Decision Gateway when `DECISION_GATEWAY_URL` is configured. TaskDeck includes source context such as the stable `source.taskdeckInstanceId`, task id, session id when available, agent profile, cwd, attention state, and a bounded redacted recent-output snippet. The route returns `{ "ok": true, "decisionUrl": "...", "decisionId": "...", "requestId": "..." }` and records a local pending lease for later mailbox validation. It does not change TaskDeck task state, resume agents, deliver decisions back, or mark decisions as applied.
 
 `DELETE /api/tasks` bulk-clears tasks and their logs. `DELETE /api/tasks/:taskId` clears a single task; clearing an individual running task stops its active App Server runtime and removes that task.
 

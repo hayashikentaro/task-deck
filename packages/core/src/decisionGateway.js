@@ -104,7 +104,8 @@ export function boundedDecisionGatewayContextField(value, limit = DECISION_GATEW
   return `${redacted.slice(0, limit)}\n[TaskDeck truncated this field to ${limit} characters.]`;
 }
 
-export function buildTaskDeckDecisionRequest({ task, recentOutput = "" }) {
+export function buildTaskDeckDecisionRequest({ task, recentOutput = "", taskdeckInstanceId = "" }) {
+  const normalizedTaskdeckInstanceId = normalizedString(taskdeckInstanceId);
   const taskId = String(task?.id || "").trim();
   const sessionId = String(task?.agentSessionId || "").trim();
   const title = boundedDecisionGatewayContextField(String(task?.sessionLabel || task?.title || "").trim(), 500);
@@ -127,6 +128,7 @@ export function buildTaskDeckDecisionRequest({ task, recentOutput = "" }) {
   return {
     source: {
       type: "taskdeck",
+      taskdeckInstanceId: normalizedTaskdeckInstanceId,
       taskId,
       ...(sessionId ? { sessionId } : {}),
       ...(agentProfileId ? { agentProfileId } : {}),
@@ -156,6 +158,7 @@ export function buildTaskDeckDecisionRequest({ task, recentOutput = "" }) {
         text: JSON.stringify(
           {
             taskId,
+            taskdeckInstanceId: normalizedTaskdeckInstanceId,
             sessionId: sessionId || null,
             agentKind,
             agentProfileId,

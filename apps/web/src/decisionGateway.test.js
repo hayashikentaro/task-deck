@@ -15,8 +15,9 @@ import {
 } from "@taskdeck/core/decision-gateway";
 
 describe("Decision Gateway connector helpers", () => {
-  it("builds a source-neutral TaskDeck decision request", () => {
+  it("builds a TaskDeck decision request with mailbox routing source metadata", () => {
     const request = buildTaskDeckDecisionRequest({
+      taskdeckInstanceId: "tdi_test_123",
       task: {
         id: "task_123",
         title: "Review schema field",
@@ -33,14 +34,19 @@ describe("Decision Gateway connector helpers", () => {
 
     expect(request.source).toMatchObject({
       type: "taskdeck",
+      taskdeckInstanceId: "tdi_test_123",
       taskId: "task_123",
       sessionId: "session_456",
+      agentProfileId: "codex-app-server",
       label: "TaskDeck",
     });
     expect(request.axis).toBe("ambiguous_product_decision");
     expect(request.urgency).toBe("blocking");
     expect(request.decisionQuestion).toContain("What should the agent do next?");
     expect(Array.isArray(request.materials)).toBe(true);
+    expect(request.materials.find((material) => material.label === "TaskDeck source context")?.text).toContain(
+      '"taskdeckInstanceId": "tdi_test_123"',
+    );
     expect(request.materials.some((material) => material.label === "Bounded recent output")).toBe(true);
   });
 

@@ -538,6 +538,7 @@ app.post("/api/tasks/:taskId/decision-request", async (request, response) => {
   }
 
   try {
+    const taskdeckInstanceId = await readOrCreateTaskDeckInstanceId();
     const recentOutput = await readTaskLogTail(task.id, 4000);
     const decisionRequest = buildTaskDeckDecisionRequest({
       task: {
@@ -545,6 +546,7 @@ app.post("/api/tasks/:taskId/decision-request", async (request, response) => {
         sessionLabel: taskSessionLabel(task),
       },
       recentOutput,
+      taskdeckInstanceId,
     });
     const abortController = new AbortController();
     const timeout = setTimeout(() => abortController.abort(), decisionGatewayRequestTimeoutMs);
@@ -576,7 +578,6 @@ app.post("/api/tasks/:taskId/decision-request", async (request, response) => {
     const decisionId = String(payload?.id || "");
     const requestId = String(payload?.requestId || "");
     if (requestId) {
-      const taskdeckInstanceId = await readOrCreateTaskDeckInstanceId();
       await recordDecisionGatewayPendingLease({
         decisionGatewayDecisionId: decisionId,
         decisionGatewayUrl: decisionUrl,
