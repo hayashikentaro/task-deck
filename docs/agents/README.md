@@ -15,4 +15,4 @@ The only current template-specific role/team docs are:
 - `teams/single-decision-aware-agent.md`
 - `roles/decision-aware-implementation-controller.md`
 
-These support the first minimal `decision-aware-solo` team template. They are not a general multi-agent actor model.
+These support the first minimal `decision-aware-solo` team template. They are not a general multi-agent actor model or a replacement for the pending actor protocol redesign.
