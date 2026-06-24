@@ -248,6 +248,10 @@ export type TeamTemplate = {
     autoDeliver?: boolean;
     requireResumeActions?: boolean;
   };
+  loop?: {
+    defaultMaxCycles?: number;
+    requireDecisionBeforeEachCycle?: boolean;
+  };
 };
 
 export type AgentProfileConfigSummary = {

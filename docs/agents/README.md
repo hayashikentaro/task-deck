@@ -10,9 +10,11 @@ The previous broad AI-agent actor and role definitions have been removed because
 
 ## Current minimal template docs
 
-The only current template-specific role/team docs are:
+The current template-specific role/team docs are:
 
 - `teams/single-decision-aware-agent.md`
 - `roles/decision-aware-implementation-controller.md`
+- `teams/single-decision-aware-loop.md`
+- `roles/decision-aware-loop-controller.md`
 
-These support the first minimal `decision-aware-solo` team template. They are not a general multi-agent actor model or a replacement for the pending actor protocol redesign.
+These support the minimal `decision-aware-solo` and `decision-aware-loop` team templates. They are not a general multi-agent actor model or a replacement for the pending actor protocol redesign.

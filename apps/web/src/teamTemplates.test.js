@@ -1,6 +1,7 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createTask, serializeTask } from "@taskdeck/core";
 import {
@@ -8,6 +9,8 @@ import {
   loadTeamTemplatesFromFile,
   normalizeTeamTemplatesConfig,
 } from "@taskdeck/core/team-templates";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
 describe("TaskDeck team template helpers", () => {
   it("loads a valid taskdeck.team-templates.json", async () => {
@@ -48,6 +51,37 @@ describe("TaskDeck team template helpers", () => {
       ]);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("loads the repository decision-aware loop template", async () => {
+    const templates = await loadTeamTemplatesFromFile(path.join(repoRoot, "taskdeck.team-templates.json"));
+    const soloTemplate = templates.find((template) => template.id === "decision-aware-solo");
+    const loopTemplate = templates.find((template) => template.id === "decision-aware-loop");
+
+    expect(soloTemplate).toBeTruthy();
+    expect(loopTemplate).toMatchObject({
+      id: "decision-aware-loop",
+      agentProfileId: "codex-app-server",
+      teamId: "single-decision-aware-loop",
+      roleId: "decision-aware-loop-controller",
+      promptFiles: [
+        "docs/agents/teams/single-decision-aware-loop.md",
+        "docs/agents/roles/decision-aware-loop-controller.md",
+      ],
+      decisionGateway: {
+        required: true,
+        autoDeliver: true,
+        requireResumeActions: true,
+      },
+      loop: {
+        defaultMaxCycles: 3,
+        requireDecisionBeforeEachCycle: true,
+      },
+    });
+
+    for (const promptFile of loopTemplate.promptFiles) {
+      await expect(access(path.join(repoRoot, promptFile))).resolves.toBeUndefined();
     }
   });
 

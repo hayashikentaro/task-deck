@@ -116,9 +116,9 @@ The delivered turn text is scoped to the lease and original question. It prefers
 
 ## Team Templates
 
-TaskDeck optionally reads `taskdeck.team-templates.json` from the repository root. The first supported template is `decision-aware-solo`, which starts one Codex App Server task as a decision-aware solo implementation controller.
+TaskDeck optionally reads `taskdeck.team-templates.json` from the repository root. The supported Decision Gateway-oriented templates are `decision-aware-solo`, which starts one Codex App Server task as a decision-aware solo implementation controller, and `decision-aware-loop`, which keeps one App Server task running through multiple small implementation cycles.
 
-The template connects the `codex-app-server` agent profile to the `single-decision-aware-agent` team and `decision-aware-implementation-controller` role. Its `promptFiles` are read relative to the TaskDeck document root and prepended to the user launch instruction. This is only the first minimal Decision Gateway-oriented slice; it is not multi-agent orchestration, Main/Worker splitting, or a manager-mediated loop.
+Each template connects the `codex-app-server` agent profile to one team and role. Its `promptFiles` are read relative to the TaskDeck document root and prepended to the user launch instruction. These templates are small Decision Gateway-oriented slices; they are not multi-agent orchestration, Main/Worker splitting, or independently commandable subagents.
 
 `GET /api/context` includes `teamTemplates` for launch UI use. Tasks started with a template persist `teamTemplateId`, `teamId`, `roleId`, `decisionGatewayMode`, and `decisionResultHandling` metadata while older task records without those fields remain loadable.
 

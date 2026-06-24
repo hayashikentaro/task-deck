@@ -16,6 +16,27 @@
         "autoDeliver": true,
         "requireResumeActions": true
       }
+    },
+    {
+      "id": "decision-aware-loop",
+      "label": "Decision-aware loop agent",
+      "description": "One App Server task that continues through multiple small implementation cycles and uses Decision Gateway for checkpoints.",
+      "agentProfileId": "codex-app-server",
+      "teamId": "single-decision-aware-loop",
+      "roleId": "decision-aware-loop-controller",
+      "promptFiles": [
+        "docs/agents/teams/single-decision-aware-loop.md",
+        "docs/agents/roles/decision-aware-loop-controller.md"
+      ],
+      "decisionGateway": {
+        "required": true,
+        "autoDeliver": true,
+        "requireResumeActions": true
+      },
+      "loop": {
+        "defaultMaxCycles": 3,
+        "requireDecisionBeforeEachCycle": true
+      }
     }
   ]
 }

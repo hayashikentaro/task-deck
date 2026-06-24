@@ -92,6 +92,7 @@ function normalizeTeamTemplate(value) {
     roleId,
     promptFiles,
     decisionGateway: normalizeTeamTemplateDecisionGateway(value.decisionGateway),
+    loop: normalizeTeamTemplateLoop(value.loop),
   };
 }
 
@@ -100,6 +101,20 @@ function normalizeTeamTemplateDecisionGateway(value) {
     required: value?.required === true,
     autoDeliver: value?.autoDeliver === true,
     requireResumeActions: value?.requireResumeActions === true,
+  };
+}
+
+function normalizeTeamTemplateLoop(value) {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const defaultMaxCycles = Number(value.defaultMaxCycles);
+  return {
+    defaultMaxCycles: Number.isInteger(defaultMaxCycles) && defaultMaxCycles > 0
+      ? defaultMaxCycles
+      : undefined,
+    requireDecisionBeforeEachCycle: value.requireDecisionBeforeEachCycle === true,
   };
 }
 
