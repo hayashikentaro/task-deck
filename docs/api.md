@@ -150,6 +150,8 @@ The WebSocket composer sends `{ "type": "codex-app-server-interrupt-turn", "task
 
 WebSocket `output` messages include the appended `data`, global `seq`, task-local `taskSeq`, and lightweight `role`/`kind` metadata. The UI treats the persisted task log as the canonical replay source and uses the sequenced WebSocket stream only for live append updates.
 
+When user input is rejected before reaching Codex App Server, the server sends an `input-rejected` WebSocket message with `taskId`, stable `reason`, user-facing `message`, optional `authFailureReason`, and `logged`. Current reasons are `input_locked`, `empty_input`, `invalid_input`, `runtime_unavailable`, `runtime_not_writable`, `auth_failed`, and `unknown`. If `logged` is true, the reason was already appended to the persisted task log; clients should not duplicate it in the live output pane.
+
 `GET /api/tasks/:taskId/diff` returns compact diff context for task review.
 
 ## Presets

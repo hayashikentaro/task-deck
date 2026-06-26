@@ -6,6 +6,9 @@ import {
   buildCodexAppServerThreadStartParams,
   buildCodexAppServerTurnInterruptParams,
   buildCodexAppServerTurnStartParams,
+  CodexAppServerAuthFailureReason,
+  CodexAppServerInputRejectReason,
+  codexAppServerAuthFailureReason,
   codexAppServerDynamicToolCallDedupeKey,
   codexAppServerThreadIdFromMessage,
   getOrCreateCodexAppServerDynamicToolCallEntry,
@@ -27,6 +30,26 @@ describe("Codex App Server helper contracts", () => {
     expect(isCodexAppServerAuthError("Encountered invalidated oauth token for user")).toBe(true);
     expect(isCodexAppServerAuthError({ error: { code: "token_revoked" }, status: 401 })).toBe(true);
     expect(isCodexAppServerAuthError("ordinary command output")).toBe(false);
+  });
+
+  it("classifies App Server auth failures without exposing raw tokens", () => {
+    expect(codexAppServerAuthFailureReason("auth expired")).toBe(CodexAppServerAuthFailureReason.AUTH_EXPIRED);
+    expect(codexAppServerAuthFailureReason({ error: { code: "token_revoked" } })).toBe(
+      CodexAppServerAuthFailureReason.TOKEN_REVOKED,
+    );
+    expect(codexAppServerAuthFailureReason("Encountered invalidated oauth token for user")).toBe(
+      CodexAppServerAuthFailureReason.TOKEN_INVALIDATED,
+    );
+    expect(codexAppServerAuthFailureReason("refresh_token_invalidated")).toBe(
+      CodexAppServerAuthFailureReason.REFRESH_TOKEN_INVALIDATED,
+    );
+    expect(codexAppServerAuthFailureReason("ordinary command output")).toBe("");
+  });
+
+  it("exports stable App Server input rejection reasons", () => {
+    expect(CodexAppServerInputRejectReason.AUTH_FAILED).toBe("auth_failed");
+    expect(CodexAppServerInputRejectReason.RUNTIME_UNAVAILABLE).toBe("runtime_unavailable");
+    expect(CodexAppServerInputRejectReason.RUNTIME_NOT_WRITABLE).toBe("runtime_not_writable");
   });
 
   it("suppresses repeated auth diagnostics only after auth failure is latched", () => {

@@ -37,6 +37,14 @@ type ServerMessage =
       role?: "user" | "assistant" | "taskdeck";
       kind?: string;
     }
+  | {
+      type: "input-rejected";
+      taskId: string;
+      reason: string;
+      authFailureReason?: string;
+      message: string;
+      logged?: boolean;
+    }
   | { type: "codex-models"; models: CodexModel[] }
   | { type: "error"; message: string };
 
@@ -156,6 +164,22 @@ export function App() {
 
         if (message.type === "codex-models") {
           setCodexModels(message.models);
+          return;
+        }
+
+        if (message.type === "input-rejected") {
+          if (message.logged) {
+            return;
+          }
+          outputQueueSeqRef.current += 1;
+          const outputEvent: OutputEvent = {
+            seq: outputQueueSeqRef.current,
+            taskId: message.taskId || selectedTaskIdRef.current || runningTaskIdsRef.current[0] || "system",
+            data: `\r\n[TaskDeck] ${message.message || "Input was not sent."}\r\n`,
+            role: "taskdeck",
+            kind: `input_rejected_${message.reason || "unknown"}`,
+          };
+          setOutputEvents((current) => appendOutputEventToQueue(current, outputEvent));
           return;
         }
 

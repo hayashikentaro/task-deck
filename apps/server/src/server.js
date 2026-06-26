@@ -43,7 +43,10 @@ import {
   buildCodexAppServerTurnInterruptParams,
   buildCodexAppServerTurnStartParams,
   buildCodexAppServerDynamicToolCallResponse,
+  CodexAppServerAuthFailureReason,
+  CodexAppServerInputRejectReason,
   codexAppServerDynamicToolCallDedupeKey,
+  codexAppServerAuthFailureReason,
   codexAppServerThreadIdFromMessage,
   getOrCreateCodexAppServerDynamicToolCallEntry,
   isCodexAppServerAuthError,
@@ -176,6 +179,7 @@ const host = process.env.HOST || "127.0.0.1";
 const shell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "bash");
 const inputDebugEnabled = process.env.TASKDECK_INPUT_DEBUG === "1";
 const codexAppServerDebugEnabled = process.env.TASKDECK_CODEX_APP_SERVER_DEBUG === "1";
+const codexAppServerInputRejectionNoticeMs = 30_000;
 const codexDynamicDecisionToolEnabled = isTaskDeckDynamicDecisionToolEnabledFromEnv(process.env);
 const decisionGatewayAutoDeliverEnabled = isDecisionGatewayAutoDeliverEnabledFromEnv(process.env);
 const decisionGatewayUrl = normalizeDecisionGatewayUrl(process.env.DECISION_GATEWAY_URL);
@@ -920,9 +924,7 @@ wss.on("connection", (socket) => {
         agentReasoningEffort: String(message.agentReasoningEffort || "").trim(),
       });
       if (!inputResult.ok) {
-        if (inputResult.reason === "input-locked") {
-          send(socket, { type: "error", message: "Input is locked for this task." });
-        }
+        sendInputRejected(socket, taskId, inputResult);
         if (inputDebugEnabled) {
           console.log(`[TaskDeck input] ignored task=${taskId || "-"} reason=${inputResult.reason}`);
         }
@@ -1353,6 +1355,7 @@ function createActiveCodexRuntime({ runtimeId, runtimeProcess, launchCommand, de
     accountReady: false,
     accountReadInFlight: false,
     authFailureDetected: false,
+    authFailureReason: "",
     loginInProgress: false,
     loginId: "",
     loginMethod: codexAppServerDefaultLoginMethod,
@@ -1433,6 +1436,7 @@ function createActiveCodexThreadSession(task, activeRuntime) {
     assistantMessageOpen: false,
     assistantMessageOpenTaskIds: new Set(),
     pendingAuthRetry: null,
+    authInputRejectedNotifiedAt: 0,
     tokenUsage: null,
     rateLimits: null,
     pendingInputs: [],
@@ -1535,22 +1539,28 @@ function sendTaskInputToCodexAppServer(taskId, data, source = "client", turnSele
   const task = tasks.get(taskId);
   const activeAppServer = activeCodexThreadSessions.get(taskId);
   if (task?.inputLockedAt || task?.terminalInputLockedAt) {
-    return { ok: false, reason: "input-locked" };
+    return codexAppServerInputRejected(CodexAppServerInputRejectReason.INPUT_LOCKED);
   }
-  if (!activeAppServer || typeof data !== "string") {
-    return { ok: false, reason: "no-active-app-server-or-invalid-data" };
+  if (!activeAppServer) {
+    return codexAppServerInputRejected(CodexAppServerInputRejectReason.RUNTIME_UNAVAILABLE);
+  }
+  if (typeof data !== "string") {
+    return codexAppServerInputRejected(CodexAppServerInputRejectReason.INVALID_INPUT);
+  }
+  const activeRuntime = codexRuntimeForThreadSession(activeAppServer);
+  if (!activeRuntime) {
+    return codexAppServerInputRejected(CodexAppServerInputRejectReason.RUNTIME_UNAVAILABLE);
   }
 
   const text = normalizeCodexAppServerInput(data);
   if (!text) {
-    return { ok: false, reason: "empty-input" };
+    return codexAppServerInputRejected(CodexAppServerInputRejectReason.EMPTY_INPUT);
   }
-  if (codexRuntimeStateForThreadSession(activeAppServer).authFailureDetected) {
-    handleCodexAppServerAuthFailureDiagnostic(
-      activeAppServer,
-      "User input was blocked because Codex App Server authentication has already failed."
-    );
-    return { ok: false, reason: "codex-app-server-auth-failed" };
+  if (activeRuntime.authFailureDetected) {
+    return rejectCodexAppServerInputAfterAuthFailure(activeAppServer);
+  }
+  if (!codexRuntimeIsWritable(activeRuntime)) {
+    return codexAppServerInputRejected(CodexAppServerInputRejectReason.RUNTIME_NOT_WRITABLE);
   }
 
   const turnInput = buildCodexTurnInput(task, text, turnSelection);
@@ -1579,6 +1589,137 @@ function sendTaskInputToCodexAppServer(taskId, data, source = "client", turnSele
 
   sendCodexAppServerTurn(activeAppServer, turnInput);
   return { ok: true };
+}
+
+function sendInputRejected(socket, taskId, result) {
+  const reason = normalizeCodexAppServerInputRejectReason(result?.reason);
+  send(socket, {
+    type: "input-rejected",
+    taskId,
+    reason,
+    authFailureReason: String(result?.authFailureReason || "").trim(),
+    message: String(result?.message || codexAppServerInputRejectMessage(reason)).trim(),
+    logged: Boolean(result?.logged),
+  });
+}
+
+function codexAppServerInputRejected(reason, options = {}) {
+  const normalizedReason = normalizeCodexAppServerInputRejectReason(reason);
+  const authFailureReason = normalizeCodexAppServerAuthFailureReason(options.authFailureReason);
+  return {
+    ok: false,
+    reason: normalizedReason,
+    authFailureReason,
+    message: String(
+      options.message || codexAppServerInputRejectMessage(normalizedReason, { authFailureReason }),
+    ),
+    logged: Boolean(options.logged),
+  };
+}
+
+function rejectCodexAppServerInputAfterAuthFailure(activeAppServer) {
+  const activeRuntime = codexRuntimeStateForThreadSession(activeAppServer);
+  const authFailureReason = normalizeCodexAppServerAuthFailureReason(
+    activeRuntime.authFailureReason || CodexAppServerAuthFailureReason.AUTH_ERROR,
+  );
+  const message = codexAppServerInputRejectMessage(CodexAppServerInputRejectReason.AUTH_FAILED, {
+    authFailureReason,
+  });
+  const now = Date.now();
+  const shouldLog =
+    !activeAppServer.authInputRejectedNotifiedAt ||
+    now - activeAppServer.authInputRejectedNotifiedAt >= codexAppServerInputRejectionNoticeMs;
+  if (shouldLog) {
+    activeAppServer.authInputRejectedNotifiedAt = now;
+    appendCodexAppServerStatus(activeAppServer, `[TaskDeck] ${message}\n`);
+  }
+  return codexAppServerInputRejected(CodexAppServerInputRejectReason.AUTH_FAILED, {
+    authFailureReason,
+    message,
+    logged: shouldLog,
+  });
+}
+
+function normalizeCodexAppServerInputRejectReason(reason) {
+  const normalizedReason = String(reason || "").trim();
+  if (Object.values(CodexAppServerInputRejectReason).includes(normalizedReason)) {
+    return normalizedReason;
+  }
+  if (normalizedReason === "input-locked") {
+    return CodexAppServerInputRejectReason.INPUT_LOCKED;
+  }
+  if (normalizedReason === "empty-input") {
+    return CodexAppServerInputRejectReason.EMPTY_INPUT;
+  }
+  if (normalizedReason === "no-active-app-server-or-invalid-data") {
+    return CodexAppServerInputRejectReason.RUNTIME_UNAVAILABLE;
+  }
+  if (normalizedReason === "codex-app-server-auth-failed") {
+    return CodexAppServerInputRejectReason.AUTH_FAILED;
+  }
+  return CodexAppServerInputRejectReason.UNKNOWN;
+}
+
+function codexAppServerInputRejectMessage(reason, { authFailureReason = "" } = {}) {
+  const normalizedReason = normalizeCodexAppServerInputRejectReason(reason);
+  if (normalizedReason === CodexAppServerInputRejectReason.INPUT_LOCKED) {
+    return "Input is locked for this task.";
+  }
+  if (normalizedReason === CodexAppServerInputRejectReason.EMPTY_INPUT) {
+    return "Input was not sent because it was empty.";
+  }
+  if (normalizedReason === CodexAppServerInputRejectReason.INVALID_INPUT) {
+    return "Input was not sent because the request payload was invalid.";
+  }
+  if (normalizedReason === CodexAppServerInputRejectReason.RUNTIME_UNAVAILABLE) {
+    return "Input was not sent because the Codex App Server runtime is not active.";
+  }
+  if (normalizedReason === CodexAppServerInputRejectReason.RUNTIME_NOT_WRITABLE) {
+    return "Input was not sent because the Codex App Server runtime is not writable.";
+  }
+  if (normalizedReason === CodexAppServerInputRejectReason.AUTH_FAILED) {
+    const reasonLabel = codexAppServerAuthFailureReasonLabel(authFailureReason);
+    const suffix = reasonLabel ? ` (${reasonLabel})` : "";
+    return `Input was not sent because Codex App Server authentication has failed${suffix}. Fix Codex login in the App Server environment, then restart this task.`;
+  }
+  return "Input was not sent.";
+}
+
+function normalizeCodexAppServerAuthFailureReason(reason) {
+  const normalizedReason = String(reason || "").trim();
+  if (Object.values(CodexAppServerAuthFailureReason).includes(normalizedReason)) {
+    return normalizedReason;
+  }
+  return "";
+}
+
+function codexAppServerAuthFailureReasonLabel(reason) {
+  const normalizedReason = normalizeCodexAppServerAuthFailureReason(reason);
+  if (normalizedReason === CodexAppServerAuthFailureReason.AUTH_EXPIRED) {
+    return "authentication expired";
+  }
+  if (normalizedReason === CodexAppServerAuthFailureReason.TOKEN_REVOKED) {
+    return "token revoked";
+  }
+  if (normalizedReason === CodexAppServerAuthFailureReason.TOKEN_INVALIDATED) {
+    return "token invalidated";
+  }
+  if (normalizedReason === CodexAppServerAuthFailureReason.REFRESH_TOKEN_INVALIDATED) {
+    return "refresh token invalidated";
+  }
+  if (normalizedReason === CodexAppServerAuthFailureReason.SESSION_ENDED) {
+    return "session ended";
+  }
+  if (normalizedReason === CodexAppServerAuthFailureReason.LOGIN_REQUIRED) {
+    return "login required";
+  }
+  if (normalizedReason === CodexAppServerAuthFailureReason.UNAUTHORIZED) {
+    return "unauthorized";
+  }
+  if (normalizedReason === CodexAppServerAuthFailureReason.AUTH_ERROR) {
+    return "authentication error";
+  }
+  return "";
 }
 
 function interruptCodexAppServerTurn(taskId) {
@@ -2066,17 +2207,11 @@ function handleCodexAppServerResponse(activeAppServer, message, pendingRequest =
     if (isCodexAppServerAuthError(message.error)) {
       preserveCodexAppServerPendingAuthRetry(activeAppServer, pendingRequest);
       if (activeRuntime.authFailureDetected) {
-        handleCodexAppServerAuthFailureDiagnostic(
-          activeAppServer,
-          `Codex App Server ${method || "request"} returned an auth error after authentication had already failed.`
-        );
+        handleCodexAppServerAuthFailureDiagnostic(activeAppServer, message.error);
         return;
       }
       if (activeRuntime.loginCompletedAt && activeRuntime.forcedAccountRefreshAttempted) {
-        handleCodexAppServerAuthFailureDiagnostic(
-          activeAppServer,
-          `Codex App Server ${method || "request"} still returned an auth error after ChatGPT login and account refresh.`
-        );
+        handleCodexAppServerAuthFailureDiagnostic(activeAppServer, message.error);
         return;
       }
       if (!activeRuntime.forcedAccountRefreshAttempted) {
@@ -2462,26 +2597,33 @@ function shouldReportCodexAppServerAuthFailure(activeAppServer) {
   );
 }
 
-function handleCodexAppServerAuthFailureDiagnostic(activeAppServer, _detail) {
+function handleCodexAppServerAuthFailureDiagnostic(activeAppServer, detail) {
   const activeRuntime = codexRuntimeStateForThreadSession(activeAppServer);
   if (activeRuntime.authFailureDetected) {
     return;
   }
+  const authFailureReason = normalizeCodexAppServerAuthFailureReason(
+    codexAppServerAuthFailureReason(detail) || CodexAppServerAuthFailureReason.AUTH_ERROR,
+  );
   activeRuntime.authFailureDetected = true;
+  activeRuntime.authFailureReason = authFailureReason;
   activeRuntime.accountReady = false;
   activeRuntime.loginInProgress = false;
   activeRuntime.loginId = "";
   activeRuntime.pendingRequests?.clear();
   activeRuntime.pendingThreadStartTaskIds?.clear();
 
+  const reasonLabel = codexAppServerAuthFailureReasonLabel(authFailureReason);
   const failureMessage = [
     "[TaskDeck] Codex App Server authentication failed after login.",
+    reasonLabel ? `[TaskDeck] Reason: ${reasonLabel}.` : "",
     "[TaskDeck] The current App Server environment still has an invalid or revoked ChatGPT token.",
     "[TaskDeck] Fix Codex login in the App Server environment, or point the codex-app-server profile at the host environment that already has a valid login, then restart this task.",
-  ].join("\n") + "\n";
+  ].filter(Boolean).join("\n") + "\n";
   const threadSessions = codexThreadSessionsForRuntime(activeRuntime);
   for (const threadSession of threadSessions.length > 0 ? threadSessions : [activeAppServer]) {
     threadSession.pendingAuthRetry = null;
+    threadSession.authInputRejectedNotifiedAt = 0;
     appendCodexAppServerStatus(threadSession, failureMessage);
     updateAgentStateFromTaskDeckEvent(threadSession.taskId, AgentState.WAITING_INPUT, {
       reason: "Codex App Server authentication failed after login.",

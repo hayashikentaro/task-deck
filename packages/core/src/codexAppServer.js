@@ -1,18 +1,59 @@
+export const CodexAppServerAuthFailureReason = Object.freeze({
+  AUTH_EXPIRED: "auth_expired",
+  TOKEN_REVOKED: "token_revoked",
+  TOKEN_INVALIDATED: "token_invalidated",
+  REFRESH_TOKEN_INVALIDATED: "refresh_token_invalidated",
+  SESSION_ENDED: "session_ended",
+  LOGIN_REQUIRED: "login_required",
+  UNAUTHORIZED: "unauthorized",
+  AUTH_ERROR: "auth_error",
+});
+
+export const CodexAppServerInputRejectReason = Object.freeze({
+  INPUT_LOCKED: "input_locked",
+  EMPTY_INPUT: "empty_input",
+  INVALID_INPUT: "invalid_input",
+  RUNTIME_UNAVAILABLE: "runtime_unavailable",
+  RUNTIME_NOT_WRITABLE: "runtime_not_writable",
+  AUTH_FAILED: "auth_failed",
+  UNKNOWN: "unknown",
+});
+
 export function isCodexAppServerAuthError(error) {
+  return Boolean(codexAppServerAuthFailureReason(error));
+}
+
+export function codexAppServerAuthFailureReason(error) {
   const text = (typeof error === "string" ? error : JSON.stringify(error || {})).toLowerCase();
-  return (
-    text.includes("auth expired") ||
-    text.includes("token_revoked") ||
+  if (!text) {
+    return "";
+  }
+  if (text.includes("refresh_token_invalidated") || text.includes("refresh token invalidated")) {
+    return CodexAppServerAuthFailureReason.REFRESH_TOKEN_INVALIDATED;
+  }
+  if (text.includes("token_revoked")) {
+    return CodexAppServerAuthFailureReason.TOKEN_REVOKED;
+  }
+  if (
     text.includes("token_invalidated") ||
     text.includes("token invalidated") ||
-    text.includes("invalidated oauth token") ||
-    text.includes("refresh_token_invalidated") ||
-    text.includes("refresh token invalidated") ||
-    text.includes("your session has ended") ||
-    text.includes("please log in again") ||
-    text.includes("unauthorized") ||
-    text.includes("401")
-  );
+    text.includes("invalidated oauth token")
+  ) {
+    return CodexAppServerAuthFailureReason.TOKEN_INVALIDATED;
+  }
+  if (text.includes("auth expired")) {
+    return CodexAppServerAuthFailureReason.AUTH_EXPIRED;
+  }
+  if (text.includes("your session has ended")) {
+    return CodexAppServerAuthFailureReason.SESSION_ENDED;
+  }
+  if (text.includes("please log in again")) {
+    return CodexAppServerAuthFailureReason.LOGIN_REQUIRED;
+  }
+  if (text.includes("unauthorized") || text.includes("401")) {
+    return CodexAppServerAuthFailureReason.UNAUTHORIZED;
+  }
+  return "";
 }
 
 export function shouldIgnoreCodexAppServerMessageAfterAuthFailure(activeThreadSession) {
