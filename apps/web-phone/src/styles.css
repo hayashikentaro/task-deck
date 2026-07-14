@@ -10,6 +10,19 @@
   --attention: #d4bd5f;
   --danger: #c3774f;
   --terminal: #080907;
+  --task-identity-a: transparent;
+  --task-identity-b: transparent;
+  --task-identity-c: transparent;
+  --task-identity-d: transparent;
+  --task-card-wash: transparent;
+  --task-card-wash-soft: transparent;
+  --task-card-border: transparent;
+  --task-card-band: transparent;
+  --task-card-glow: transparent;
+  --task-output-tint: transparent;
+  --task-output-tint-soft: transparent;
+  --task-output-tint-faint: transparent;
+  --task-output-border: transparent;
 }
 
 * {
@@ -267,12 +280,34 @@ textarea {
   min-width: 0;
   display: grid;
   gap: 8px;
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--task-card-border) 72%, var(--line));
+  background:
+    linear-gradient(135deg, var(--task-card-wash) 0%, var(--task-card-wash-soft) 64%, transparent 100%),
+    var(--panel-raised);
+  box-shadow:
+    inset 2px 0 0 var(--task-card-band),
+    inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 54%, transparent),
+    0 0 0 1px rgb(0 0 0 / 16%);
   padding: 11px;
   text-align: left;
 }
 
 .phone-task-card[data-selected="true"] {
-  border-color: var(--accent);
+  border-color: color-mix(in srgb, var(--task-card-border) 82%, var(--line));
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--task-card-wash) 72%, var(--task-card-band) 28%) 0%,
+      color-mix(in srgb, var(--task-card-wash-soft) 76%, var(--task-card-border) 24%) 68%,
+      color-mix(in srgb, var(--panel-raised) 86%, var(--task-card-band) 14%) 100%
+    );
+  box-shadow:
+    inset 8px 0 0 var(--task-card-band),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent),
+    inset 0 -2px 0 color-mix(in srgb, var(--task-card-band) 66%, transparent),
+    0 0 22px var(--task-card-glow),
+    0 10px 24px rgb(0 0 0 / 28%);
 }
 
 .phone-task-card-main,

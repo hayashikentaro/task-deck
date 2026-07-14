@@ -18,6 +18,7 @@ import {
   taskStateLabel,
   workspaceLabel,
 } from "@taskdeck/web-shared";
+import { taskIdentityCssProperties } from "./taskIdentity";
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
 type PhoneView = "terminal" | "tasks";
@@ -330,6 +331,7 @@ function TasksView({
             data-selected={task.id === selectedTaskId ? "true" : undefined}
             key={task.id}
             onClick={() => onSelectTask(task.id)}
+            style={taskIdentityCssProperties({ taskId: task.id, identityColorSlot: task.identityColorSlot })}
             type="button"
           >
             <span className="phone-task-card-main">
