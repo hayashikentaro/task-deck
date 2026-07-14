@@ -339,13 +339,15 @@ function TasksView({
               <span>{workspaceLabel(task.cwd)}</span>
             </span>
             <span className="phone-task-card-badges">
-              <span data-kind={supervisionBucket(task)}>{supervisionBucket(task) === "needs_you" ? "Needs you" : "Not now"}</span>
-              <span>{taskStateLabel(task)}</span>
+              <span data-kind={`supervision-${supervisionBucket(task)}`}>
+                {supervisionBucket(task) === "needs_you" ? "Needs you" : "Not now"}
+              </span>
+              <span data-kind={taskStateBadgeKind(task)}>{taskStateLabel(task)}</span>
             </span>
             <span className="phone-task-card-meta">
               <span>{formatTime(task.updatedAt)}</span>
-              {task.codexAppServerTurnActive ? <span>Running turn</span> : null}
-              {task.codexAppServerRequest ? <span>Request</span> : null}
+              {task.codexAppServerTurnActive ? <span data-kind="turn-active">Running turn</span> : null}
+              {task.codexAppServerRequest ? <span data-kind="request">Request</span> : null}
             </span>
           </button>
         ))}
@@ -666,6 +668,17 @@ function filterLabel(filter: TaskFilter) {
   if (filter === "needs_you") return "Needs you";
   if (filter === "running") return "Running";
   return "All";
+}
+
+function taskStateBadgeKind(task: Task) {
+  const attentionState = task.attentionState || "none";
+  if (task.status === "running" && attentionState !== "none") {
+    return `attention-${attentionState}`;
+  }
+  if (task.status !== "running") {
+    return `process-${task.status}`;
+  }
+  return `agent-${task.agentState}`;
 }
 
 function formatTime(value: string) {

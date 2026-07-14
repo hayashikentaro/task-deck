@@ -9,6 +9,10 @@
   --accent: #6aa39d;
   --attention: #d4bd5f;
   --danger: #c3774f;
+  --status-review: #8c749b;
+  --status-success: #7e8e58;
+  --status-stopped: #9a5d4f;
+  --status-thinking: #b5a85e;
   --terminal: #080907;
   --task-identity-a: transparent;
   --task-identity-b: transparent;
@@ -338,6 +342,14 @@ textarea {
   font-size: 12px;
 }
 
+.phone-task-card-meta span[data-kind="turn-active"] {
+  color: var(--attention);
+}
+
+.phone-task-card-meta span[data-kind="request"] {
+  color: var(--attention);
+}
+
 .phone-task-card-badges {
   flex-wrap: wrap;
 }
@@ -350,9 +362,82 @@ textarea {
   font-size: 11px;
 }
 
-.phone-task-card-badges span[data-kind="needs_you"] {
+.phone-task-card-badges span[data-kind="supervision-needs_you"] {
   border-color: var(--attention);
+  background: color-mix(in srgb, var(--attention) 11%, transparent);
   color: var(--attention);
+}
+
+.phone-task-card-badges span[data-kind="supervision-not_now"] {
+  border-color: color-mix(in srgb, var(--muted) 44%, var(--line));
+  background: color-mix(in srgb, var(--muted) 6%, transparent);
+  color: var(--muted);
+}
+
+.phone-task-card-badges span[data-kind="attention-needs_input"],
+.phone-task-card-badges span[data-kind="agent-waiting_input"],
+.phone-task-card-badges span[data-kind="turn-active"] {
+  border-color: color-mix(in srgb, var(--attention) 68%, var(--line));
+  background: color-mix(in srgb, var(--attention) 10%, transparent);
+  color: var(--attention);
+}
+
+.phone-task-card-badges span[data-kind="attention-needs_approval"],
+.phone-task-card-badges span[data-kind="agent-waiting_approval"],
+.phone-task-card-badges span[data-kind="request"] {
+  border-color: color-mix(in srgb, var(--attention) 72%, var(--line));
+  background: color-mix(in srgb, var(--attention) 12%, transparent);
+  color: var(--attention);
+}
+
+.phone-task-card-badges span[data-kind="attention-review_ready"],
+.phone-task-card-badges span[data-kind="agent-review_ready"] {
+  border-color: color-mix(in srgb, var(--status-review) 72%, var(--line));
+  background: color-mix(in srgb, var(--status-review) 15%, transparent);
+  color: #cbb6d5;
+}
+
+.phone-task-card-badges span[data-kind="attention-failed"],
+.phone-task-card-badges span[data-kind="process-failed"],
+.phone-task-card-badges span[data-kind="agent-failed"] {
+  border-color: color-mix(in srgb, var(--danger) 78%, var(--line));
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  color: var(--danger);
+}
+
+.phone-task-card-badges span[data-kind="process-succeeded"],
+.phone-task-card-badges span[data-kind="agent-done"] {
+  border-color: color-mix(in srgb, var(--status-success) 72%, var(--line));
+  background: color-mix(in srgb, var(--status-success) 15%, transparent);
+  color: #aebd84;
+}
+
+.phone-task-card-badges span[data-kind="process-interrupted"],
+.phone-task-card-badges span[data-kind="process-closed"],
+.phone-task-card-badges span[data-kind="agent-stopped"] {
+  border-color: color-mix(in srgb, var(--status-stopped) 68%, var(--line));
+  background: color-mix(in srgb, var(--status-stopped) 15%, transparent);
+  color: #c89483;
+}
+
+.phone-task-card-badges span[data-kind="agent-starting"],
+.phone-task-card-badges span[data-kind="agent-thinking"] {
+  border-color: color-mix(in srgb, var(--status-thinking) 70%, var(--line));
+  background: color-mix(in srgb, var(--status-thinking) 13%, transparent);
+  color: var(--status-thinking);
+}
+
+.phone-task-card-badges span[data-kind="agent-ready"],
+.phone-task-card-badges span[data-kind="agent-working"] {
+  border-color: color-mix(in srgb, var(--accent) 72%, var(--line));
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  color: var(--accent);
+}
+
+.phone-task-card-badges span[data-kind="process-idle"],
+.phone-task-card-badges span[data-kind="attention-none"] {
+  border-color: color-mix(in srgb, var(--muted) 40%, var(--line));
+  color: var(--muted);
 }
 
 .empty-state {
