@@ -6,6 +6,7 @@ import {
   buildTaskTitle,
   drainOutputEventsForTask,
   getComposerInputPlaceholder,
+  getComposerInputState,
   getComposerMode,
   isNativeSubagentTask,
   maxOutputQueueSeq,
@@ -24,6 +25,23 @@ type ConnectionState = "connecting" | "connected" | "disconnected";
 type PhoneView = "terminal" | "tasks";
 type ActiveSheet = "new-session" | null;
 type TaskFilter = "needs_you" | "running" | "all";
+type PhoneTurnOptions = {
+  agentModel?: string;
+  agentReasoningEffort?: string;
+};
+type CodexReasoningEffortOption = {
+  reasoningEffort: string;
+  description: string;
+};
+type CodexModel = {
+  id: string;
+  model: string;
+  displayName: string;
+  description: string;
+  isDefault: boolean;
+  defaultReasoningEffort: string;
+  supportedReasoningEfforts: CodexReasoningEffortOption[];
+};
 
 type ServerMessage =
   | {
@@ -31,6 +49,7 @@ type ServerMessage =
       tasks: Task[];
       runningTaskId?: string | null;
       runningTaskIds?: string[];
+      codexModels?: CodexModel[];
       outputSeq?: number;
     }
   | {
@@ -40,6 +59,7 @@ type ServerMessage =
       runningTaskIds?: string[];
     }
   | { type: "started"; taskId: string }
+  | { type: "codex-models"; models: CodexModel[] }
   | {
       type: "output";
       taskId: string;
@@ -53,6 +73,7 @@ type ServerMessage =
   | { type: "input-rejected"; taskId: string; message: string; logged?: boolean };
 
 const codexAppServerProfileId = "codex-app-server";
+const fallbackReasoningEfforts = ["minimal", "low", "medium", "high", "xhigh"];
 const logTailLength = 120_000;
 
 export function PhoneApp() {
@@ -63,6 +84,7 @@ export function PhoneApp() {
   const [runningTaskIds, setRunningTaskIds] = useState<string[]>([]);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [context, setContext] = useState<TaskDeckContext | null>(null);
+  const [codexModels, setCodexModels] = useState<CodexModel[]>([]);
   const [outputEvents, setOutputEvents] = useState<OutputEvent[]>([]);
   const [clientMessage, setClientMessage] = useState("");
   const socketRef = useRef<WebSocket | null>(null);
@@ -102,6 +124,9 @@ export function PhoneApp() {
       socket.addEventListener("message", (event) => {
         const message = JSON.parse(event.data) as ServerMessage;
         if (message.type === "snapshot" || message.type === "tasks") {
+          if (message.type === "snapshot" && message.codexModels) {
+            setCodexModels(message.codexModels);
+          }
           applyTaskList(message.tasks, getRunningTaskIdsFromMessage(message));
           return;
         }
@@ -123,6 +148,10 @@ export function PhoneApp() {
             kind: message.kind,
           };
           setOutputEvents((current) => appendOutputEventToQueue(current, nextEvent));
+          return;
+        }
+        if (message.type === "codex-models") {
+          setCodexModels(message.models);
           return;
         }
         if (message.type === "input-rejected" && !message.logged) {
@@ -175,8 +204,8 @@ export function PhoneApp() {
     setView("terminal");
   };
 
-  const sendInput = (taskId: string, data: string) => {
-    return send({ type: "input", taskId, data, source: "composer-agent" });
+  const sendInput = (taskId: string, data: string, turnOptions: PhoneTurnOptions = {}) => {
+    return send({ type: "input", taskId, data, source: "composer-agent", ...turnOptions });
   };
 
   const stopTurn = (taskId: string) => {
@@ -193,6 +222,7 @@ export function PhoneApp() {
         {view === "terminal" ? (
           <TerminalView
             clientMessage={clientMessage}
+            codexModels={codexModels}
             connectionState={connectionState}
             outputEvents={outputEvents}
             onOpenNewSession={() => setActiveSheet("new-session")}
@@ -227,6 +257,7 @@ export function PhoneApp() {
 
 function TerminalView({
   clientMessage,
+  codexModels,
   connectionState,
   outputEvents,
   task,
@@ -237,13 +268,14 @@ function TerminalView({
   onStopTurn,
 }: {
   clientMessage: string;
+  codexModels: CodexModel[];
   connectionState: ConnectionState;
   outputEvents: OutputEvent[];
   task: Task | null;
   onOpenNewSession: () => void;
   onOpenTasks: () => void;
   onResolveRequest: (taskId: string, requestId: string | number, action: "approve" | "decline" | "cancel") => boolean;
-  onSendInput: (taskId: string, data: string) => boolean;
+  onSendInput: (taskId: string, data: string, turnOptions?: PhoneTurnOptions) => boolean;
   onStopTurn: (taskId: string) => boolean;
 }) {
   return (
@@ -271,7 +303,13 @@ function TerminalView({
       <div className="phone-request-slot">
         <PhoneRequestBar connectionState={connectionState} onResolveRequest={onResolveRequest} task={task} />
       </div>
-      <PhoneComposer connectionState={connectionState} onSendInput={onSendInput} onStopTurn={onStopTurn} task={task} />
+      <PhoneComposer
+        codexModels={codexModels}
+        connectionState={connectionState}
+        onSendInput={onSendInput}
+        onStopTurn={onStopTurn}
+        task={task}
+      />
     </section>
   );
 }
@@ -505,17 +543,22 @@ function PhoneRequestBar({
 }
 
 function PhoneComposer({
+  codexModels,
   connectionState,
   task,
   onSendInput,
   onStopTurn,
 }: {
+  codexModels: CodexModel[];
   connectionState: ConnectionState;
   task: Task | null;
-  onSendInput: (taskId: string, data: string) => boolean;
+  onSendInput: (taskId: string, data: string, turnOptions?: PhoneTurnOptions) => boolean;
   onStopTurn: (taskId: string) => boolean;
 }) {
   const [value, setValue] = useState("");
+  const [selectedModel, setSelectedModel] = useState("");
+  const [selectedReasoningEffort, setSelectedReasoningEffort] = useState("");
+  const [isStopRequested, setIsStopRequested] = useState(false);
   const isCodexAppServerTask = task?.agentProfileId === codexAppServerProfileId;
   const isCodexAppServerTurnActive = Boolean(isCodexAppServerTask && task?.codexAppServerTurnActive);
   const isReadOnlyProjection = Boolean(task && isNativeSubagentTask(task));
@@ -525,47 +568,180 @@ function PhoneComposer({
       task.status === "running" &&
       !isReadOnlyProjection &&
       !task.inputLockedAt &&
-      !isCodexAppServerTurnActive &&
-      value.trim(),
+      !isCodexAppServerTurnActive,
   );
+  const canSubmit = canSend && Boolean(value.trim());
   const canStop = Boolean(
-    task && connectionState === "connected" && task.status === "running" && !isReadOnlyProjection && isCodexAppServerTurnActive,
+    task &&
+      connectionState === "connected" &&
+      task.status === "running" &&
+      !isReadOnlyProjection &&
+      isCodexAppServerTurnActive &&
+      !isStopRequested,
   );
   const modeText = getComposerMode(task, connectionState === "connected", { isCodexAppServerTurnActive });
+  const inputState = getComposerInputState({
+    task,
+    isConnected: connectionState === "connected",
+    isUploadingAttachments: false,
+    isCodexAppServerTurnActive,
+  });
   const placeholder = getComposerInputPlaceholder({
     canSend,
     isCodexAppServerTask: Boolean(isCodexAppServerTask),
     isCodexAppServerTurnActive,
     modeText,
   });
+  const modelOptions = useMemo(
+    () => ensureSelectedModelOption(codexModels, selectedModel || task?.agentModel || ""),
+    [codexModels, selectedModel, task?.agentModel],
+  );
+  const selectedModelOption = modelOptions.find((model) => model.model === selectedModel) ?? null;
+  const reasoningEffortOptions = useMemo(
+    () => getReasoningEffortOptions(selectedModelOption, selectedReasoningEffort),
+    [selectedModelOption, selectedReasoningEffort],
+  );
+  const canConfigureTurn = Boolean(
+    isCodexAppServerTask &&
+      task &&
+      connectionState === "connected" &&
+      task.status === "running" &&
+      !isReadOnlyProjection &&
+      !task.inputLockedAt &&
+      !isCodexAppServerTurnActive,
+  );
+  const actionLabel = isCodexAppServerTurnActive ? "Stop active Codex turn" : "Send input to running task";
+
+  useEffect(() => {
+    setSelectedModel(String(task?.agentModel || "").trim());
+    setSelectedReasoningEffort(String(task?.agentReasoningEffort || "").trim());
+    setIsStopRequested(false);
+  }, [task?.agentModel, task?.agentReasoningEffort, task?.id]);
+
+  useEffect(() => {
+    if (!isCodexAppServerTurnActive) {
+      setIsStopRequested(false);
+    }
+  }, [isCodexAppServerTurnActive]);
+
+  useEffect(() => {
+    if (!isStopRequested || !isCodexAppServerTurnActive) {
+      return;
+    }
+    const retryTimer = window.setTimeout(() => setIsStopRequested(false), 2000);
+    return () => window.clearTimeout(retryTimer);
+  }, [isCodexAppServerTurnActive, isStopRequested]);
+
+  useEffect(() => {
+    if (!selectedModel && modelOptions.length > 0) {
+      const defaultModel = modelOptions.find((model) => model.isDefault) ?? modelOptions[0];
+      setSelectedModel(defaultModel.model);
+      return;
+    }
+    if (!selectedReasoningEffort && selectedModelOption?.defaultReasoningEffort) {
+      setSelectedReasoningEffort(selectedModelOption.defaultReasoningEffort);
+    }
+  }, [modelOptions, selectedModel, selectedModelOption, selectedReasoningEffort]);
+
+  const changeSelectedModel = (model: string) => {
+    setSelectedModel(model);
+    const nextModel = modelOptions.find((option) => option.model === model);
+    setSelectedReasoningEffort(nextModel?.defaultReasoningEffort || "");
+  };
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!task || !canSend) return;
-    const didSend = onSendInput(task.id, normalizeInput(value));
+    if (!task || !canSubmit) return;
+    const didSend = onSendInput(task.id, normalizeInput(value), {
+      agentModel: selectedModel,
+      agentReasoningEffort: selectedReasoningEffort,
+    });
     if (didSend) {
       setValue("");
     }
   };
 
   return (
-    <form className="phone-composer" onSubmit={submit}>
-      <textarea
-        disabled={!task}
-        onChange={(event) => setValue(event.target.value)}
-        placeholder={placeholder}
-        rows={2}
-        value={value}
-      />
-      {isCodexAppServerTurnActive ? (
-        <button disabled={!canStop} onClick={() => task && onStopTurn(task.id)} type="button">
-          Stop
-        </button>
-      ) : (
-        <button disabled={!canSend} type="submit">
-          Send
-        </button>
-      )}
+    <form className="phone-composer" data-input-state={inputState} onSubmit={submit}>
+      <div className="phone-composer-inner">
+        <textarea
+          disabled={!task}
+          onChange={(event) => setValue(event.target.value)}
+          placeholder={placeholder}
+          rows={2}
+          value={value}
+        />
+        <div className="phone-composer-footer">
+          <div className="phone-composer-footer-end">
+            {isCodexAppServerTask ? (
+              <>
+                <label className="phone-composer-option-control" title={selectedModelOption?.description || "Model"}>
+                  <span className="visually-hidden">Model</span>
+                  <select
+                    aria-label="Model for next instruction"
+                    disabled={!canConfigureTurn || modelOptions.length === 0}
+                    onChange={(event) => changeSelectedModel(event.target.value)}
+                    value={selectedModel}
+                  >
+                    {modelOptions.map((model) => (
+                      <option key={model.model} value={model.model}>
+                        {model.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="phone-composer-option-control">
+                  <span className="visually-hidden">Reasoning effort</span>
+                  <select
+                    aria-label="Reasoning effort for next instruction"
+                    disabled={!canConfigureTurn || reasoningEffortOptions.length === 0}
+                    onChange={(event) => setSelectedReasoningEffort(event.target.value)}
+                    value={selectedReasoningEffort}
+                  >
+                    {reasoningEffortOptions.map((effort) => (
+                      <option key={effort} value={effort}>
+                        {formatReasoningEffort(effort)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            ) : null}
+            {isCodexAppServerTurnActive ? (
+              <button
+                aria-label={actionLabel}
+                className="phone-composer-primary"
+                data-action="stop"
+                disabled={!canStop}
+                onClick={() => {
+                  if (task && onStopTurn(task.id)) {
+                    setIsStopRequested(true);
+                  }
+                }}
+                title={actionLabel}
+                type="button"
+              >
+                <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+                  <rect height="7" rx="1" width="7" x="4.5" y="4.5" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                aria-label={actionLabel}
+                className="phone-composer-primary"
+                data-action="send"
+                disabled={!canSubmit}
+                title={actionLabel}
+                type="submit"
+              >
+                <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+                  <path d="M8 13V3M4 7l4-4 4 4" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
     </form>
   );
 }
@@ -702,6 +878,41 @@ function formatTime(value: string) {
 
 function normalizeInput(value: string) {
   return normalizeComposerInput(value).trim();
+}
+
+function ensureSelectedModelOption(models: CodexModel[], selectedModel: string) {
+  if (!selectedModel || models.some((model) => model.model === selectedModel)) {
+    return models;
+  }
+  return [
+    {
+      id: selectedModel,
+      model: selectedModel,
+      displayName: selectedModel,
+      description: "",
+      isDefault: false,
+      defaultReasoningEffort: "",
+      supportedReasoningEfforts: [],
+    },
+    ...models,
+  ];
+}
+
+function getReasoningEffortOptions(model: CodexModel | null, selectedEffort: string) {
+  const advertised = model?.supportedReasoningEfforts.map((option) => option.reasoningEffort) ?? [];
+  const options = advertised.length > 0 ? advertised : ["", ...fallbackReasoningEfforts];
+  return selectedEffort && !options.includes(selectedEffort) ? [selectedEffort, ...options] : options;
+}
+
+function formatReasoningEffort(effort: string) {
+  if (!effort) return "Default";
+  if (effort === "none") return "None";
+  if (effort === "minimal") return "Minimal";
+  if (effort === "low") return "Low";
+  if (effort === "medium") return "Medium";
+  if (effort === "high") return "High";
+  if (effort === "xhigh") return "Extra high";
+  return effort;
 }
 
 function positiveInteger(value: unknown) {
