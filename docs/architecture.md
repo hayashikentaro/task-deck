@@ -17,7 +17,9 @@ In the current session-identity-first card design, the primary card-level visual
 ## Repository Map
 
 - `apps/server`: Node/Express backend, Codex App Server adapter, REST API, WebSocket updates, config loading, task persistence, diagnostics, and supervision state.
-- `apps/web`: React/Vite frontend for task cards, task output rendering, task creation, composer input, App Server request controls, and API/WebSocket state handling.
+- `apps/web-desktop`: React/Vite desktop frontend for task cards, task output rendering, task creation, composer input, App Server request controls, and API/WebSocket state handling.
+- `apps/web-phone`: React/Vite phone frontend served at `/phone` for vertical task supervision with terminal, task list, and new-session surfaces.
+- `packages/web-shared`: Shared web-client types and UI-surface-neutral helpers for TaskDeck API, WebSocket, selectors, output replay, and composer behavior when both web clients need them.
 - `packages/core`: Shared task-state primitives and task serialization helpers used by server and web code.
 - `.taskdeck/`: Ignored local runtime state. It stores persisted tasks, logs, presets, session labels, attachments, and other local data that may be sensitive.
 - Config files: `taskdeck.config.json` is committed config and exposes only the Codex App Server task profile on this branch; ignored `taskdeck.local.json`, `TASKDECK_CONFIG`, `TASKDECK_PROJECT_ROOT`, and `TASKDECK_PROJECT_ROOTS` carry machine-local overrides. `taskdeck.local.example.json` is the public example for local setup. Local overrides are for machine-specific setup and compatibility, not evidence of additional committed launch routes.
@@ -51,7 +53,7 @@ Human decision requests initiated by a running Codex session use the App Server 
 Ownership map:
 
 - Runtime owns Codex App Server subprocess lifecycle, JSON-RPC notification handling, native subagent task materialization, thread-to-task log routing, and completion transitions. Typical file: `apps/server/src/server.js`.
-- UI owns the read-only subagent card presentation, `Subagent` badge, locked input affordance, and normal task-card selection behavior. Typical files: `apps/web/src/components/TaskList.tsx`, `InputComposer.tsx`, and related styles.
+- UI owns the read-only subagent card presentation, `Subagent` badge, locked input affordance, and normal task-card selection behavior. Typical desktop files: `apps/web-desktop/src/components/TaskList.tsx`, `InputComposer.tsx`, and related styles. Typical phone files live under `apps/web-phone/src`.
 - Core owns durable task/session metadata that is still needed by the App Server path, including `parentSessionId` for native subagent cards and persisted compatibility rules for old task records.
 - Branch/worktree convergence is separate from native subagent card materialization; use `docs/branch-worktree-lifecycle.md` for branch worktree guidance.
 
@@ -109,7 +111,7 @@ Expanded task cards can also rerun tasks from their stored command and cwd. Lega
 
 The UI is organized around task cards that help operators keep the left-rail task list matched to the center task output and persisted log view. Stable task/session identity is the primary card-level visual layer, while `Needs you` / `Not now` remains visible through sorting, badges, filters, and acknowledgement controls. The right rail launches Codex App Server sessions, and the composer stays attached to the selected task.
 
-A phone/mobile client opened through the host machine's LAN IP is still a local TaskDeck web client. Mobile work should use the existing REST API and WebSocket data flow, but should be structurally separated from the desktop layout surface so desktop-specific components and phone-specific components can evolve independently.
+A phone/mobile client opened through the host machine's LAN IP is still a local TaskDeck web client. Mobile work should use the existing REST API and WebSocket data flow, but remains a separate client package at `apps/web-phone` so desktop-specific components and phone-specific components can evolve independently.
 
 Expanded task cards show command, cwd, process status, exit code, timing, initial instruction when available, and compact diff status. The former top summary strip and right-side task-state panel are intentionally folded into the card model.
 
@@ -147,12 +149,12 @@ Codex App Server launches through `codex --sandbox danger-full-access --ask-for-
 
 ## Where To Change What
 
-- Project dropdown / project roots: `apps/server/src/server.js` functions around `resolveProjectRoots`, `buildProjectSuggestions`, `selectDefaultProjectCwd`, and web form handling in `apps/web/src/components/TaskCreateForm.tsx`.
+- Project dropdown / project roots: `apps/server/src/server.js` functions around `resolveProjectRoots`, `buildProjectSuggestions`, `selectDefaultProjectCwd`, desktop form handling in `apps/web-desktop/src/components/TaskCreateForm.tsx`, and phone session sheet handling in `apps/web-phone/src/PhoneApp.tsx`.
 - Config loading: `apps/server/src/server.js` config candidate loading and profile/project-root normalization.
-- Agent profiles: Built-in profile definitions and profile merge/sanitize logic in `apps/server/src/server.js`; frontend profile types in `apps/web/src/types.ts`; launch-command selection in `TaskCreateForm.tsx`.
-- App Server lifecycle and input/output: Task/thread-session creation, shared App Server runtime spawn/stdin/stdout handling, log append, sequenced WebSocket output handling in `apps/server/src/server.js`; output replay helpers in `apps/web/src/outputReplay.ts`; output rendering in `OutputPane.tsx`; composer behavior in `InputComposer.tsx`.
-- Attention/supervision logic: App Server status/request handling, native subagent status projection, compatibility child-status/manager-action handling, and task state marking in `apps/server/src/server.js`; task-card display in `apps/web/src/components/TaskList.tsx`.
-- Output and input UI: `apps/web/src/components/OutputPane.tsx`, `InputComposer.tsx`, related output/composer CSS in `apps/web/src/styles.css`.
+- Agent profiles: Built-in profile definitions and profile merge/sanitize logic in `apps/server/src/server.js`; frontend profile types in the relevant client package or `packages/web-shared`; launch-command selection in `TaskCreateForm.tsx` and the phone new-session sheet.
+- App Server lifecycle and input/output: Task/thread-session creation, shared App Server runtime spawn/stdin/stdout handling, log append, sequenced WebSocket output handling in `apps/server/src/server.js`; output replay helpers in the relevant web client or `packages/web-shared`; output rendering and composer behavior in each client package.
+- Attention/supervision logic: App Server status/request handling, native subagent status projection, compatibility child-status/manager-action handling, and task state marking in `apps/server/src/server.js`; task-card display in each client package.
+- Output and input UI: desktop UI in `apps/web-desktop/src/components/OutputPane.tsx`, `InputComposer.tsx`, and related CSS; phone UI in `apps/web-phone/src/PhoneApp.tsx` and related CSS.
 - Diagnostics: `/api/diagnostics` plus container inspection/start helpers in `apps/server/src/server.js`; a dedicated diagnostics UI would be future work.
 
 ## Refactoring Seams

@@ -102,8 +102,9 @@ Examples:
 
 Typical files:
 
-- `apps/web/src/components/*`;
-- `apps/web/src/styles.css`;
+- `apps/web-desktop/src/components/*`;
+- `apps/web-desktop/src/styles.css`;
+- `apps/web-phone/src/*`;
 - `docs/guides/ui-style.md`;
 - `docs/guides/ui-components.md`.
 
@@ -124,8 +125,9 @@ Examples:
 
 Typical files:
 
-- `apps/web/src/App.tsx`;
-- `apps/web/src/components/TaskCreateForm.tsx`;
+- `apps/web-desktop/src/App.tsx`;
+- `apps/web-desktop/src/components/TaskCreateForm.tsx`;
+- `apps/web-phone/src/PhoneApp.tsx`;
 - related orchestration helpers.
 
 App Flow changes often cross layer boundaries. They should reuse Protocol, Core, Runtime, and UI pieces rather than redefining their rules.

@@ -39,7 +39,13 @@ Then open:
 http://localhost:3000
 ```
 
-The dev command runs the local Node server and mounts Vite middleware for the React UI. Server-side code changes require restarting `npm run dev`.
+The desktop client is served at `/`. The phone client is served as a separate web app at:
+
+```text
+http://localhost:3000/phone
+```
+
+The dev command runs the local Node server and mounts Vite middleware for both React clients. Server-side code changes require restarting `npm run dev`.
 
 ## First Task
 

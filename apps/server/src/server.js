@@ -102,8 +102,10 @@ const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../../..");
-const webRoot = path.join(repoRoot, "apps/web");
-const webDist = path.join(webRoot, "dist");
+const desktopWebRoot = path.join(repoRoot, "apps/web-desktop");
+const desktopWebDist = path.join(desktopWebRoot, "dist");
+const phoneWebRoot = path.join(repoRoot, "apps/web-phone");
+const phoneWebDist = path.join(phoneWebRoot, "dist");
 const dataRoot = path.join(repoRoot, ".taskdeck");
 const taskStorePath = path.join(dataRoot, "tasks.json");
 const taskOrderStorePath = path.join(dataRoot, "task-order.json");
@@ -5449,9 +5451,11 @@ async function cwdIsGitRepo(cwd) {
 async function buildCwdSuggestions() {
   const candidates = [
     { label: "Repository root", path: repoRoot, value: "" },
-    { label: "apps/web", path: path.join(repoRoot, "apps/web"), value: "apps/web" },
+    { label: "apps/web-desktop", path: path.join(repoRoot, "apps/web-desktop"), value: "apps/web-desktop" },
+    { label: "apps/web-phone", path: path.join(repoRoot, "apps/web-phone"), value: "apps/web-phone" },
     { label: "apps/server", path: path.join(repoRoot, "apps/server"), value: "apps/server" },
     { label: "packages/core", path: path.join(repoRoot, "packages/core"), value: "packages/core" },
+    { label: "packages/web-shared", path: path.join(repoRoot, "packages/web-shared"), value: "packages/web-shared" },
   ];
 
   const suggestions = [];
@@ -7468,9 +7472,13 @@ async function configureWebApp() {
   });
 
   if (process.env.NODE_ENV === "production") {
-    app.use(express.static(webDist));
+    app.use("/phone", express.static(phoneWebDist));
+    app.get(/^\/phone(?:\/.*)?$/, (_request, response) => {
+      response.sendFile(path.join(phoneWebDist, "index.html"));
+    });
+    app.use(express.static(desktopWebDist));
     app.get("*", (_request, response) => {
-      response.sendFile(path.join(webDist, "index.html"));
+      response.sendFile(path.join(desktopWebDist, "index.html"));
     });
     return;
   }
@@ -7479,9 +7487,20 @@ async function configureWebApp() {
     import("vite"),
     import("@vitejs/plugin-react"),
   ]);
-  const vite = await createServer({
+  const phoneVite = await createServer({
     configFile: false,
-    root: webRoot,
+    root: phoneWebRoot,
+    base: "/phone/",
+    plugins: [react()],
+    server: {
+      middlewareMode: true,
+      hmr: { server },
+    },
+    appType: "spa",
+  });
+  const desktopVite = await createServer({
+    configFile: false,
+    root: desktopWebRoot,
     plugins: [react()],
     server: {
       middlewareMode: true,
@@ -7490,5 +7509,12 @@ async function configureWebApp() {
     appType: "spa",
   });
 
-  app.use(vite.middlewares);
+  app.use((request, response, next) => {
+    if (request.url === "/phone" || request.url.startsWith("/phone/")) {
+      phoneVite.middlewares(request, response, next);
+      return;
+    }
+    next();
+  });
+  app.use(desktopVite.middlewares);
 }

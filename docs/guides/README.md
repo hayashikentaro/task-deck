@@ -6,5 +6,5 @@ If a recurring rule applies only to a specific area, create or update a concise 
 
 Current guides:
 
-- `ui-style.md`: CSS, visual variants, and style ownership for `apps/web`.
-- `ui-components.md`: reusable UI component and control implementation rules for `apps/web`.
+- `ui-style.md`: CSS, visual variants, and style ownership for TaskDeck web clients.
+- `ui-components.md`: reusable UI component and control implementation rules for TaskDeck web clients.

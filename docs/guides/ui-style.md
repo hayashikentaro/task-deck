@@ -1,6 +1,6 @@
 # UI Style Guide
 
-This guide records current operational rules for `apps/web` UI styling, CSS ownership, and visual variants. Read it before changing shared UI styles or Button visual behavior.
+This guide records current operational rules for TaskDeck web UI styling, CSS ownership, and visual variants. Read it before changing shared UI styles or Button visual behavior.
 
 Reusable component responsibility and icon-only controls are covered in `docs/guides/ui-components.md`.
 
@@ -8,7 +8,7 @@ Small CSS-only tuning such as spacing, focus rings, animation timing, and local 
 
 ## Button Usage
 
-- New interactive buttons in `apps/web` should use `apps/web/src/components/ui/Button.tsx`; component boundaries and raw-button exceptions are covered in `docs/guides/ui-components.md`.
+- New interactive buttons in the desktop client should use `apps/web-desktop/src/components/ui/Button.tsx`; component boundaries and raw-button exceptions are covered in `docs/guides/ui-components.md`. The phone client owns its own compact controls unless a shared control is deliberately added.
 - Control Button appearance through the existing API:
   - `variant: "panel" | "secondary" | "danger" | "icon"`
   - `size: "sm" | "md"`

@@ -48,7 +48,7 @@ DELETE /api/presets
 `POST /api/validate-cwd` accepts:
 
 ```json
-{ "cwd": "apps/web" }
+{ "cwd": "apps/web-desktop" }
 ```
 
 It returns whether the cwd resolves to an existing directory, its absolute path, and git-repository status. The task form uses it to validate cwd before starting a task.

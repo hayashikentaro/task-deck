@@ -56,7 +56,8 @@ Common runtime/generated paths include:
 .taskdeck/
 .taskdeck/manager-readable/
 .taskdeck/manager-inbox/
-apps/web/dist/
+apps/web-desktop/dist/
+apps/web-phone/dist/
 node_modules/
 ```
 

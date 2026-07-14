@@ -1,6 +1,6 @@
 # UI Components Guide
 
-This guide covers reusable UI component implementation in `apps/web`, especially controls, buttons, compact toolbars, and icon-only components. It is about component responsibility, accessibility, and layout stability, not broad visual styling.
+This guide covers reusable UI component implementation for TaskDeck web clients, especially controls, buttons, compact toolbars, and icon-only components. It is about component responsibility, accessibility, and layout stability, not broad visual styling.
 
 ## When To Read
 
@@ -14,7 +14,7 @@ Read this guide when:
 
 ## Button Component Boundary
 
-- Standard action buttons should use `apps/web/src/components/ui/Button.tsx`.
+- Standard desktop action buttons should use `apps/web-desktop/src/components/ui/Button.tsx`.
 - `Button` owns common native button behavior and visual variant hooks.
 - Visual styling details remain in `docs/guides/ui-style.md`.
 - Do not create local one-off button-like components unless there is a documented exception.
@@ -23,7 +23,7 @@ Read this guide when:
 ## Icon-Only Controls
 
 - Icon-only controls must have accessible labels, such as `aria-label`, unless visible text is also present.
-- `apps/web/src/components/ui/IconButton.tsx` is the preferred direction for reusable icon-only buttons where the control has no visible text label.
+- `apps/web-desktop/src/components/ui/IconButton.tsx` is the preferred direction for reusable desktop icon-only buttons where the control has no visible text label.
 - `IconButton` requires `label`, which becomes the native button's `aria-label`, and accepts inline SVG as children.
 - Use its existing `variant: "panel" | "secondary" | "danger" | "ghost"` and `size: "sm" | "md"` API.
 - Prefer `IconButton` over raw `<button>` for new recurring compact controls unless there is a documented exception.
@@ -42,7 +42,7 @@ Do not opportunistically migrate those controls during unrelated UI work. Migrat
 
 ## SelectField
 
-- Use `apps/web/src/components/ui/SelectField.tsx` for labeled native select controls in `apps/web`.
+- Use `apps/web-desktop/src/components/ui/SelectField.tsx` for labeled native select controls in the desktop client.
 - `SelectField` wraps a native `<select>` by design; it is not a custom dropdown.
 - `SelectField` owns label, hint, error, `aria-describedby`, and `aria-invalid` wiring.
 - Visual tuning of native selects is allowed within the shared component/style boundary.
