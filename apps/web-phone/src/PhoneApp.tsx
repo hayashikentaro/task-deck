@@ -290,7 +290,7 @@ function TasksView({
   selectedTaskId: string | null;
   tasks: Task[];
 }) {
-  const [filter, setFilter] = useState<TaskFilter>("needs_you");
+  const [filter, setFilter] = useState<TaskFilter>("all");
   const runningTaskIdSet = useMemo(() => new Set(runningTaskIds), [runningTaskIds]);
   const orderedTasks = useMemo(() => sortTasksForDisplay(tasks), [tasks]);
   const visibleTasks = orderedTasks.filter((task) => matchesTaskFilter(task, filter, runningTaskIdSet));
@@ -309,7 +309,7 @@ function TasksView({
         </button>
       </header>
       <div className="phone-filter-row" aria-label="Task filters">
-        {(["needs_you", "running", "all"] as TaskFilter[]).map((nextFilter) => (
+        {(["all", "needs_you", "running"] as TaskFilter[]).map((nextFilter) => (
           <button
             aria-pressed={filter === nextFilter}
             data-active={filter === nextFilter}
