@@ -365,6 +365,8 @@ function PhoneTerminalOutput({ outputEvents, task }: { outputEvents: OutputEvent
   const [rawLog, setRawLog] = useState("");
   const [reloadToken, setReloadToken] = useState(0);
   const taskId = task?.id ?? null;
+  const outputText = useMemo(() => stripAnsiControlSequences(rawLog), [rawLog]);
+  const outputSegments = useMemo(() => segmentOutputText(outputText), [outputText]);
 
   useEffect(() => {
     outputEventsRef.current = outputEvents;
@@ -444,8 +446,19 @@ function PhoneTerminalOutput({ outputEvents, task }: { outputEvents: OutputEvent
   }, [rawLog]);
 
   return (
-    <div className="phone-output" ref={viewportRef}>
-      <pre>{stripAnsiControlSequences(rawLog)}</pre>
+    <div
+      className="phone-output"
+      data-has-task={task ? "true" : undefined}
+      ref={viewportRef}
+      style={task ? taskIdentityCssProperties({ taskId: task.id, identityColorSlot: task.identityColorSlot }) : undefined}
+    >
+      <pre>
+        {outputSegments.map((segment, index) => (
+          <span data-output-tone={segment.tone} key={index}>
+            {segment.text}
+          </span>
+        ))}
+      </pre>
     </div>
   );
 }
@@ -702,4 +715,100 @@ function stripAnsiControlSequences(value: string) {
     .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
     .replace(/\x1b[PX^_].*?\x1b\\/g, "")
     .replace(/\r/g, "\n");
+}
+
+type OutputSegmentTone =
+  | "assistant"
+  | "user"
+  | "taskdeck"
+  | "command"
+  | "warning"
+  | "error"
+  | "debug"
+  | "metadata";
+
+type OutputSegment = {
+  text: string;
+  tone: OutputSegmentTone;
+};
+
+function segmentOutputText(value: string): OutputSegment[] {
+  if (!value) {
+    return [];
+  }
+
+  const segments: OutputSegment[] = [];
+  let currentTone: OutputSegmentTone = "taskdeck";
+  let inCommandOutput = false;
+  const lines = value.match(/[^\n]*\n|[^\n]+/g) || [];
+
+  for (const line of lines) {
+    const lineTone = classifyOutputLine(line, { inCommandOutput, currentTone });
+    inCommandOutput = lineTone.inCommandOutput;
+    currentTone = lineTone.tone;
+    const previousSegment = segments[segments.length - 1];
+    if (previousSegment?.tone === lineTone.tone) {
+      previousSegment.text += line;
+    } else {
+      segments.push({ text: line, tone: lineTone.tone });
+    }
+  }
+
+  return segments;
+}
+
+function classifyOutputLine(
+  line: string,
+  state: { inCommandOutput: boolean; currentTone: OutputSegmentTone },
+): { tone: OutputSegmentTone; inCommandOutput: boolean } {
+  const trimmed = line.trimStart();
+
+  if (trimmed.startsWith("[Assistant]")) {
+    return { tone: "assistant", inCommandOutput: false };
+  }
+  if (trimmed.startsWith("[You]")) {
+    return { tone: "user", inCommandOutput: false };
+  }
+  if (trimmed.startsWith("[TaskDeck -> Codex App Server]")) {
+    return { tone: "debug", inCommandOutput: false };
+  }
+  if (trimmed.startsWith("[TaskDeck] Codex App Server command output:")) {
+    return { tone: "command", inCommandOutput: true };
+  }
+  if (trimmed.startsWith("[TaskDeck]")) {
+    return {
+      tone: taskDeckLineTone(trimmed),
+      inCommandOutput: false,
+    };
+  }
+  if (state.inCommandOutput) {
+    return { tone: "command", inCommandOutput: true };
+  }
+  return { tone: state.currentTone, inCommandOutput: false };
+}
+
+function taskDeckLineTone(line: string): OutputSegmentTone {
+  const lowered = line.toLocaleLowerCase();
+  if (
+    lowered.includes("failed") ||
+    lowered.includes("error") ||
+    lowered.includes("unauthorized") ||
+    lowered.includes("invalid") ||
+    lowered.includes("revoked")
+  ) {
+    return "error";
+  }
+  if (
+    lowered.includes("login required") ||
+    lowered.includes("needs chatgpt") ||
+    lowered.includes("approval request") ||
+    lowered.includes("user-input request") ||
+    lowered.includes("waiting for user")
+  ) {
+    return "warning";
+  }
+  if (lowered.includes("native subagent") || lowered.includes("thread ready")) {
+    return "metadata";
+  }
+  return "taskdeck";
 }

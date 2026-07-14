@@ -9,6 +9,14 @@
   --accent: #6aa39d;
   --attention: #d4bd5f;
   --danger: #c3774f;
+  --output-tone-assistant: #e2dac8;
+  --output-tone-user: #d0bd72;
+  --output-tone-taskdeck: #837b6e;
+  --output-tone-command: #78949d;
+  --output-tone-warning: #c6a45b;
+  --output-tone-error: #c3774f;
+  --output-tone-debug: #5f5138;
+  --output-tone-metadata: #8c749b;
   --status-review: #8c749b;
   --status-success: #7e8e58;
   --status-stopped: #9a5d4f;
@@ -172,14 +180,29 @@ textarea {
 .phone-output {
   min-height: 0;
   overflow: auto;
-  background: var(--terminal);
+  background:
+    linear-gradient(
+      135deg,
+      var(--task-output-tint) 0%,
+      var(--task-output-tint-soft) 58%,
+      var(--task-output-tint-faint) 82%,
+      transparent 100%
+    ),
+    var(--terminal);
+  box-shadow: inset 0 2px 0 var(--task-output-border);
   padding: 10px;
+}
+
+.phone-output[data-has-task="true"] {
+  background:
+    linear-gradient(135deg, var(--task-card-wash) 0%, var(--task-card-wash-soft) 64%, transparent 100%),
+    var(--panel-raised);
 }
 
 .phone-output pre {
   min-width: 100%;
   margin: 0;
-  color: #d8d0bc;
+  color: var(--text);
   font-family:
     "SFMono-Regular",
     Consolas,
@@ -191,6 +214,38 @@ textarea {
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.phone-output pre [data-output-tone="assistant"] {
+  color: var(--output-tone-assistant);
+}
+
+.phone-output pre [data-output-tone="user"] {
+  color: var(--output-tone-user);
+}
+
+.phone-output pre [data-output-tone="taskdeck"] {
+  color: var(--output-tone-taskdeck);
+}
+
+.phone-output pre [data-output-tone="command"] {
+  color: var(--output-tone-command);
+}
+
+.phone-output pre [data-output-tone="warning"] {
+  color: var(--output-tone-warning);
+}
+
+.phone-output pre [data-output-tone="error"] {
+  color: var(--output-tone-error);
+}
+
+.phone-output pre [data-output-tone="debug"] {
+  color: var(--output-tone-debug);
+}
+
+.phone-output pre [data-output-tone="metadata"] {
+  color: var(--output-tone-metadata);
 }
 
 .phone-request-bar {
