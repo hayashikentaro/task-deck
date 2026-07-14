@@ -7,7 +7,22 @@ export type {
   Task,
   TaskDeckContext,
   TeamTemplate,
+  ComposerInputState,
 } from "./types";
+export {
+  getComposerInputPlaceholder,
+  getComposerInputState,
+  getComposerMode,
+  isNativeSubagentTask,
+  normalizeComposerInput,
+} from "./composer";
+export {
+  appendOutputEventToQueue,
+  drainOutputEventsForTask,
+  maxOutputQueueSeq,
+  outputEventQueueLimit,
+} from "./outputReplay";
+export type { OutputDrainResult, OutputReplayGap } from "./outputReplay";
 export {
   buildProjectSuggestions,
   buildTaskTitle,
@@ -15,6 +30,7 @@ export {
   selectTaskIdForTaskList,
   sortTasksForDisplay,
   supervisionBucket,
+  supervisionTitle,
   taskDisplayName,
   taskStateLabel,
   workspaceLabel,

@@ -4,6 +4,16 @@ import { taskIdentityCssProperties } from "../taskIdentity";
 import type { AttentionState, DecisionGatewayDecisionLease, DecisionGatewayMailboxItem, Task } from "../types";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
+import {
+  isNativeSubagentTask,
+  sortTasksForDisplay as sharedSortTasksForDisplay,
+  supervisionBucket,
+  supervisionTitle,
+  taskDisplayName,
+  workspaceLabel,
+} from "@taskdeck/web-shared";
+
+export const sortTasksForDisplay = sharedSortTasksForDisplay;
 
 type TaskFilter = "all" | "needs_you" | "not_now";
 
@@ -623,35 +633,6 @@ function matchesFilter(task: Task, filter: TaskFilter) {
   return true;
 }
 
-export function sortTasksForDisplay(tasks: Task[]) {
-  return [...tasks].sort((left, right) => {
-    const leftOrder = normalizedTaskOrderIndex(left.taskOrderIndex);
-    const rightOrder = normalizedTaskOrderIndex(right.taskOrderIndex);
-    if (leftOrder !== null || rightOrder !== null) {
-      if (leftOrder === null) {
-        return 1;
-      }
-      if (rightOrder === null) {
-        return -1;
-      }
-      if (leftOrder !== rightOrder) {
-        return leftOrder - rightOrder;
-      }
-    }
-
-    const leftNeedsYou = supervisionBucket(left) === "needs_you";
-    const rightNeedsYou = supervisionBucket(right) === "needs_you";
-    if (leftNeedsYou !== rightNeedsYou) {
-      return leftNeedsYou ? -1 : 1;
-    }
-    return timestampForSort(right.updatedAt) - timestampForSort(left.updatedAt);
-  });
-}
-
-function normalizedTaskOrderIndex(value: unknown) {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
-}
-
 export function moveTaskIdInOrder(taskIds: string[], sourceTaskId: string, targetTaskId: string) {
   const sourceIndex = taskIds.indexOf(sourceTaskId);
   const targetIndex = taskIds.indexOf(targetTaskId);
@@ -756,24 +737,8 @@ function attentionState(task: Task): AttentionState {
   return task.attentionState || "none";
 }
 
-function supervisionBucket(task: Task) {
-  if (task.status !== "running") return "not_now";
-  if (task.agentState === "ready") return "needs_you";
-  return task.attentionState === "none" || !task.attentionState ? "not_now" : "needs_you";
-}
-
 function supervisionBucketLabel(bucket: ReturnType<typeof supervisionBucket>) {
   return bucket === "needs_you" ? "Needs you" : "Not now";
-}
-
-function supervisionTitle(task: Task) {
-  if (supervisionBucket(task) === "needs_you") {
-    if (task.agentState === "ready" && attentionState(task) === "none") {
-      return task.agentStateReason || "This task is ready for input.";
-    }
-    return task.attentionStateReason || "This running task may need human attention.";
-  }
-  return task.status === "running" ? "Task is running." : "Task is not running.";
 }
 
 function taskLineageBadge(task: Task) {
@@ -794,10 +759,6 @@ function taskLineageBadge(task: Task) {
     };
   }
   return null;
-}
-
-function isNativeSubagentTask(task: Task) {
-  return task.agentSessionSource === "codex_app_server_native_subagent";
 }
 
 function childReportedStatusLabel(state: NonNullable<Task["childReportedState"]>) {
@@ -867,25 +828,6 @@ function formatDecisionDateTime(value: string | undefined) {
   });
 }
 
-function taskDisplayName(task: Task) {
-  return displayTaskTitle(task.sessionLabel || task.title);
-}
-
-function displayTaskTitle(title: string | undefined) {
-  return String(title || "").trim().replace(/^(?:Resume saved:\s*)+/i, "") || "Untitled task";
-}
-
-function workspaceLabel(cwd: string) {
-  const trimmed = cwd.replace(/\/+$/, "");
-  const basename = trimmed.split("/").filter(Boolean).pop();
-  return basename || "Repository root";
-}
-
 function formatTime(value: string) {
   return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function timestampForSort(value: string | null | undefined) {
-  const timestamp = Date.parse(String(value || ""));
-  return Number.isFinite(timestamp) ? timestamp : 0;
 }

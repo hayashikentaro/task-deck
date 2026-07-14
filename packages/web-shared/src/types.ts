@@ -46,7 +46,26 @@ export type Task = {
   agentModel?: string;
   agentReasoningEffort?: string;
   sessionMode?: string;
+  resumeCommand?: string;
+  agentSessionId?: string;
   agentSessionSource?: string;
+  agentSessionProvider?: string;
+  agentSessionDetectedAt?: string;
+  agentSessionResumeCommand?: string;
+  teamTemplateId?: string;
+  teamId?: string;
+  roleId?: string;
+  decisionGatewayMode?: string;
+  decisionResultHandling?: string;
+  parentSessionId?: string;
+  childStatusFile?: string;
+  childReportedState?: string;
+  childStatusSummary?: string;
+  childStatusArtifacts?: string[];
+  childStatusDetailsFile?: string;
+  childStatusUpdatedAt?: string;
+  childStatusError?: string;
+  isManager?: boolean;
   identityColorSlot?: number;
   status: TaskStatus;
   agentState: AgentState;
@@ -64,9 +83,27 @@ export type Task = {
   initialInstruction?: string;
   codexAppServerRequest?: CodexAppServerRequest | null;
   codexAppServerTurnActive?: boolean;
-  decisionLeases?: Array<{ status: string }>;
-  decisionResults?: Array<{ validationStatus?: string; actionType?: string; receivedAt?: string }>;
+  decisionLeases?: Array<{
+    status: string;
+    requestId?: string;
+    expiresAt?: string;
+    receivedAt?: string;
+    deliveredAt?: string;
+    deliveryError?: string;
+    actionType?: string;
+  }>;
+  decisionResults?: Array<{
+    validationStatus?: string;
+    validationReason?: string;
+    condition?: string;
+    reason?: string;
+    actionType?: string;
+    decidedAt?: string;
+    receivedAt?: string;
+  }>;
 };
+
+export type ComposerInputState = "ready" | "locked" | "busy" | "readonly" | "disconnected" | "empty";
 
 export type OutputEvent = {
   seq: number;

@@ -1,8 +1,15 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CreateTaskInput, OutputEvent, Task, TaskDeckContext } from "@taskdeck/web-shared";
 import {
+  appendOutputEventToQueue,
   buildProjectSuggestions,
   buildTaskTitle,
+  drainOutputEventsForTask,
+  getComposerInputPlaceholder,
+  getComposerMode,
+  isNativeSubagentTask,
+  maxOutputQueueSeq,
+  normalizeComposerInput,
   selectDefaultProjectPath,
   selectTaskIdForTaskList,
   sortTasksForDisplay,
@@ -45,6 +52,7 @@ type ServerMessage =
   | { type: "input-rejected"; taskId: string; message: string; logged?: boolean };
 
 const codexAppServerProfileId = "codex-app-server";
+const logTailLength = 120_000;
 
 export function PhoneApp() {
   const [view, setView] = useState<PhoneView>("tasks");
@@ -113,7 +121,7 @@ export function PhoneApp() {
             role: message.role,
             kind: message.kind,
           };
-          setOutputEvents((current) => [...current.slice(-399), nextEvent]);
+          setOutputEvents((current) => appendOutputEventToQueue(current, nextEvent));
           return;
         }
         if (message.type === "input-rejected" && !message.logged) {
@@ -260,7 +268,7 @@ function TerminalView({
       </div>
       <PhoneTerminalOutput outputEvents={outputEvents} task={task} />
       <div className="phone-request-slot">
-        <PhoneRequestBar onResolveRequest={onResolveRequest} task={task} />
+        <PhoneRequestBar connectionState={connectionState} onResolveRequest={onResolveRequest} task={task} />
       </div>
       <PhoneComposer connectionState={connectionState} onSendInput={onSendInput} onStopTurn={onStopTurn} task={task} />
     </section>
@@ -346,38 +354,83 @@ function TasksView({
 
 function PhoneTerminalOutput({ outputEvents, task }: { outputEvents: OutputEvent[]; task: Task | null }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const outputEventsRef = useRef<OutputEvent[]>([]);
+  const loadingTaskIdRef = useRef<string | null>(null);
+  const appliedTaskSeqByTaskIdRef = useRef<Record<string, number>>({});
+  const lastAppliedQueueSeqRef = useRef(0);
   const [rawLog, setRawLog] = useState("");
-  const [lastAppliedSeq, setLastAppliedSeq] = useState(0);
+  const [reloadToken, setReloadToken] = useState(0);
   const taskId = task?.id ?? null;
 
   useEffect(() => {
-    setRawLog(task ? "Loading task log...\n" : "No task selected.\n");
-    setLastAppliedSeq(0);
-    if (!task) return undefined;
+    outputEventsRef.current = outputEvents;
+  }, [outputEvents]);
 
+  useEffect(() => {
+    setRawLog(task ? "Loading task log...\n" : "No task selected.\n");
+    if (!task) {
+      loadingTaskIdRef.current = null;
+      return undefined;
+    }
+
+    const loadingTaskId = task.id;
+    const reloadStartQueueSeq = maxOutputQueueSeq(outputEventsRef.current);
+    loadingTaskIdRef.current = loadingTaskId;
     const abortController = new AbortController();
-    fetch(`/api/tasks/${task.id}/logs?tail=120000`, { signal: abortController.signal })
+    fetch(`/api/tasks/${loadingTaskId}/logs?tail=${logTailLength}`, { signal: abortController.signal })
       .then((response) => {
         if (!response.ok) throw new Error("Unable to load task logs.");
         return response.json();
       })
-      .then((payload: { logs?: string }) => setRawLog(payload.logs || ""))
+      .then((payload: { logs?: string; taskSeq?: number; truncated?: boolean }) => {
+        if (abortController.signal.aborted) {
+          return;
+        }
+        const loadedTaskSeq = positiveInteger(payload.taskSeq);
+        appliedTaskSeqByTaskIdRef.current[loadingTaskId] = loadedTaskSeq;
+        lastAppliedQueueSeqRef.current = Math.max(lastAppliedQueueSeqRef.current, reloadStartQueueSeq);
+        const queuedDrain = drainOutputEventsForTask({
+          events: outputEventsRef.current,
+          taskId: loadingTaskId,
+          lastQueueSeq: lastAppliedQueueSeqRef.current,
+          lastTaskSeq: loadedTaskSeq,
+        });
+        appliedTaskSeqByTaskIdRef.current[loadingTaskId] = queuedDrain.nextTaskSeq;
+        lastAppliedQueueSeqRef.current = queuedDrain.nextQueueSeq;
+        const replayHeader = payload.truncated
+          ? `[TaskDeck] Showing last ${logTailLength.toLocaleString()} characters of persisted log.\n`
+          : "";
+        setRawLog(`${replayHeader}${payload.logs || ""}${queuedDrain.gap ? "" : queuedDrain.text}`);
+        loadingTaskIdRef.current = null;
+      })
       .catch(() => {
         if (!abortController.signal.aborted) {
           setRawLog("[TaskDeck] Unable to load task logs.\n");
+          loadingTaskIdRef.current = null;
         }
       });
 
     return () => abortController.abort();
-  }, [task?.id]);
+  }, [reloadToken, task?.id]);
 
   useEffect(() => {
-    if (!taskId) return;
-    const nextEvents = outputEvents.filter((event) => event.taskId === taskId && event.seq > lastAppliedSeq);
-    if (nextEvents.length === 0) return;
-    setLastAppliedSeq(nextEvents[nextEvents.length - 1].seq);
-    setRawLog((current) => `${current}${nextEvents.map((event) => event.data).join("")}`.slice(-120000));
-  }, [lastAppliedSeq, outputEvents, taskId]);
+    if (!taskId || loadingTaskIdRef.current === taskId) return;
+    const lastTaskSeq = appliedTaskSeqByTaskIdRef.current[taskId] || 0;
+    const drainedOutput = drainOutputEventsForTask({
+      events: outputEvents,
+      taskId,
+      lastQueueSeq: lastAppliedQueueSeqRef.current,
+      lastTaskSeq,
+    });
+    if (drainedOutput.gap) {
+      setReloadToken((current) => current + 1);
+      return;
+    }
+    appliedTaskSeqByTaskIdRef.current[taskId] = drainedOutput.nextTaskSeq;
+    lastAppliedQueueSeqRef.current = drainedOutput.nextQueueSeq;
+    if (!drainedOutput.text) return;
+    setRawLog((current) => `${current}${drainedOutput.text}`.slice(-logTailLength));
+  }, [outputEvents, taskId]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -395,15 +448,18 @@ function PhoneTerminalOutput({ outputEvents, task }: { outputEvents: OutputEvent
 
 function PhoneRequestBar({
   task,
+  connectionState,
   onResolveRequest,
 }: {
   task: Task | null;
+  connectionState: ConnectionState;
   onResolveRequest: (taskId: string, requestId: string | number, action: "approve" | "decline" | "cancel") => boolean;
 }) {
   const request = task?.codexAppServerRequest ?? null;
   if (!task || !request) {
     return null;
   }
+  const canResolve = connectionState === "connected" && task.status === "running" && !isNativeSubagentTask(task);
   return (
     <section className="phone-request-bar" aria-label="Codex request">
       <div>
@@ -412,17 +468,17 @@ function PhoneRequestBar({
       </div>
       <div className="phone-request-actions">
         {request.canApprove ? (
-          <button onClick={() => onResolveRequest(task.id, request.id, "approve")} type="button">
+          <button disabled={!canResolve} onClick={() => onResolveRequest(task.id, request.id, "approve")} type="button">
             Approve
           </button>
         ) : null}
         {request.canDecline ? (
-          <button onClick={() => onResolveRequest(task.id, request.id, "decline")} type="button">
+          <button disabled={!canResolve} onClick={() => onResolveRequest(task.id, request.id, "decline")} type="button">
             Decline
           </button>
         ) : null}
         {request.canCancel ? (
-          <button onClick={() => onResolveRequest(task.id, request.id, "cancel")} type="button">
+          <button disabled={!canResolve} onClick={() => onResolveRequest(task.id, request.id, "cancel")} type="button">
             Cancel
           </button>
         ) : null}
@@ -443,15 +499,28 @@ function PhoneComposer({
   onStopTurn: (taskId: string) => boolean;
 }) {
   const [value, setValue] = useState("");
+  const isCodexAppServerTask = task?.agentProfileId === codexAppServerProfileId;
+  const isCodexAppServerTurnActive = Boolean(isCodexAppServerTask && task?.codexAppServerTurnActive);
+  const isReadOnlyProjection = Boolean(task && isNativeSubagentTask(task));
   const canSend = Boolean(
     task &&
       connectionState === "connected" &&
       task.status === "running" &&
+      !isReadOnlyProjection &&
       !task.inputLockedAt &&
-      !task.codexAppServerTurnActive &&
+      !isCodexAppServerTurnActive &&
       value.trim(),
   );
-  const canStop = Boolean(task && connectionState === "connected" && task.codexAppServerTurnActive);
+  const canStop = Boolean(
+    task && connectionState === "connected" && task.status === "running" && !isReadOnlyProjection && isCodexAppServerTurnActive,
+  );
+  const modeText = getComposerMode(task, connectionState === "connected", { isCodexAppServerTurnActive });
+  const placeholder = getComposerInputPlaceholder({
+    canSend,
+    isCodexAppServerTask: Boolean(isCodexAppServerTask),
+    isCodexAppServerTurnActive,
+    modeText,
+  });
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -467,11 +536,11 @@ function PhoneComposer({
       <textarea
         disabled={!task}
         onChange={(event) => setValue(event.target.value)}
-        placeholder={task ? composerPlaceholder(task, connectionState) : "No task selected"}
+        placeholder={placeholder}
         rows={2}
         value={value}
       />
-      {task?.codexAppServerTurnActive ? (
+      {isCodexAppServerTurnActive ? (
         <button disabled={!canStop} onClick={() => task && onStopTurn(task.id)} type="button">
           Stop
         </button>
@@ -597,14 +666,6 @@ function filterLabel(filter: TaskFilter) {
   return "All";
 }
 
-function composerPlaceholder(task: Task, connectionState: ConnectionState) {
-  if (connectionState !== "connected") return "Disconnected";
-  if (task.status !== "running") return "Read-only log";
-  if (task.inputLockedAt) return "Input locked";
-  if (task.codexAppServerTurnActive) return "";
-  return "Send input";
-}
-
 function formatTime(value: string) {
   const timestamp = Date.parse(value);
   if (!Number.isFinite(timestamp)) return "";
@@ -612,7 +673,7 @@ function formatTime(value: string) {
 }
 
 function normalizeInput(value: string) {
-  return value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  return normalizeComposerInput(value).trim();
 }
 
 function positiveInteger(value: unknown) {

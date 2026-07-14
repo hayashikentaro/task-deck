@@ -1,4 +1,8 @@
 import type { ProjectSuggestion, Task, TaskDeckContext } from "./types";
+import { isNativeSubagentTask } from "./composer";
+
+type TaskListSelectionTask = Pick<Task, "id" | "status"> &
+  Partial<Pick<Task, "agentProfileId" | "agentSessionSource" | "command" | "inputLockedAt" | "sessionMode">>;
 
 export function sortTasksForDisplay(tasks: Task[]) {
   return [...tasks].sort((left, right) => {
@@ -25,7 +29,11 @@ export function supervisionBucket(task: Task) {
   return task.attentionState === "none" || !task.attentionState ? "not_now" : "needs_you";
 }
 
-export function selectTaskIdForTaskList(currentTaskId: string | null, tasks: Task[], runningTaskIds: string[]) {
+export function selectTaskIdForTaskList<T extends TaskListSelectionTask>(
+  currentTaskId: string | null,
+  tasks: T[],
+  runningTaskIds: string[],
+) {
   if (currentTaskId && tasks.some((task) => task.id === currentTaskId)) {
     return currentTaskId;
   }
@@ -47,11 +55,13 @@ export function selectTaskIdForTaskList(currentTaskId: string | null, tasks: Tas
 }
 
 export function taskDisplayName(task: Task) {
-  return task.sessionLabel || task.title || workspaceLabel(task.cwd) || task.id;
+  return displayTaskTitle(task.sessionLabel || task.title);
 }
 
 export function workspaceLabel(cwd: string) {
-  return cwd.split(/[\\/]/).filter(Boolean).pop() || cwd || "workspace";
+  const trimmed = cwd.replace(/[\\/]+$/, "");
+  const basename = trimmed.split(/[\\/]/).filter(Boolean).pop();
+  return basename || "Repository root";
 }
 
 export function taskStateLabel(task: Task) {
@@ -94,8 +104,18 @@ export function buildTaskTitle(agentLabel: string, cwd: string) {
   return workspaceLabel(cwd) || `${agentLabel} session`;
 }
 
-function isNativeSubagentTask(task: Task) {
-  return task.agentSessionSource === "codex_app_server_native_subagent";
+export function supervisionTitle(task: Task) {
+  if (supervisionBucket(task) === "needs_you") {
+    if (task.agentState === "ready" && (task.attentionState || "none") === "none") {
+      return task.agentStateReason || "This task is ready for input.";
+    }
+    return task.attentionStateReason || "This running task may need human attention.";
+  }
+  return task.status === "running" ? "Task is running." : "Task is not running.";
+}
+
+function displayTaskTitle(title: string | undefined) {
+  return String(title || "").trim().replace(/^(?:Resume saved:\s*)+/i, "") || "Untitled task";
 }
 
 function normalizedTaskOrderIndex(value: unknown) {

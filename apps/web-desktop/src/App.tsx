@@ -7,6 +7,9 @@ import { DecisionInboxPanel } from "./components/DecisionInboxPanel";
 import type { CodexModel, CreateTaskInput, DecisionGatewayMailboxItem, OutputEvent, Task, TaskDeckContext } from "./types";
 import type { SelectedImageAttachment } from "./components/InputComposer";
 import { appendOutputEventToQueue } from "./outputReplay";
+import { selectTaskIdForTaskList } from "@taskdeck/web-shared";
+
+export { selectTaskIdForTaskList } from "@taskdeck/web-shared";
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
 
@@ -468,40 +471,6 @@ function handleSnapshotOutputSeq(
 function positiveInteger(value: unknown) {
   const numericValue = Number(value);
   return Number.isInteger(numericValue) && numericValue > 0 ? numericValue : 0;
-}
-
-type TaskListSelectionTask = Pick<Task, "id" | "status" | "agentSessionSource" | "inputLockedAt">;
-
-export function selectTaskIdForTaskList(
-  currentTaskId: string | null,
-  tasks: TaskListSelectionTask[],
-  runningTaskIds: string[],
-) {
-  if (currentTaskId && tasks.some((task) => task.id === currentTaskId)) {
-    return currentTaskId;
-  }
-
-  const taskById = new Map(tasks.map((task) => [task.id, task]));
-  for (const taskId of runningTaskIds) {
-    if (taskById.has(taskId)) {
-      return taskId;
-    }
-  }
-
-  return (
-    tasks.find(isPreferredFallbackTask)?.id ??
-    tasks.find((task) => !isNativeSubagentTask(task))?.id ??
-    tasks[0]?.id ??
-    null
-  );
-}
-
-function isPreferredFallbackTask(task: TaskListSelectionTask) {
-  return task.status === "running" && !task.inputLockedAt && !isNativeSubagentTask(task);
-}
-
-function isNativeSubagentTask(task: TaskListSelectionTask) {
-  return task.agentSessionSource === "codex_app_server_native_subagent";
 }
 
 function updateSelectedTaskRecord<T>(record: Record<string, T>, taskId: string | null, value: T) {

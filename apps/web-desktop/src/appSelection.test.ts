@@ -33,6 +33,24 @@ describe("TaskDeck task selection", () => {
     ).toBe("task-parent");
   });
 
+  it("skips read-only native subagent running hints when choosing a replacement task", () => {
+    expect(
+      selectTaskIdForTaskList(
+        "task-missing",
+        [
+          {
+            id: "task-subagent",
+            status: "running",
+            agentSessionSource: "codex_app_server_native_subagent",
+            inputLockedAt: "2026-06-24T00:00:00.000Z",
+          },
+          { id: "task-parent", status: "running", agentSessionSource: "codex_app_server_thread", inputLockedAt: null },
+        ],
+        ["task-subagent", "task-parent"],
+      ),
+    ).toBe("task-parent");
+  });
+
   it("prefers a normal task over a locked native subagent when there is no running id hint", () => {
     expect(
       selectTaskIdForTaskList(
