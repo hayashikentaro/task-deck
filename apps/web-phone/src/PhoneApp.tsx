@@ -255,9 +255,13 @@ function TerminalView({
           </svg>
         </button>
       </header>
-      {clientMessage ? <p className="phone-status-message">{clientMessage}</p> : null}
+      <div className="phone-status-slot">
+        {clientMessage ? <p className="phone-status-message">{clientMessage}</p> : null}
+      </div>
       <PhoneTerminalOutput outputEvents={outputEvents} task={task} />
-      <PhoneRequestBar onResolveRequest={onResolveRequest} task={task} />
+      <div className="phone-request-slot">
+        <PhoneRequestBar onResolveRequest={onResolveRequest} task={task} />
+      </div>
       <PhoneComposer connectionState={connectionState} onSendInput={onSendInput} onStopTurn={onStopTurn} task={task} />
     </section>
   );

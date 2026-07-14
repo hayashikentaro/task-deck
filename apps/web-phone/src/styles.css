@@ -75,8 +75,11 @@ textarea {
   min-height: 0;
   height: 100%;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   overflow: hidden;
+}
+
+.terminal-view {
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
 }
 
 .tasks-view {
@@ -142,6 +145,11 @@ textarea {
   border-bottom: 1px solid var(--line);
   color: var(--attention);
   font-size: 12px;
+}
+
+.phone-status-slot,
+.phone-request-slot {
+  min-height: 0;
 }
 
 .phone-output {
