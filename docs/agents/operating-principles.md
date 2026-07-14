@@ -14,6 +14,21 @@ TaskDeck remains a same-machine local application even when its web client is op
 
 For phone/mobile UI work, prefer structural separation from the desktop surface. Shared code should cover TaskDeck state, API access, WebSocket handling, selectors, output replay, composer rules, and reusable low-level controls. Desktop-specific layout components and phone-specific layout components should not import from each other.
 
+## Desktop And Phone Surface Separation
+
+Desktop and phone clients are separate surfaces over the same TaskDeck state. Do not assume the desktop UI is the canonical component tree for phone work, and do not make the phone UI import desktop-only layout components, controls, CSS, or presentation helpers.
+
+Share logic only when the rule is truly surface-neutral:
+
+- API and WebSocket message handling;
+- task selection, sorting, supervision buckets, and state labels;
+- output replay and composer availability rules;
+- stable domain types that both clients already consume.
+
+Keep presentation local to the surface unless the user explicitly asks for a shared design system change. This includes card layout, badge density, font sizing, color application, responsive spacing, and mobile-only ergonomics. If the phone needs to visually match a desktop affordance, copy or reimplement the visual treatment inside `apps/web-phone` instead of adding a dependency on `apps/web-desktop`.
+
+Do not migrate desktop task-card actions to phone merely because the desktop card has them. Phone should expose only the actions requested for the mobile workflow. When reviewing PC/mobile parity, separate behavioral parity from visual parity and call out which category is being changed.
+
 ## Supervision Model
 
 Keep supervision buckets simple:

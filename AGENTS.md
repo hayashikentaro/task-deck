@@ -73,6 +73,13 @@ When working on this area, keep network-safety notes factual and scoped. The ope
 
 Prefer a structurally separate phone/mobile surface that shares TaskDeck state, API, WebSocket, and domain helpers with the desktop client, while avoiding imports from desktop-only layout components. Desktop and phone UI expansion should not require routine cross-surface layout consideration.
 
+For PC/mobile UI work, keep the distinction explicit:
+
+- Share surface-neutral rules through shared packages only when both surfaces should use identical behavior, such as task sorting, selection, supervision bucket decisions, output replay, and composer availability.
+- Keep surface presentation local. Do not make `apps/web-phone` depend on `apps/web-desktop` components, CSS, or presentation-only helpers, and do not move phone-only visual needs into `packages/web-shared`.
+- Visual parity does not imply action parity. Do not add desktop task-card operations to mobile unless the user explicitly requests those controls.
+- When porting or comparing PC and mobile, state whether the change is behavior parity, visual parity, or mobile-specific ergonomics.
+
 ## Actor Model
 
 The previous AI-agent actor and role definitions have been removed pending redesign. Do not infer durable actor responsibilities, manager authority, worker authority, parent/sub-session behavior, or agent-to-agent communication rules from deleted role docs, historical prompts, or older issue notes.
