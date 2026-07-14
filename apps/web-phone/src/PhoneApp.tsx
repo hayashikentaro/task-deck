@@ -746,7 +746,7 @@ function PhoneComposer({
           disabled={!task}
           onChange={(event) => setValue(event.target.value)}
           placeholder={placeholder}
-          rows={2}
+          rows={1}
           value={value}
         />
         <div className="phone-composer-footer">
