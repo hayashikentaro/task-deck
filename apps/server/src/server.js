@@ -172,12 +172,48 @@ const defaultAgentProfiles = [
   },
 ];
 
+function buildViteAllowedHosts() {
+  const configured = String(process.env.TASKDECK_ALLOWED_HOSTS || "").trim();
+  if (["*", "true", "1"].includes(configured.toLowerCase())) {
+    return true;
+  }
+
+  const candidates = new Set([
+    "localhost",
+    "127.0.0.1",
+    "::1",
+    host,
+    os.hostname(),
+  ]);
+  const hostname = os.hostname();
+
+  if (hostname && !hostname.endsWith(".local")) {
+    candidates.add(`${hostname}.local`);
+  }
+  if (hostname.endsWith(".local")) {
+    candidates.add(hostname.slice(0, -".local".length));
+  }
+
+  for (const value of configured.split(",")) {
+    const allowedHost = value.trim();
+    if (allowedHost) {
+      candidates.add(allowedHost);
+    }
+  }
+
+  const normalized = Array.from(candidates)
+    .filter((value) => value && value !== "0.0.0.0")
+    .flatMap((value) => [value, value.toLowerCase()]);
+  return Array.from(new Set(normalized));
+}
+
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: "/ws" });
 
 const port = Number(process.env.PORT || 3000);
-const host = process.env.HOST || "127.0.0.1";
+const host = process.env.HOST || "0.0.0.0";
+const viteAllowedHosts = buildViteAllowedHosts();
 const shell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "bash");
 const inputDebugEnabled = process.env.TASKDECK_INPUT_DEBUG === "1";
 const codexAppServerDebugEnabled = process.env.TASKDECK_CODEX_APP_SERVER_DEBUG === "1";
@@ -7494,6 +7530,7 @@ async function configureWebApp() {
     plugins: [react()],
     server: {
       middlewareMode: true,
+      allowedHosts: viteAllowedHosts,
       hmr: { server },
     },
     appType: "spa",
@@ -7504,6 +7541,7 @@ async function configureWebApp() {
     plugins: [react()],
     server: {
       middlewareMode: true,
+      allowedHosts: viteAllowedHosts,
       hmr: { server },
     },
     appType: "spa",
