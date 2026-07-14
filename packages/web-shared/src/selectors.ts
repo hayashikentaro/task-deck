@@ -21,8 +21,8 @@ export function sortTasksForDisplay(tasks: Task[]) {
 
 export function supervisionBucket(task: Task) {
   if (task.status !== "running") return "not_now";
-  const attentionState = task.attentionState || "none";
-  return attentionState === "none" ? "not_now" : "needs_you";
+  if (task.agentState === "ready") return "needs_you";
+  return task.attentionState === "none" || !task.attentionState ? "not_now" : "needs_you";
 }
 
 export function selectTaskIdForTaskList(currentTaskId: string | null, tasks: Task[], runningTaskIds: string[]) {
