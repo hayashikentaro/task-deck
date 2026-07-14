@@ -204,13 +204,6 @@ export function PhoneApp() {
           />
         )}
       </div>
-      <BottomNav
-        activeView={view}
-        onOpenNewSession={() => setActiveSheet("new-session")}
-        onShowTasks={() => setView("tasks")}
-        onShowTerminal={() => setView("terminal")}
-        terminalDisabled={!selectedTask}
-      />
       {activeSheet === "new-session" ? (
         <NewSessionSheet
           context={context}
@@ -484,34 +477,6 @@ function PhoneComposer({
         </button>
       )}
     </form>
-  );
-}
-
-function BottomNav({
-  activeView,
-  terminalDisabled,
-  onOpenNewSession,
-  onShowTasks,
-  onShowTerminal,
-}: {
-  activeView: PhoneView;
-  terminalDisabled: boolean;
-  onOpenNewSession: () => void;
-  onShowTasks: () => void;
-  onShowTerminal: () => void;
-}) {
-  return (
-    <nav className="phone-bottom-nav" aria-label="Phone navigation">
-      <button aria-current={activeView === "terminal"} disabled={terminalDisabled} onClick={onShowTerminal} type="button">
-        Terminal
-      </button>
-      <button aria-current={activeView === "tasks"} onClick={onShowTasks} type="button">
-        Tasks
-      </button>
-      <button onClick={onOpenNewSession} type="button">
-        +
-      </button>
-    </nav>
   );
 }
 

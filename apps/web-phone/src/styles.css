@@ -61,7 +61,7 @@ textarea {
 .phone-shell {
   height: 100%;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
   background: var(--bg);
 }
 
@@ -316,24 +316,6 @@ textarea {
   margin: 0;
   color: var(--muted);
   font-size: 13px;
-}
-
-.phone-bottom-nav {
-  display: grid;
-  grid-template-columns: 1fr 1fr 56px;
-  gap: 8px;
-  padding: 8px 12px max(8px, env(safe-area-inset-bottom));
-  border-top: 1px solid var(--line);
-  background: var(--panel);
-}
-
-.phone-bottom-nav button {
-  min-height: 42px;
-}
-
-.phone-bottom-nav button[aria-current="true"] {
-  border-color: var(--accent);
-  color: var(--accent);
 }
 
 .phone-sheet-backdrop {
