@@ -109,6 +109,8 @@ Expanded task cards can also rerun tasks from their stored command and cwd. Lega
 
 The UI is organized around task cards that help operators keep the left-rail task list matched to the center task output and persisted log view. Stable task/session identity is the primary card-level visual layer, while `Needs you` / `Not now` remains visible through sorting, badges, filters, and acknowledgement controls. The right rail launches Codex App Server sessions, and the composer stays attached to the selected task.
 
+A phone/mobile client opened through the host machine's LAN IP is still a local TaskDeck web client. Mobile work should use the existing REST API and WebSocket data flow, but should be structurally separated from the desktop layout surface so desktop-specific components and phone-specific components can evolve independently.
+
 Expanded task cards show command, cwd, process status, exit code, timing, initial instruction when available, and compact diff status. The former top summary strip and right-side task-state panel are intentionally folded into the card model.
 
 The output pane displays human-readable Codex App Server status, assistant text, command output, and request state in a plain scrollable text view. The pane strips legacy ANSI control sequences when replaying older logs. It includes operator controls for output font size, reloading persisted logs, and counting simple search matches.

@@ -10,7 +10,7 @@ TaskDeck is a local supervision UI for running and monitoring AI agent tasks. On
 - Codex CLI available in the same environment that runs the TaskDeck server
 - A local workspace where agent commands may safely read, edit, and run files
 
-TaskDeck is intended for local use. Do not expose the server to a LAN or the internet without separate authentication, network controls, and operational protection.
+TaskDeck is intended for local use. In constrained setups, the same local web client may be opened from another device through the host machine's LAN IP; the operator owns the trusted network boundary, host binding, firewall, and other deployment controls. TaskDeck is not designed as a public internet service.
 
 Verify the Node/npm toolchain from a normal host terminal before installing dependencies:
 

@@ -10,6 +10,10 @@ TaskDeck is a multi-agent supervision UI. It is not a generic terminal wrapper, 
 
 Keep the interface task-centric and centered on state, risk, diffs, review, and supervision. Codex App Server events are the control signal on the App Server-first route.
 
+TaskDeck remains a same-machine local application even when its web client is opened from a phone or another device through the host machine's LAN IP. Treat that phone/mobile client as another local UI surface over the existing TaskDeck API and WebSocket, not as a new remote-control protocol, cloud relay, or Decision Gateway substitute.
+
+For phone/mobile UI work, prefer structural separation from the desktop surface. Shared code should cover TaskDeck state, API access, WebSocket handling, selectors, output replay, composer rules, and reusable low-level controls. Desktop-specific layout components and phone-specific layout components should not import from each other.
+
 ## Supervision Model
 
 Keep supervision buckets simple:

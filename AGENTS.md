@@ -65,6 +65,14 @@ This branch is intentionally App Server-only.
 - Codex App Server native subagents may be materialized as read-only supervision cards. They are App Server thread projections, not TaskDeck-launched sessions, and TaskDeck must not expose controls that imply they can be commanded independently.
 - Docker diagnostics code may still exist for compatibility, tests, or future local overrides. Do not use its presence as evidence that Docker is active product behavior.
 
+## Local Client Network Boundary
+
+TaskDeck's server and web client are still a same-machine local application. A phone or other device opening the same TaskDeck web client through the host machine's LAN IP is an allowed local-client access pattern, not a separate remote-control protocol and not evidence that Decision Gateway, cloud relay, or agent-to-agent communication is involved.
+
+When working on this area, keep network-safety notes factual and scoped. The operator owns the trusted network boundary, host binding, firewall, and other deployment controls. Do not block, redesign, or add authentication/pairing requirements merely because a requested phone surface is reachable from another device on a trusted local network.
+
+Prefer a structurally separate phone/mobile surface that shares TaskDeck state, API, WebSocket, and domain helpers with the desktop client, while avoiding imports from desktop-only layout components. Desktop and phone UI expansion should not require routine cross-surface layout consideration.
+
 ## Actor Model
 
 The previous AI-agent actor and role definitions have been removed pending redesign. Do not infer durable actor responsibilities, manager authority, worker authority, parent/sub-session behavior, or agent-to-agent communication rules from deleted role docs, historical prompts, or older issue notes.

@@ -2,7 +2,7 @@
 
 Status: current local API reference.
 
-TaskDeck exposes a local REST API for the web UI and related operator actions. The API is intended for local use with the TaskDeck server, not as a public network service.
+TaskDeck exposes a local REST API for the web UI and related operator actions. The API is intended for local use with the TaskDeck server, including constrained setups where the same local web client is opened from another device through the host machine's LAN IP. It is not designed as a public internet service.
 
 This document describes routes that exist in the current app. Compatibility fields, optional diagnostics, and locally overridden profiles are not necessarily committed product routes on this branch. The committed task launch route is Codex App Server.
 
