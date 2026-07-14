@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CreateTaskInput, OutputEvent, Task, TaskDeckContext } from "@taskdeck/web-shared";
 import {
   appendOutputEventToQueue,
@@ -28,6 +28,20 @@ type TaskFilter = "needs_you" | "running" | "all";
 type PhoneTurnOptions = {
   agentModel?: string;
   agentReasoningEffort?: string;
+};
+type SelectedImageAttachment = {
+  id: string;
+  file: File;
+};
+type PendingTaskAttachment = {
+  id: string;
+  type: "image";
+  filename: string;
+  path: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
+  pending?: boolean;
 };
 type CodexReasoningEffortOption = {
   reasoningEffort: string;
@@ -556,9 +570,13 @@ function PhoneComposer({
   onStopTurn: (taskId: string) => boolean;
 }) {
   const [value, setValue] = useState("");
+  const [selectedImages, setSelectedImages] = useState<SelectedImageAttachment[]>([]);
+  const [attachmentError, setAttachmentError] = useState("");
+  const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const [selectedModel, setSelectedModel] = useState("");
   const [selectedReasoningEffort, setSelectedReasoningEffort] = useState("");
   const [isStopRequested, setIsStopRequested] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const isCodexAppServerTask = task?.agentProfileId === codexAppServerProfileId;
   const isCodexAppServerTurnActive = Boolean(isCodexAppServerTask && task?.codexAppServerTurnActive);
   const isReadOnlyProjection = Boolean(task && isNativeSubagentTask(task));
@@ -570,7 +588,8 @@ function PhoneComposer({
       !task.inputLockedAt &&
       !isCodexAppServerTurnActive,
   );
-  const canSubmit = canSend && Boolean(value.trim());
+  const hasComposerContent = Boolean(value || selectedImages.length);
+  const canSubmit = canSend && hasComposerContent && !isUploadingAttachments;
   const canStop = Boolean(
     task &&
       connectionState === "connected" &&
@@ -583,7 +602,7 @@ function PhoneComposer({
   const inputState = getComposerInputState({
     task,
     isConnected: connectionState === "connected",
-    isUploadingAttachments: false,
+    isUploadingAttachments,
     isCodexAppServerTurnActive,
   });
   const placeholder = getComposerInputPlaceholder({
@@ -649,20 +668,79 @@ function PhoneComposer({
     setSelectedReasoningEffort(nextModel?.defaultReasoningEffort || "");
   };
 
-  const submit = (event: FormEvent) => {
+  const handleImageSelection = (event: ChangeEvent<HTMLInputElement>) => {
+    if (!canSend) {
+      event.target.value = "";
+      return;
+    }
+
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+
+    const supportedImages = files.filter((file) => isSupportedImage(file));
+    if (supportedImages.length !== files.length) {
+      setAttachmentError("PNG, JPEG, or WebP images only.");
+    } else {
+      setAttachmentError("");
+    }
+
+    setSelectedImages((current) => [
+      ...current,
+      ...supportedImages.map((file) => ({
+        id: crypto.randomUUID(),
+        file,
+      })),
+    ]);
+  };
+
+  const removeSelectedImage = (imageId: string) => {
+    setSelectedImages((current) => current.filter((image) => image.id !== imageId));
+  };
+
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!task || !canSubmit) return;
-    const didSend = onSendInput(task.id, normalizeInput(value), {
-      agentModel: selectedModel,
-      agentReasoningEffort: selectedReasoningEffort,
-    });
-    if (didSend) {
-      setValue("");
+    try {
+      setIsUploadingAttachments(true);
+      setAttachmentError("");
+      const uploadedAttachments = await uploadSelectedImages(selectedImages);
+      const didSend = onSendInput(task.id, normalizeInput(appendAttachmentContext(value, uploadedAttachments)), {
+        agentModel: selectedModel,
+        agentReasoningEffort: selectedReasoningEffort,
+      });
+      if (didSend) {
+        setValue("");
+        setSelectedImages([]);
+      }
+    } catch (error) {
+      setAttachmentError(error instanceof Error ? error.message : "Unable to attach images.");
+    } finally {
+      setIsUploadingAttachments(false);
     }
   };
 
   return (
     <form className="phone-composer" data-input-state={inputState} onSubmit={submit}>
+      {selectedImages.length > 0 ? (
+        <div className="phone-attachment-chip-list" aria-label="Selected image attachments">
+          {selectedImages.map((image) => (
+            <span className="phone-attachment-chip" key={image.id}>
+              <span>{image.file.name}</span>
+              <button
+                aria-label={`Remove ${image.file.name}`}
+                onClick={() => removeSelectedImage(image.id)}
+                title="Remove attachment"
+                type="button"
+              >
+                <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+                  <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
+                </svg>
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {attachmentError ? <small className="phone-attachment-error">{attachmentError}</small> : null}
       <div className="phone-composer-inner">
         <textarea
           disabled={!task}
@@ -672,6 +750,28 @@ function PhoneComposer({
           value={value}
         />
         <div className="phone-composer-footer">
+          <div className="phone-composer-footer-start">
+            <button
+              aria-label="Attach image"
+              className="phone-composer-attach"
+              disabled={!canSend || isUploadingAttachments}
+              onClick={() => imageInputRef.current?.click()}
+              title="Attach image"
+              type="button"
+            >
+              <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+                <path d="M8 3v10M3 8h10" />
+              </svg>
+            </button>
+            <input
+              ref={imageInputRef}
+              accept="image/png,image/jpeg,image/webp"
+              className="visually-hidden"
+              multiple
+              onChange={handleImageSelection}
+              type="file"
+            />
+          </div>
           <div className="phone-composer-footer-end">
             {isCodexAppServerTask ? (
               <>
@@ -913,6 +1013,69 @@ function formatReasoningEffort(effort: string) {
   if (effort === "high") return "High";
   if (effort === "xhigh") return "Extra high";
   return effort;
+}
+
+async function uploadSelectedImages(images: SelectedImageAttachment[]) {
+  const uploadedAttachments: PendingTaskAttachment[] = [];
+
+  for (const image of images) {
+    const response = await fetch("/api/attachments", {
+      method: "POST",
+      headers: {
+        "Content-Type": image.file.type,
+        "X-TaskDeck-Filename": encodeURIComponent(image.file.name),
+      },
+      body: image.file,
+    });
+    const payload = await readJsonResponse<{ attachment?: PendingTaskAttachment; error?: string }>(response);
+    if (!response.ok) {
+      throw new Error(payload?.error || formatUploadFailure(response));
+    }
+    if (!payload) {
+      throw new Error("TaskDeck server returned an empty response.");
+    }
+    if (!payload.attachment) {
+      throw new Error(payload.error || "Unable to upload image.");
+    }
+    uploadedAttachments.push(payload.attachment);
+  }
+
+  return uploadedAttachments;
+}
+
+async function readJsonResponse<T>(response: Response): Promise<T | null> {
+  const text = await response.text();
+  if (!text.trim()) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`TaskDeck server returned a non-JSON response (${response.status} ${response.statusText}).`);
+  }
+}
+
+function formatUploadFailure(response: Response) {
+  const statusText = response.statusText || "Upload failed";
+  return `Attachment upload failed: ${response.status} ${statusText}.`;
+}
+
+function isSupportedImage(file: File) {
+  return ["image/png", "image/jpeg", "image/webp"].includes(file.type);
+}
+
+function appendAttachmentContext(input: string, attachments: PendingTaskAttachment[]) {
+  if (!attachments.length) {
+    return input;
+  }
+
+  const attachmentBlock = [
+    "Attached images:",
+    ...attachments.map((attachment) => `- ${attachment.path}`),
+  ].join("\n");
+  const instruction = input.trim();
+  return instruction ? `${instruction}\n\n${attachmentBlock}` : attachmentBlock;
 }
 
 function positiveInteger(value: unknown) {

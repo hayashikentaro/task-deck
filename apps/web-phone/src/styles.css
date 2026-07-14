@@ -374,22 +374,97 @@ textarea {
   background: color-mix(in srgb, #0d0e0c 45%, #2d2d2d);
 }
 
-.phone-composer-footer {
-  min-width: 0;
-  min-height: 42px;
-  display: flex;
-  align-items: end;
-  justify-content: flex-end;
-  padding: 4px 6px 6px;
-}
-
-.phone-composer-footer-end {
+.phone-attachment-chip-list {
   min-width: 0;
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  gap: 6px;
+  padding-right: 44px;
+}
+
+.phone-attachment-chip {
+  min-width: 0;
+  max-width: 100%;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-raised);
+  padding: 4px 6px 4px 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.phone-attachment-chip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phone-attachment-chip button {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.phone-attachment-error {
+  display: block;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.phone-composer-footer {
+  min-width: 0;
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 8px;
+  align-items: end;
+  padding: 4px 6px 6px;
+}
+
+.phone-composer-footer-start,
+.phone-composer-footer-end {
+  min-width: 0;
+  display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.phone-composer-footer-end {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.phone-composer-attach,
+.phone-composer-primary {
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  flex: 0 0 34px;
+  padding: 0;
+}
+
+.phone-composer-attach {
+  display: grid;
+  place-items: center;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.phone-composer-attach:hover:not(:disabled) {
+  border-color: var(--line);
+  background: var(--panel-raised);
+  color: var(--text);
 }
 
 .phone-composer-option-control {
@@ -425,13 +500,8 @@ textarea {
 }
 
 .phone-composer-primary {
-  width: 34px;
-  height: 34px;
-  min-height: 34px;
-  flex: 0 0 34px;
   display: grid;
   place-items: center;
-  padding: 0;
   border-color: var(--text);
   border-radius: 999px;
   background: var(--text);
@@ -461,6 +531,7 @@ textarea {
   opacity: 0.72;
 }
 
+.phone-composer-attach svg,
 .phone-composer-primary svg {
   width: 16px;
   height: 16px;
@@ -469,6 +540,16 @@ textarea {
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 1.8;
+}
+
+.phone-attachment-chip button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
 }
 
 .phone-composer-primary svg rect {
