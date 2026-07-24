@@ -1,6 +1,6 @@
 {
   "projectRoot": "/path/to/your/projects",
-  "defaultModel": "gpt-5.5",
+  "defaultModel": "gpt-5.6",
   "codexAppServer": {
     "loginMethod": "deviceCode"
   }
