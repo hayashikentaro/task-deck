@@ -69,7 +69,7 @@ Then edit `taskdeck.local.json`:
 ```json
 {
   "projectRoot": "/Users/you/Projects",
-  "defaultModel": "gpt-5.5",
+  "defaultModel": "gpt-5.6",
   "codexAppServer": {
     "loginMethod": "deviceCode"
   }
