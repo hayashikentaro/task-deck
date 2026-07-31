@@ -1530,9 +1530,8 @@ dd {
   height: 48px;
   transform: translateX(-50%);
   border: 0;
-  background: color-mix(in srgb, var(--panel-soft) 68%, transparent);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 38%);
-  backdrop-filter: blur(6px);
+  background: color-mix(in srgb, var(--panel-soft) 28%, transparent);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 18%);
 }
 
 .output-scroll-latest-button svg {
