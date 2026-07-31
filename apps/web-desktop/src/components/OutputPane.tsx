@@ -67,6 +67,7 @@ export function OutputPane({
   const [rawLog, setRawLog] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [outputFontSize, setOutputFontSize] = useState(readStoredOutputFontSize);
+  const [isOutputAtBottom, setIsOutputAtBottom] = useState(true);
 
   const taskId = task?.id ?? null;
   const outputText = useMemo(() => stripAnsiControlSequences(rawLog), [rawLog]);
@@ -90,6 +91,7 @@ export function OutputPane({
 
   useEffect(() => {
     shouldStickToOutputBottomRef.current = true;
+    setIsOutputAtBottom(true);
   }, [taskId]);
 
   useEffect(() => {
@@ -112,6 +114,7 @@ export function OutputPane({
       viewport.scrollTop = viewport.scrollHeight;
     }
     shouldStickToOutputBottomRef.current = true;
+    setIsOutputAtBottom(true);
   }, []);
 
   const scrollOutputToBottomAfterLayout = useCallback(() => {
@@ -239,7 +242,9 @@ export function OutputPane({
   };
 
   const updateOutputBottomStickiness = () => {
-    shouldStickToOutputBottomRef.current = isOutputViewportNearBottom();
+    const isNearBottom = isOutputViewportNearBottom();
+    shouldStickToOutputBottomRef.current = isNearBottom;
+    setIsOutputAtBottom(isNearBottom);
   };
 
   return (
@@ -292,19 +297,20 @@ export function OutputPane({
             ))}
           </pre>
         </div>
-        <IconButton
-          className="output-scroll-latest-button"
-          label="Scroll to latest output"
-          disabled={!task}
-          size="md"
-          variant="panel"
-          onClick={scrollOutputToBottom}
-          title="Scroll to latest output"
-        >
-          <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
-            <path d="M8 2.5v8M4.75 7.5 8 10.75l3.25-3.25M3 13.5h10" />
-          </svg>
-        </IconButton>
+        {task && !isOutputAtBottom ? (
+          <IconButton
+            className="output-scroll-latest-button"
+            label="Scroll to latest output"
+            size="md"
+            variant="panel"
+            onClick={scrollOutputToBottom}
+            title="Scroll to latest output"
+          >
+            <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+              <path d="M8 2.5v8M4.75 7.5 8 10.75l3.25-3.25M3 13.5h10" />
+            </svg>
+          </IconButton>
+        ) : null}
       </div>
       <InputComposer
         key={task?.id ?? "no-task"}
