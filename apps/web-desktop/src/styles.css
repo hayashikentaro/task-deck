@@ -1537,6 +1537,13 @@ dd {
 .output-scroll-latest-button svg {
   width: 24px;
   height: 24px;
+  opacity: 0.42;
+  transition: opacity 120ms ease;
+}
+
+.output-scroll-latest-button:hover:not(:disabled) svg,
+.output-scroll-latest-button:focus-visible svg {
+  opacity: 1;
 }
 
 .output-surface a,
