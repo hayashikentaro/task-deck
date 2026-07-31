@@ -1502,7 +1502,7 @@ dd {
   min-width: 100%;
   min-height: 100%;
   margin: 0;
-  padding: 0 44px 44px 0;
+  padding: 0 0 44px;
   color: var(--text-secondary);
   font-family:
     "SFMono-Regular",
@@ -1523,10 +1523,14 @@ dd {
 
 .output-scroll-latest-button {
   position: absolute;
-  right: 18px;
+  left: 50%;
   bottom: 18px;
   z-index: 2;
+  transform: translateX(-50%);
+  border-color: color-mix(in srgb, var(--line-strong) 55%, transparent);
+  background: color-mix(in srgb, var(--panel-soft) 68%, transparent);
   box-shadow: 0 8px 24px rgb(0 0 0 / 38%);
+  backdrop-filter: blur(6px);
 }
 
 .output-surface a,
