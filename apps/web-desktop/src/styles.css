@@ -1519,14 +1519,83 @@ dd {
   word-break: normal;
 }
 
-.output-surface a {
+.output-surface a,
+.output-local-path-link {
   color: var(--status-focus);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
-.output-surface a:hover {
+.output-local-path-link {
+  display: inline;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
+.output-surface a:hover,
+.output-local-path-link:hover,
+.output-local-path-link:focus-visible {
   color: var(--text);
+}
+
+.output-local-path-preview {
+  position: fixed;
+  z-index: 80;
+  width: min(320px, calc(100vw - 24px));
+  max-height: 220px;
+  display: grid;
+  gap: 6px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  padding: 10px;
+  color: var(--text-secondary);
+  box-shadow: 0 18px 60px rgb(0 0 0 / 42%);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.output-local-path-preview strong,
+.output-local-path-preview span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.output-local-path-preview strong {
+  color: var(--text);
+}
+
+.output-local-path-preview span {
+  color: var(--status-muted);
+  font-size: 11px;
+}
+
+.output-local-path-preview img {
+  max-width: 100%;
+  max-height: 150px;
+  justify-self: center;
+  object-fit: contain;
+}
+
+.output-local-path-preview pre,
+.output-local-path-preview ul {
+  min-width: 0;
+  max-height: 140px;
+  margin: 0;
+  overflow: auto;
+  white-space: pre;
+}
+
+.output-local-path-preview ul {
+  padding-left: 18px;
 }
 
 .output-surface [data-output-tone="assistant"] {

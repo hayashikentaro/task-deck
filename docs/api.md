@@ -13,6 +13,8 @@ GET /api/context
 GET /api/diagnostics
 POST /api/diagnostics/containers/:containerName/start
 POST /api/validate-cwd
+GET /api/local-paths/preview?path=...
+POST /api/local-paths/open
 POST /api/attachments
 POST /api/decision-gateway/pairing-requests
 GET /api/decision-gateway/mailbox/local
@@ -52,6 +54,18 @@ DELETE /api/presets
 ```
 
 It returns whether the cwd resolves to an existing directory, its absolute path, and git-repository status. The task form uses it to validate cwd before starting a task.
+
+## Desktop Output Links
+
+`GET /api/local-paths/preview?path=...` resolves a `file://` URL, absolute path, or `~/` path on the TaskDeck server machine and returns a bounded preview. Directories return at most eight entries, supported text files return at most the first eight lines from a 64 KB read, and GIF, JPEG, PNG, or WebP images return base64 data when no larger than 5 MB. Other files return metadata only.
+
+`POST /api/local-paths/open` accepts:
+
+```json
+{ "path": "/Users/you/Projects/example/README.md" }
+```
+
+It resolves the path and opens it with the TaskDeck server machine's operating-system handler. Both routes canonicalize the requested path and reject paths outside the server user's home directory, including symlinks that resolve outside it. These routes support desktop task-output links; the phone client does not expose local-path actions. Web URLs and ChatGPT login URLs continue to open directly in the desktop browser and are not sent to these routes.
 
 ## Attachments
 

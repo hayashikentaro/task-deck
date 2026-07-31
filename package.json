@@ -28,7 +28,7 @@
     "dev:phone": "npm --workspace @taskdeck/web-phone run dev",
     "build": "npm --workspace @taskdeck/web-desktop run build && npm --workspace @taskdeck/web-phone run build",
     "start": "npm --workspace @taskdeck/server run start",
-    "test": "npm --workspace @taskdeck/web-desktop run test",
+    "test": "npm --workspace @taskdeck/server run test && npm --workspace @taskdeck/web-desktop run test",
     "verify:server-startup": "node scripts/verify-server-startup.mjs",
     "verify:change": "npm run build && npm run verify:server-startup"
   }

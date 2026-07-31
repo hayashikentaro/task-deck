@@ -5,6 +5,8 @@ import type { CodexModel, OutputEvent, Task } from "../types";
 import { IconButton } from "./ui/IconButton";
 import type { SelectedImageAttachment } from "./InputComposer";
 import { drainOutputEventsForTask, maxOutputQueueSeq } from "../outputReplay";
+import { parseOutputLinks } from "../outputLinks";
+import { LocalPathLink } from "./LocalPathLink";
 
 type OutputPaneProps = {
   codexModels: CodexModel[];
@@ -26,8 +28,6 @@ const outputFontSizeStorageKey = "taskdeck.outputFontSize";
 const outputDefaultFontSize = 16;
 const outputFontSizes = [11, 12, 13, 14, 15, 16, 18];
 const outputBottomScrollTolerancePx = 16;
-const outputUrlPattern = /https?:\/\/[^\s<>"'`]+/g;
-
 type OutputSegmentTone =
   | "assistant"
   | "user"
@@ -287,7 +287,7 @@ export function OutputPane({
           <pre className="output-surface" style={{ fontSize: outputFontSize }}>
             {outputSegments.map((segment, index) => (
               <span key={index} data-output-tone={segment.tone}>
-                {renderOutputTextWithLinks(segment.text)}
+                {renderOutputTextWithLinks(segment.text, updateOutputMessage)}
               </span>
             ))}
           </pre>
@@ -308,39 +308,27 @@ export function OutputPane({
   );
 }
 
-function renderOutputTextWithLinks(text: string) {
-  const parts: Array<string | JSX.Element> = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  outputUrlPattern.lastIndex = 0;
-  while ((match = outputUrlPattern.exec(text))) {
-    const [rawUrl] = match;
-    const url = trimTrailingUrlPunctuation(rawUrl);
-    const startIndex = match.index;
-    const endIndex = startIndex + url.length;
-    if (startIndex > lastIndex) {
-      parts.push(text.slice(lastIndex, startIndex));
+function renderOutputTextWithLinks(text: string, onLocalPathError: (message: string) => void) {
+  return parseOutputLinks(text).map((part, index) => {
+    if (part.kind === "web") {
+      return (
+        <a href={part.url} key={`${index}-${part.url}`} rel="noreferrer" target="_blank">
+          {part.text}
+        </a>
+      );
     }
-    parts.push(
-      <a href={url} key={`${startIndex}-${url}`} rel="noreferrer" target="_blank">
-        {url}
-      </a>,
-    );
-    lastIndex = endIndex;
-  }
-
-  if (lastIndex === 0) {
-    return text;
-  }
-  if (lastIndex < text.length) {
-    parts.push(text.slice(lastIndex));
-  }
-  return parts;
-}
-
-function trimTrailingUrlPunctuation(value: string) {
-  return value.replace(/[),.;:!?]+$/g, "");
+    if (part.kind === "local-path") {
+      return (
+        <LocalPathLink
+          key={`${index}-${part.path}`}
+          path={part.path}
+          text={part.text}
+          onError={onLocalPathError}
+        />
+      );
+    }
+    return part.text;
+  });
 }
 
 function countMatches(value: string, searchTerm: string) {

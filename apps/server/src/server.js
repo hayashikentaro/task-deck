@@ -9,6 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { WebSocketServer } from "ws";
+import { LocalPathError, buildLocalPathPreview, openLocalPath } from "./localPaths.js";
 import {
   AgentState,
   AgentStateConfidence,
@@ -285,6 +286,15 @@ function createProcessEnvForChild() {
   return env;
 }
 
+function respondWithLocalPathError(response, error, fallbackMessage) {
+  if (error instanceof LocalPathError) {
+    response.status(error.status).json({ error: error.message });
+    return;
+  }
+  console.error(`${fallbackMessage} ${error?.message || error}`);
+  response.status(500).json({ error: fallbackMessage });
+}
+
 app.get("/api/context", async (_request, response) => {
   const projectRoots = await buildProjectRoots();
   const projectSuggestions = await buildProjectSuggestions(projectRoots);
@@ -329,6 +339,23 @@ app.post("/api/diagnostics/containers/:containerName/start", async (request, res
 
 app.post("/api/validate-cwd", async (request, response) => {
   response.json(await validateCwd(String(request.body?.cwd || "")));
+});
+
+app.get("/api/local-paths/preview", async (request, response) => {
+  try {
+    response.json(await buildLocalPathPreview(String(request.query?.path || "")));
+  } catch (error) {
+    respondWithLocalPathError(response, error, "Unable to preview local path.");
+  }
+});
+
+app.post("/api/local-paths/open", async (request, response) => {
+  try {
+    await openLocalPath(String(request.body?.path || ""));
+    response.json({ ok: true });
+  } catch (error) {
+    respondWithLocalPathError(response, error, "Unable to open local path.");
+  }
 });
 
 app.post("/api/attachments", express.raw({ type: Array.from(imageAttachmentMimeTypes), limit: "12mb" }), async (request, response) => {
