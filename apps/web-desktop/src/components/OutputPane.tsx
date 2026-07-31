@@ -274,6 +274,18 @@ export function OutputPane({
               {searchMatchCount} match{searchMatchCount === 1 ? "" : "es"}
             </span>
           ) : null}
+          <IconButton
+            label="Scroll to latest output"
+            disabled={!task}
+            size="sm"
+            variant="ghost"
+            onClick={scrollOutputToBottom}
+            title="Scroll to latest output"
+          >
+            <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+              <path d="M8 2.5v8M4.75 7.5 8 10.75l3.25-3.25M3 13.5h10" />
+            </svg>
+          </IconButton>
           <IconButton label="Reload output" disabled={!task} size="sm" variant="ghost" onClick={reloadLog} title="Reload output">
             <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
               <path d="M13 8a5 5 0 1 1-1.46-3.54M13 2.5v4h-4" />
