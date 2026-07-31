@@ -1548,7 +1548,7 @@ dd {
 
 .output-scroll-latest-button.td-icon-button:hover:not(:disabled),
 .output-scroll-latest-button.td-icon-button:focus-visible {
-  background: color-mix(in srgb, var(--panel-soft) 46%, transparent);
+  background: color-mix(in srgb, var(--panel-soft) 68%, transparent);
 }
 
 .output-surface a,
