@@ -1502,7 +1502,7 @@ dd {
   min-width: 100%;
   min-height: 100%;
   margin: 0;
-  padding: 0 0 44px;
+  padding: 0 0 72px;
   color: var(--text-secondary);
   font-family:
     "SFMono-Regular",
@@ -1521,16 +1521,23 @@ dd {
   word-break: normal;
 }
 
-.output-scroll-latest-button {
+.output-scroll-latest-button.td-icon-button {
   position: absolute;
   left: 50%;
   bottom: 18px;
   z-index: 2;
+  width: 48px;
+  height: 48px;
   transform: translateX(-50%);
-  border-color: color-mix(in srgb, var(--line-strong) 55%, transparent);
+  border: 0;
   background: color-mix(in srgb, var(--panel-soft) 68%, transparent);
   box-shadow: 0 8px 24px rgb(0 0 0 / 38%);
   backdrop-filter: blur(6px);
+}
+
+.output-scroll-latest-button svg {
+  width: 24px;
+  height: 24px;
 }
 
 .output-surface a,
