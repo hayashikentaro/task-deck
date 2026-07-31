@@ -1543,7 +1543,12 @@ dd {
 
 .output-scroll-latest-button:hover:not(:disabled) svg,
 .output-scroll-latest-button:focus-visible svg {
-  opacity: 1;
+  opacity: 0.8;
+}
+
+.output-scroll-latest-button.td-icon-button:hover:not(:disabled),
+.output-scroll-latest-button.td-icon-button:focus-visible {
+  background: color-mix(in srgb, var(--panel-soft) 46%, transparent);
 }
 
 .output-surface a,
