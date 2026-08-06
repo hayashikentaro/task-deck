@@ -9,6 +9,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { WebSocketServer } from "ws";
+import {
+  AttachmentError,
+  finalizePendingAttachments,
+  maxAttachmentBytes,
+  prepareAttachment,
+} from "./attachments.js";
 import { LocalPathError, buildLocalPathPreview, openLocalPath } from "./localPaths.js";
 import {
   AgentState,
@@ -249,12 +255,6 @@ const maxLogLength = 250_000;
 const childStatusPollIntervalMs = 2000;
 const defaultContainerWorkspaceRoot = "/workspace";
 const protectedContainerCleanupPids = new Set(["1", "7", "8", "130"]);
-const imageAttachmentMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
-const imageAttachmentExtensions = new Map([
-  ["image/png", ".png"],
-  ["image/jpeg", ".jpg"],
-  ["image/webp", ".webp"],
-]);
 const activeCodexRuntimes = new Map();
 const activeCodexThreadSessions = new Map();
 const taskIdByCodexThreadId = new Map();
@@ -278,7 +278,14 @@ let taskdeckInstanceIdPromise = null;
 
 const managerActionTypes = new Set(["ack", "review", "close"]);
 
-app.use(express.json());
+const jsonBodyParser = express.json();
+app.use((request, response, next) => {
+  if (request.method === "POST" && request.path === "/api/attachments") {
+    next();
+    return;
+  }
+  jsonBodyParser(request, response, next);
+});
 
 function createProcessEnvForChild() {
   const env = { ...process.env };
@@ -358,44 +365,39 @@ app.post("/api/local-paths/open", async (request, response) => {
   }
 });
 
-app.post("/api/attachments", express.raw({ type: Array.from(imageAttachmentMimeTypes), limit: "12mb" }), async (request, response) => {
+app.post("/api/attachments", express.raw({ type: () => true, limit: maxAttachmentBytes }), async (request, response) => {
   try {
-    const mimeType = normalizeImageMimeType(request.headers["content-type"]);
-    if (!mimeType) {
-      response.status(415).json({ error: "Unsupported image type." });
-      return;
-    }
-
-    if (!Buffer.isBuffer(request.body) || request.body.length === 0) {
-      response.status(400).json({ error: "Attachment body is required." });
-      return;
-    }
-
+    const prepared = await prepareAttachment({
+      buffer: request.body,
+      filename: decodeHeaderValue(request.headers["x-taskdeck-filename"]) || "attachment",
+    });
     const id = randomUUID();
-    const filename = sanitizeAttachmentFilename(decodeHeaderValue(request.headers["x-taskdeck-filename"]) || "image", mimeType);
-    const extension = imageAttachmentExtensions.get(mimeType) || path.extname(filename) || ".img";
-    const storedFilename = `${id}${extension}`;
+    const storedFilename = `${id}${prepared.extension}`;
     const createdAt = new Date().toISOString();
     const filePath = path.join(pendingAttachmentRoot, storedFilename);
     const metadataPath = path.join(pendingAttachmentRoot, `${id}.json`);
 
     await fs.mkdir(pendingAttachmentRoot, { recursive: true });
-    await fs.writeFile(filePath, request.body);
+    await fs.writeFile(filePath, prepared.buffer);
     const attachment = {
       id,
-      type: "image",
-      filename,
+      type: prepared.type,
+      filename: prepared.filename,
       path: filePath,
-      mimeType,
-      size: request.body.length,
+      mimeType: prepared.mimeType,
+      size: prepared.buffer.length,
       createdAt,
     };
     await fs.writeFile(metadataPath, `${JSON.stringify({ ...attachment, storedFilename }, null, 2)}\n`);
 
     response.json({ attachment: { ...attachment, pending: true } });
   } catch (error) {
+    if (error instanceof AttachmentError) {
+      response.status(error.statusCode).json({ error: error.message });
+      return;
+    }
     console.error(`TaskDeck attachment upload failed: ${error.message}`);
-    response.status(500).json({ error: "Unable to upload image." });
+    response.status(500).json({ error: "Unable to upload attachment." });
   }
 });
 
@@ -983,17 +985,7 @@ wss.on("connection", (socket) => {
     }
 
     if (message.type === "input") {
-      const taskId = String(message.taskId || "").trim();
-      const inputResult = sendTaskInput(taskId, message.data, message.source || "client", {
-        agentModel: String(message.agentModel || "").trim(),
-        agentReasoningEffort: String(message.agentReasoningEffort || "").trim(),
-      });
-      if (!inputResult.ok) {
-        sendInputRejected(socket, taskId, inputResult);
-        if (inputDebugEnabled) {
-          console.log(`[TaskDeck input] ignored task=${taskId || "-"} reason=${inputResult.reason}`);
-        }
-      }
+      handleTaskInputMessage(message, socket);
       return;
     }
 
@@ -1162,7 +1154,13 @@ async function startTaskNow({
     ...explicitAgentSession,
   });
   const childStatusFile = await ensureChildStatusFilePath(baseTask);
-  const finalizedAttachments = await finalizePendingAttachments(attachments, baseTask.id);
+  const finalizedAttachments = await finalizePendingAttachments({
+    pendingRoot: pendingAttachmentRoot,
+    attachmentRoot,
+    pendingAttachments: attachments,
+    taskId: baseTask.id,
+    onError: (id, error) => console.warn(`TaskDeck could not finalize pending attachment ${id}: ${error.message}`),
+  });
 
   const task = markTaskRunning({
     ...baseTask,
@@ -1294,6 +1292,53 @@ function sendTaskInput(taskId, data, source = "client", turnSelection = {}) {
     return sendTaskInputToCodexAppServer(normalizedTaskId, data, source, turnSelection);
   }
   return { ok: false, reason: "no-active-app-server-or-invalid-data" };
+}
+
+async function handleTaskInputMessage(message, socket) {
+  const taskId = String(message.taskId || "").trim();
+  const pendingAttachments = normalizePendingAttachmentRefs(message.attachments);
+  let finalizedAttachments = [];
+
+  try {
+    if (pendingAttachments.length) {
+      if (!tasks.has(taskId)) {
+        throw new Error("Task is not available for attachment delivery.");
+      }
+      finalizedAttachments = await finalizePendingAttachments({
+        pendingRoot: pendingAttachmentRoot,
+        attachmentRoot,
+        pendingAttachments,
+        taskId,
+        onError: (id, error) => console.warn(`TaskDeck could not finalize pending attachment ${id}: ${error.message}`),
+      });
+      if (finalizedAttachments.length !== pendingAttachments.length) {
+        throw new Error("One or more attachments could not be finalized.");
+      }
+      const task = tasks.get(taskId);
+      setTask({
+        ...task,
+        attachments: [...normalizeTaskAttachmentsForServer(task.attachments), ...finalizedAttachments],
+        updatedAt: new Date().toISOString(),
+      });
+      broadcastTasks();
+    }
+
+    const inputResult = sendTaskInput(taskId, message.data, message.source || "client", {
+      agentModel: String(message.agentModel || "").trim(),
+      agentReasoningEffort: String(message.agentReasoningEffort || "").trim(),
+      attachments: finalizedAttachments,
+    });
+    if (!inputResult.ok) {
+      sendInputRejected(socket, taskId, inputResult);
+      if (inputDebugEnabled) {
+        console.log(`[TaskDeck input] ignored task=${taskId || "-"} reason=${inputResult.reason}`);
+      }
+    }
+  } catch (error) {
+    sendInputRejected(socket, taskId, codexAppServerInputRejected(CodexAppServerInputRejectReason.INVALID_INPUT, {
+      message: `Attachment delivery failed: ${error.message}`,
+    }));
+  }
 }
 
 async function startCodexAppServerThreadSession({ task, launchCommand, socket }) {
@@ -1618,7 +1663,8 @@ function sendTaskInputToCodexAppServer(taskId, data, source = "client", turnSele
   }
 
   const text = normalizeCodexAppServerInput(data);
-  if (!text) {
+  const attachments = normalizeTaskAttachmentsForServer(turnSelection.attachments);
+  if (!text && !attachments.length) {
     return codexAppServerInputRejected(CodexAppServerInputRejectReason.EMPTY_INPUT);
   }
   if (activeRuntime.authFailureDetected) {
@@ -1641,7 +1687,7 @@ function sendTaskInputToCodexAppServer(taskId, data, source = "client", turnSele
     attentionSource: AgentStateSource.TASKDECK_EVENT,
     attentionConfidence: AgentStateConfidence.HIGH,
   });
-  appendCodexAppServerUserInput(activeAppServer, text);
+  appendCodexAppServerUserInput(activeAppServer, formatAttachedUserInput(text, attachments));
 
   if (!activeAppServer.threadId) {
     activeAppServer.pendingInputs.push(turnInput);
@@ -1842,6 +1888,7 @@ function normalizeCodexAppServerInput(data) {
 function buildCodexTurnInput(task, text, turnSelection = {}) {
   return {
     text,
+    attachments: normalizeTaskAttachmentsForServer(turnSelection.attachments),
     model: String(turnSelection.agentModel || task?.agentModel || "").trim(),
     effort: String(turnSelection.agentReasoningEffort || task?.agentReasoningEffort || "").trim(),
   };
@@ -2006,6 +2053,7 @@ function sendCodexAppServerTurn(activeAppServer, input) {
     buildCodexAppServerTurnStartParams({
       threadId: activeAppServer.threadId,
       text: turnInput.text,
+      attachments: turnInput.attachments,
       model: turnInput.model,
       effort: turnInput.effort,
     }),
@@ -3393,6 +3441,14 @@ function appendCodexAppServerUserInput(activeAppServer, text, taskId = activeApp
   appendAndBroadcast(taskId, `${prefix}[You]\n${normalizedText}\n`, { role: "user", kind: "user_input" });
 }
 
+function formatAttachedUserInput(text, attachments) {
+  const normalizedText = String(text || "").trim();
+  const attachmentLines = normalizeTaskAttachmentsForServer(attachments).map((attachment) => (
+    `[Attached ${attachment.type}: ${attachment.filename}]`
+  ));
+  return [normalizedText, ...attachmentLines].filter(Boolean).join("\n");
+}
+
 function appendCodexAppServerStatus(activeAppServer, data) {
   appendCodexAppServerStatusForTask(activeAppServer, activeAppServer.taskId, data);
 }
@@ -3766,11 +3822,12 @@ function flushCodexAppServerPendingInputs(activeAppServer) {
   if (codexRuntimeStateForThreadSession(activeAppServer).authFailureDetected) {
     return false;
   }
-  const initialInstruction = String(tasks.get(activeAppServer.taskId)?.initialInstruction || "").trim();
+  const task = tasks.get(activeAppServer.taskId);
+  const initialInstruction = String(task?.initialInstruction || "").trim();
   const pendingInputs = activeAppServer.pendingInputs.splice(0);
   if (initialInstruction) {
     appendCodexAppServerUserInput(activeAppServer, initialInstruction);
-    pendingInputs.unshift(buildCodexTurnInput(tasks.get(activeAppServer.taskId), initialInstruction));
+    pendingInputs.unshift(buildCodexTurnInput(task, initialInstruction));
   }
   if (pendingInputs.length === 0) {
     updateCodexAppServerReady(activeAppServer, "Codex App Server adapter is ready.");
@@ -5809,56 +5866,6 @@ function normalizePendingAttachmentRefs(attachments) {
     .filter((attachment) => attachment.id);
 }
 
-async function finalizePendingAttachments(pendingAttachments, taskId) {
-  const finalizedAttachments = [];
-  if (!pendingAttachments.length) {
-    return finalizedAttachments;
-  }
-
-  const taskAttachmentRoot = path.join(attachmentRoot, taskId);
-  await fs.mkdir(taskAttachmentRoot, { recursive: true });
-
-  for (const pendingAttachment of pendingAttachments) {
-    const id = String(pendingAttachment.id || "").trim();
-    if (!isSafeAttachmentId(id)) {
-      continue;
-    }
-
-    try {
-      const metadataPath = path.join(pendingAttachmentRoot, `${id}.json`);
-      const metadata = JSON.parse(await fs.readFile(metadataPath, "utf8"));
-      const mimeType = normalizeImageMimeType(metadata.mimeType);
-      if (!mimeType || metadata.type !== "image") {
-        continue;
-      }
-
-      const storedFilename = path.basename(String(metadata.storedFilename || ""));
-      const sourcePath = path.join(pendingAttachmentRoot, storedFilename);
-      const filename = sanitizeAttachmentFilename(metadata.filename || "image", mimeType);
-      const extension = imageAttachmentExtensions.get(mimeType) || path.extname(filename) || ".img";
-      const destinationFilename = `${id}${extension}`;
-      const destinationPath = path.join(taskAttachmentRoot, destinationFilename);
-
-      await fs.rename(sourcePath, destinationPath);
-      await fs.rm(metadataPath, { force: true });
-
-      finalizedAttachments.push({
-        id,
-        type: "image",
-        filename,
-        path: destinationPath,
-        mimeType,
-        size: Number.isFinite(Number(metadata.size)) ? Number(metadata.size) : 0,
-        createdAt: String(metadata.createdAt || new Date().toISOString()),
-      });
-    } catch (error) {
-      console.warn(`TaskDeck could not attach pending image ${id}: ${error.message}`);
-    }
-  }
-
-  return finalizedAttachments;
-}
-
 function normalizeTaskAttachmentsForServer(attachments) {
   if (!Array.isArray(attachments)) {
     return [];
@@ -5878,11 +5885,6 @@ function normalizeTaskAttachmentsForServer(attachments) {
     .filter((attachment) => attachment.id && attachment.type && attachment.filename && attachment.path);
 }
 
-function normalizeImageMimeType(value) {
-  const mimeType = String(value || "").split(";")[0].trim().toLowerCase();
-  return imageAttachmentMimeTypes.has(mimeType) ? mimeType : "";
-}
-
 function decodeHeaderValue(value) {
   if (!value) {
     return "";
@@ -5893,22 +5895,6 @@ function decodeHeaderValue(value) {
   } catch {
     return String(value);
   }
-}
-
-function sanitizeAttachmentFilename(filename, mimeType) {
-  const fallbackExtension = imageAttachmentExtensions.get(mimeType) || ".img";
-  const rawBasename = path.basename(String(filename || "image")).trim();
-  const normalizedBasename = rawBasename
-    .replace(/[^\w .()-]/g, "_")
-    .replace(/\s+/g, " ")
-    .slice(0, 120);
-  const extension = imageAttachmentExtensions.get(mimeType) || path.extname(normalizedBasename) || fallbackExtension;
-  const nameWithoutExtension = path.basename(normalizedBasename, path.extname(normalizedBasename)).trim() || "image";
-  return `${nameWithoutExtension}${extension}`;
-}
-
-function isSafeAttachmentId(id) {
-  return /^[0-9a-f-]{36}$/i.test(id);
 }
 
 function normalizeExplicitAgentSession({

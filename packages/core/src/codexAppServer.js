@@ -221,17 +221,38 @@ export function buildCodexAppServerThreadStartParams({
   };
 }
 
-export function buildCodexAppServerTurnStartParams({ threadId, text, model = "", effort = "" }) {
+export function buildCodexAppServerTurnStartParams({ threadId, text, attachments = [], model = "", effort = "" }) {
   const normalizedModel = String(model || "").trim();
   const normalizedEffort = String(effort || "").trim();
+  const normalizedAttachments = Array.isArray(attachments) ? attachments : [];
+  const fileAttachments = normalizedAttachments.filter((attachment) => attachment?.type === "file" && attachment.path);
+  const textWithFileContext = appendFileAttachmentContext(text, fileAttachments);
+  const input = [
+    ...(textWithFileContext ? [{ type: "text", text: textWithFileContext }] : []),
+    ...normalizedAttachments
+      .filter((attachment) => attachment?.type === "image" && attachment.path)
+      .map((attachment) => ({ type: "localImage", path: String(attachment.path) })),
+  ];
   return {
     threadId,
     approvalPolicy: "never",
     sandboxPolicy: { type: "dangerFullAccess" },
-    input: [{ type: "text", text }],
+    input,
     ...(normalizedModel ? { model: normalizedModel } : {}),
     ...(normalizedEffort ? { effort: normalizedEffort } : {}),
   };
+}
+
+function appendFileAttachmentContext(text, attachments) {
+  const normalizedText = String(text || "").trim();
+  if (!attachments.length) {
+    return normalizedText;
+  }
+  const attachmentBlock = [
+    "Attached files:",
+    ...attachments.map((attachment) => `- ${attachment.path}`),
+  ].join("\n");
+  return normalizedText ? `${normalizedText}\n\n${attachmentBlock}` : attachmentBlock;
 }
 
 export function buildCodexAppServerTurnInterruptParams({ threadId, turnId }) {

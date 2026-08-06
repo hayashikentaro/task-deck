@@ -69,7 +69,13 @@ It resolves the path and opens it with the TaskDeck server machine's operating-s
 
 ## Attachments
 
-`POST /api/attachments` accepts raw `image/png`, `image/jpeg`, or `image/webp` bodies with `X-TaskDeck-Filename` and returns a pending image attachment. The task composer uses this for its `+` image button. Uploaded image paths are appended to task input as attachment context.
+`POST /api/attachments` accepts a raw file body of at most 12 MB with the original filename in `X-TaskDeck-Filename`. It returns a pending attachment reference for later delivery to a task input.
+
+Supported image formats are PNG, JPEG, WebP, GIF, HEIC, and HEIF. GIF uploads are reduced to their first frame and converted to PNG; HEIC and HEIF uploads are converted to JPEG. Other supported images retain their native format. The converted output must also remain within 12 MB. The server decodes image data instead of trusting only the filename or request content type.
+
+Supported text and source formats are UTF-8 `txt`, `md`, `markdown`, `log`, `csv`, `tsv`, `json`, `jsonl`, `ndjson`, `yaml`, `yml`, `xml`, `toml`, `ini`, `cfg`, `conf`, `env`, `diff`, `patch`, and the source-code extensions exposed by the desktop and phone file pickers. Supported document formats are PDF, DOCX, XLSX, and PPTX. PDF and Office container signatures are validated before storage.
+
+Composer input messages include the returned attachment ids. The server moves those files from `attachments/pending/` into the selected task's attachment directory and persists their metadata before starting the turn. Image attachments become Codex App Server `localImage` input items. Text, source, PDF, and Office attachments are supplied as explicit local file paths in the text input so Codex can inspect them with local tools.
 
 ## Decision Gateway
 

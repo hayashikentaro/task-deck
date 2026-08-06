@@ -2,11 +2,13 @@ import { ChangeEvent, FormEvent, KeyboardEvent, useEffect, useLayoutEffect, useM
 import { Button } from "./ui/Button";
 import type { CodexModel, PendingTaskAttachment, Task } from "../types";
 import {
+  attachmentValidationError,
   getComposerInputPlaceholder,
   getComposerInputState,
   getComposerMode,
   isNativeSubagentTask,
   normalizeComposerInput,
+  supportedAttachmentAccept,
 } from "@taskdeck/web-shared";
 
 export { getComposerInputPlaceholder, getComposerInputState, getComposerMode } from "@taskdeck/web-shared";
@@ -14,17 +16,17 @@ export { getComposerInputPlaceholder, getComposerInputState, getComposerMode } f
 type InputComposerProps = {
   codexModels: CodexModel[];
   isConnected: boolean;
-  selectedImages: SelectedImageAttachment[];
+  selectedAttachments: SelectedAttachment[];
   task: Task | null;
   value: string;
-  onSelectedImagesChange: (images: SelectedImageAttachment[]) => void;
+  onSelectedAttachmentsChange: (attachments: SelectedAttachment[]) => void;
   onValueChange: (value: string) => void;
   send: (payload: unknown) => boolean;
 };
 
 const maxComposerHeight = 140;
 const fallbackReasoningEfforts = ["minimal", "low", "medium", "high", "xhigh"];
-export type SelectedImageAttachment = {
+export type SelectedAttachment = {
   id: string;
   file: File;
 };
@@ -32,10 +34,10 @@ export type SelectedImageAttachment = {
 export function InputComposer({
   codexModels,
   isConnected,
-  selectedImages,
+  selectedAttachments,
   task,
   value,
-  onSelectedImagesChange,
+  onSelectedAttachmentsChange,
   onValueChange,
   send,
 }: InputComposerProps) {
@@ -46,7 +48,7 @@ export function InputComposer({
   const [selectedReasoningEffort, setSelectedReasoningEffort] = useState("");
   const [isStopRequested, setIsStopRequested] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const isInputLocked = Boolean(task?.inputLockedAt);
   const isReadOnlyProjection = Boolean(task && isNativeSubagentTask(task));
   const isCodexAppServerTask = task?.agentProfileId === "codex-app-server";
@@ -57,7 +59,7 @@ export function InputComposer({
     canInteractWithRunningTask && !isReadOnlyProjection && isCodexAppServerTurnActive && !isStopRequested,
   );
   const canSend = canInteractWithRunningTask && !isReadOnlyProjection && !isInputLocked && !isCodexAppServerTurnActive;
-  const hasComposerContent = Boolean(value || selectedImages.length);
+  const hasComposerContent = Boolean(value || selectedAttachments.length);
   const canSubmit = canSend && hasComposerContent && !isUploadingAttachments;
   const canResolveCodexAppServerRequest = Boolean(canInteractWithRunningTask && !isReadOnlyProjection && codexAppServerRequest);
   const actionLabel = isCodexAppServerTurnActive
@@ -145,7 +147,7 @@ export function InputComposer({
     sendValue();
   };
 
-  const handleImageSelection = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleAttachmentSelection = (event: ChangeEvent<HTMLInputElement>) => {
     if (!canSend) {
       event.target.value = "";
       return;
@@ -154,24 +156,21 @@ export function InputComposer({
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
 
-    const supportedImages = files.filter((file) => isSupportedImage(file));
-    if (supportedImages.length !== files.length) {
-      setAttachmentError("PNG, JPEG, or WebP images only.");
-    } else {
-      setAttachmentError("");
-    }
+    const validationErrors = files.map(attachmentValidationError).filter(Boolean);
+    const supportedAttachments = files.filter((file) => !attachmentValidationError(file));
+    setAttachmentError(validationErrors.join(" "));
 
-    onSelectedImagesChange([
-      ...selectedImages,
-      ...supportedImages.map((file) => ({
+    onSelectedAttachmentsChange([
+      ...selectedAttachments,
+      ...supportedAttachments.map((file) => ({
         id: crypto.randomUUID(),
         file,
       })),
     ]);
   };
 
-  const removeSelectedImage = (imageId: string) => {
-    onSelectedImagesChange(selectedImages.filter((image) => image.id !== imageId));
+  const removeSelectedAttachment = (attachmentId: string) => {
+    onSelectedAttachmentsChange(selectedAttachments.filter((attachment) => attachment.id !== attachmentId));
   };
 
   const resolveCodexAppServerRequest = (action: "approve" | "decline" | "cancel") => {
@@ -207,22 +206,21 @@ export function InputComposer({
     try {
       setIsUploadingAttachments(true);
       setAttachmentError("");
-      const uploadedAttachments = await uploadSelectedImages(selectedImages);
-      const input = appendAttachmentContext(value, uploadedAttachments);
-      const didSend = sendAgentInput(input);
+      const uploadedAttachments = await uploadSelectedAttachments(selectedAttachments);
+      const didSend = sendAgentInput(value, uploadedAttachments);
       if (didSend) {
         onValueChange("");
-        onSelectedImagesChange([]);
+        onSelectedAttachmentsChange([]);
       }
     } catch (error) {
-      setAttachmentError(error instanceof Error ? error.message : "Unable to attach images.");
+      setAttachmentError(error instanceof Error ? error.message : "Unable to attach files.");
     } finally {
       setIsUploadingAttachments(false);
     }
   };
 
-  const sendAgentInput = (input: string) => {
-    if (!task || !canSend || !input) {
+  const sendAgentInput = (input: string, attachments: PendingTaskAttachment[]) => {
+    if (!task || !canSend || (!input && !attachments.length)) {
       return false;
     }
     const data = normalizeComposerInput(input);
@@ -230,6 +228,7 @@ export function InputComposer({
       type: "input",
       taskId: task.id,
       data,
+      attachments: attachments.map((attachment) => ({ id: attachment.id })),
       source: "composer-agent",
       agentModel: selectedModel,
       agentReasoningEffort: selectedReasoningEffort,
@@ -287,14 +286,14 @@ export function InputComposer({
           </div>
         </div>
       ) : null}
-      {selectedImages.length > 0 ? (
-        <div className="attachment-chip-list input-attachment-chip-list" aria-label="Selected image attachments">
-          {selectedImages.map((image) => (
-            <span className="attachment-chip" key={image.id}>
-              <span>{image.file.name}</span>
+      {selectedAttachments.length > 0 ? (
+        <div className="attachment-chip-list input-attachment-chip-list" aria-label="Selected attachments">
+          {selectedAttachments.map((attachment) => (
+            <span className="attachment-chip" key={attachment.id}>
+              <span>{attachment.file.name}</span>
               <button
-                aria-label={`Remove ${image.file.name}`}
-                onClick={() => removeSelectedImage(image.id)}
+                aria-label={`Remove ${attachment.file.name}`}
+                onClick={() => removeSelectedAttachment(attachment.id)}
                 title="Remove attachment"
                 type="button"
               >
@@ -325,11 +324,11 @@ export function InputComposer({
         <div className="input-composer-footer">
           <div className="input-composer-footer-start">
             <button
-              aria-label="Attach image"
+              aria-label="Attach file"
               className="add-context-button input-attach-button"
               disabled={!canSend || isUploadingAttachments}
-              onClick={() => imageInputRef.current?.click()}
-              title="Attach image"
+              onClick={() => attachmentInputRef.current?.click()}
+              title="Attach file"
               type="button"
             >
               <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16">
@@ -337,11 +336,11 @@ export function InputComposer({
               </svg>
             </button>
             <input
-              ref={imageInputRef}
-              accept="image/png,image/jpeg,image/webp"
+              ref={attachmentInputRef}
+              accept={supportedAttachmentAccept}
               className="visually-hidden"
               multiple
-              onChange={handleImageSelection}
+              onChange={handleAttachmentSelection}
               type="file"
             />
           </div>
@@ -437,17 +436,17 @@ function formatReasoningEffort(effort: string) {
   return effort;
 }
 
-async function uploadSelectedImages(images: SelectedImageAttachment[]) {
+async function uploadSelectedAttachments(attachments: SelectedAttachment[]) {
   const uploadedAttachments: PendingTaskAttachment[] = [];
 
-  for (const image of images) {
+  for (const attachment of attachments) {
     const response = await fetch("/api/attachments", {
       method: "POST",
       headers: {
-        "Content-Type": image.file.type,
-        "X-TaskDeck-Filename": encodeURIComponent(image.file.name),
+        "Content-Type": attachment.file.type || "application/octet-stream",
+        "X-TaskDeck-Filename": encodeURIComponent(attachment.file.name),
       },
-      body: image.file,
+      body: attachment.file,
     });
     const payload = await readJsonResponse<{ attachment?: PendingTaskAttachment; error?: string }>(response);
     if (!response.ok) {
@@ -457,7 +456,7 @@ async function uploadSelectedImages(images: SelectedImageAttachment[]) {
       throw new Error("TaskDeck server returned an empty response.");
     }
     if (!payload.attachment) {
-      throw new Error(payload.error || "Unable to upload image.");
+      throw new Error(payload.error || "Unable to upload attachment.");
     }
     uploadedAttachments.push(payload.attachment);
   }
@@ -481,23 +480,6 @@ async function readJsonResponse<T>(response: Response): Promise<T | null> {
 function formatUploadFailure(response: Response) {
   const statusText = response.statusText || "Upload failed";
   return `Attachment upload failed: ${response.status} ${statusText}.`;
-}
-
-function isSupportedImage(file: File) {
-  return ["image/png", "image/jpeg", "image/webp"].includes(file.type);
-}
-
-function appendAttachmentContext(input: string, attachments: PendingTaskAttachment[]) {
-  if (!attachments.length) {
-    return input;
-  }
-
-  const attachmentBlock = [
-    "Attached images:",
-    ...attachments.map((attachment) => `- ${attachment.path}`),
-  ].join("\n");
-  const instruction = input.trim();
-  return instruction ? `${instruction}\n\n${attachmentBlock}` : attachmentBlock;
 }
 
 function shouldSendFromEnterKey(event: KeyboardEvent<HTMLTextAreaElement>, isComposing: boolean) {

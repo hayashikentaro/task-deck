@@ -5,7 +5,7 @@ import { OutputPane } from "./components/OutputPane";
 import { PhonePairingPanel } from "./components/PhonePairingPanel";
 import { DecisionInboxPanel } from "./components/DecisionInboxPanel";
 import type { CodexModel, CreateTaskInput, DecisionGatewayMailboxItem, OutputEvent, Task, TaskDeckContext } from "./types";
-import type { SelectedImageAttachment } from "./components/InputComposer";
+import type { SelectedAttachment } from "./components/InputComposer";
 import { appendOutputEventToQueue } from "./outputReplay";
 import { selectTaskIdForTaskList } from "@taskdeck/web-shared";
 
@@ -61,7 +61,7 @@ export function App() {
   const [taskDeckContext, setTaskDeckContext] = useState<TaskDeckContext | null>(null);
   const [decisionGatewayMailboxItems, setDecisionGatewayMailboxItems] = useState<DecisionGatewayMailboxItem[]>([]);
   const [composerDraftsByTaskId, setComposerDraftsByTaskId] = useState<Record<string, string>>({});
-  const [composerImagesByTaskId, setComposerImagesByTaskId] = useState<Record<string, SelectedImageAttachment[]>>({});
+  const [composerAttachmentsByTaskId, setComposerAttachmentsByTaskId] = useState<Record<string, SelectedAttachment[]>>({});
   const [outputMessage, setOutputMessage] = useState("");
   const [codexModels, setCodexModels] = useState<CodexModel[]>([]);
   const socketRef = useRef<WebSocket | null>(null);
@@ -100,7 +100,7 @@ export function App() {
   useEffect(() => {
     const taskIds = new Set(tasks.map((task) => task.id));
     setComposerDraftsByTaskId((current) => pruneRecordByKeys(current, taskIds));
-    setComposerImagesByTaskId((current) => pruneRecordByKeys(current, taskIds));
+    setComposerAttachmentsByTaskId((current) => pruneRecordByKeys(current, taskIds));
   }, [tasks]);
 
   useEffect(() => {
@@ -251,14 +251,14 @@ export function App() {
     [selectedTaskId, tasks],
   );
   const composerValue = selectedTaskId ? composerDraftsByTaskId[selectedTaskId] ?? "" : "";
-  const selectedImages = selectedTaskId ? composerImagesByTaskId[selectedTaskId] ?? [] : [];
+  const selectedAttachments = selectedTaskId ? composerAttachmentsByTaskId[selectedTaskId] ?? [] : [];
 
   const updateComposerValue = useCallback((value: string) => {
     setComposerDraftsByTaskId((current) => updateSelectedTaskRecord(current, selectedTaskId, value));
   }, [selectedTaskId]);
 
-  const updateSelectedImages = useCallback((images: SelectedImageAttachment[]) => {
-    setComposerImagesByTaskId((current) => updateSelectedTaskRecord(current, selectedTaskId, images));
+  const updateSelectedAttachments = useCallback((attachments: SelectedAttachment[]) => {
+    setComposerAttachmentsByTaskId((current) => updateSelectedTaskRecord(current, selectedTaskId, attachments));
   }, [selectedTaskId]);
 
   const renameTask = async (taskId: string, title: string) => {
@@ -412,14 +412,14 @@ export function App() {
           codexModels={codexModels}
           composerValue={composerValue}
           isConnected={connectionState === "connected"}
-          selectedImages={selectedImages}
+          selectedAttachments={selectedAttachments}
           task={selectedTask}
           outputEvents={outputEvents}
           outputReloadToken={outputReloadToken}
           outputMessage={outputMessage}
           onComposerValueChange={updateComposerValue}
           onOutputMessageChange={setOutputMessage}
-          onSelectedImagesChange={updateSelectedImages}
+          onSelectedAttachmentsChange={updateSelectedAttachments}
           send={send}
         />
         <aside className="right-rail">

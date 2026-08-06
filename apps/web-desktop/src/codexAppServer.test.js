@@ -253,6 +253,33 @@ describe("Codex App Server helper contracts", () => {
     });
   });
 
+  it("builds native image and local file turn input", () => {
+    expect(buildCodexAppServerTurnStartParams({
+      threadId: "thread-1",
+      text: "Review these files.",
+      attachments: [
+        { type: "image", path: "/tmp/screen.png" },
+        { type: "file", path: "/tmp/report.pdf" },
+      ],
+    })).toEqual({
+      threadId: "thread-1",
+      approvalPolicy: "never",
+      sandboxPolicy: { type: "dangerFullAccess" },
+      input: [
+        { type: "text", text: "Review these files.\n\nAttached files:\n- /tmp/report.pdf" },
+        { type: "localImage", path: "/tmp/screen.png" },
+      ],
+    });
+  });
+
+  it("supports an image-only turn", () => {
+    expect(buildCodexAppServerTurnStartParams({
+      threadId: "thread-1",
+      text: "",
+      attachments: [{ type: "image", path: "/tmp/screen.png" }],
+    }).input).toEqual([{ type: "localImage", path: "/tmp/screen.png" }]);
+  });
+
   it("builds App Server turn interrupt params", () => {
     expect(buildCodexAppServerTurnInterruptParams({
       threadId: " thread-1 ",

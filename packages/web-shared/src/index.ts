@@ -17,6 +17,12 @@ export {
   normalizeComposerInput,
 } from "./composer";
 export {
+  attachmentValidationError,
+  maxAttachmentBytes,
+  supportedAttachmentAccept,
+  supportedAttachmentExtensions,
+} from "./attachments";
+export {
   appendOutputEventToQueue,
   drainOutputEventsForTask,
   maxOutputQueueSeq,

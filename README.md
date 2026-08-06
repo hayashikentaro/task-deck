@@ -56,6 +56,8 @@ The dev command runs the local Node server and mounts Vite middleware for both R
 
 Task cards in the left rail show the active tasks and their supervision state. The center pane shows the selected task's live output and persisted log view. For Codex App Server tasks, TaskDeck renders structured App Server messages as human-readable task output, handles user-input requests through the UI, and exposes model and reasoning-effort selectors in the composer. Selector changes apply to the next instruction and later turns.
 
+The desktop and phone composers accept PNG, JPEG, WebP, GIF, HEIC, and HEIF images; UTF-8 text and common source-code files; and PDF, DOCX, XLSX, and PPTX documents up to 12 MB each. Images are delivered as native Codex App Server image input, while other files are made available to Codex through their task-owned local paths.
+
 The desktop output view makes web URLs, localhost URLs, `file://` URLs, absolute paths, and `~/` paths clickable. Web links, including ChatGPT login URLs, open in the desktop browser. Local paths open on the machine running the TaskDeck server; hovering them previews supported files and directories under that machine's home directory. The separate phone client does not expose local-path actions.
 
 ## Configure Projects

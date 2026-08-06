@@ -31,7 +31,7 @@ export type TaskRisk = {
 
 export type TaskAttachment = {
   id: string;
-  type: "image";
+  type: "image" | "file";
   filename: string;
   path: string;
   mimeType: string;
